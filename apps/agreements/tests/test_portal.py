@@ -18,7 +18,9 @@ class PortalTests(unittest.TestCase):
         if not url.startswith('sqlite:'):
             assert url.endswith('/tfsc_test'), 'Use the isolated tfsc_test database only.'
         db.engine=db.make_engine(url)
-        if not url.startswith('sqlite:'):db.meta.drop_all(db.engine)
+        if not url.startswith('sqlite:'):
+            db.meta.drop_all(db.engine)
+            with db.engine.begin() as c:c.exec_driver_sql('DROP TABLE IF EXISTS alembic_version')
         db.init_db()
         self.api=TestClient(portal.app,base_url='http://127.0.0.1:8765')
         self.password='Only-a-test-password-29!'

@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-crm-data
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteMany]
+  {{- with .Values.crm.dataVolume.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources: { requests: { storage: {{ .Values.crm.dataVolume.size }} } }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-crm-migrate-{{ .Release.Revision }}
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+  annotations: { "helm.sh/hook": pre-install,pre-upgrade, "helm.sh/hook-delete-policy": before-hook-creation }
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "tfsc.crmImage" . }}
+          command: [alembic, upgrade, head]
+          envFrom: [{ secretRef: { name: {{ .Values.crm.existingSecret }} } }]
+          env: {{- include "tfsc.crmEnv" . | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- range $name, $cfg := dict "api" .Values.crm.api "dispatcher" .Values.crm.dispatcher "scheduler" .Values.crm.scheduler }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-crm-{{ $name }}
+  labels: {{- include "tfsc.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: crm-{{ $name }}
+spec:
+  replicas: {{ $cfg.replicas }}
+  {{- if eq $name "scheduler" }}
+  strategy: { type: Recreate }
+  {{- end }}
+  selector: { matchLabels: { app.kubernetes.io/component: crm-{{ $name }} } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: crm-{{ $name }}, app.kubernetes.io/part-of: tfsc-platform }
+    spec:
+      securityContext: {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: crm-{{ $name }}
+          image: {{ include "tfsc.crmImage" $ }}
+          imagePullPolicy: {{ $.Values.image.crm.pullPolicy }}
+          {{- if eq $name "api" }}
+          command: [uvicorn, tfsc_crm.main:app, --host, 0.0.0.0, --port, "8000", --workers, {{ $cfg.workers | quote }}, --no-access-log, --proxy-headers, --forwarded-allow-ips=*]
+          ports: [{ name: http, containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: {{ trimPrefix "https://" $.Values.crm.origin | quote }} }] }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: {{ trimPrefix "https://" $.Values.crm.origin | quote }} }] }, periodSeconds: 30, failureThreshold: 4 }
+          {{- else }}
+          command: [python, -m, tfsc_crm.workers.{{ $name }}]
+          {{- end }}
+          envFrom: [{ secretRef: { name: {{ $.Values.crm.existingSecret }} } }]
+          env: {{- include "tfsc.crmEnv" $ | nindent 12 }}
+          resources: {{- toYaml $cfg.resources | nindent 12 }}
+          securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: {{ $.Release.Name }}-crm-data } }]
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-crm
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: crm-api }
+  ports: [{ name: http, port: 8000, targetPort: http }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: {{ .Release.Name }}-crm-api }
+spec:
+  minAvailable: 2
+  selector: { matchLabels: { app.kubernetes.io/component: crm-api } }
+{{- if .Values.crm.api.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: {{ .Release.Name }}-crm-api }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ .Release.Name }}-crm-api }
+  minReplicas: {{ .Values.crm.api.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.crm.api.autoscaling.maxReplicas }}
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ .Values.crm.api.autoscaling.targetCPUUtilizationPercentage }} } } }]
+{{- end }}

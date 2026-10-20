@@ -1,0 +1,14 @@
+# TLS edge (profile `edge`). Set CRM_DOMAIN, TFSC_DOMAIN, SSO_DOMAIN in .env; Caddy obtains certificates.
+{$CRM_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy crm-api:8000 {
+		flush_interval -1
+	}
+}
+{$TFSC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy agreements:8000
+}
+{$SSO_DOMAIN} {
+	reverse_proxy keycloak:8080
+}

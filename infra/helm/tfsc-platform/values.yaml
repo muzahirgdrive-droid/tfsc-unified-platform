@@ -1,0 +1,43 @@
+# Secrets are never set here: create them first (see templates/NOTES.txt) and reference by name.
+image:
+  crm: { repository: registry.example.com/tfsc-crm, tag: "2.0.0", pullPolicy: IfNotPresent }
+  agreements: { repository: registry.example.com/tfsc-agreements, tag: "4.0.0", pullPolicy: IfNotPresent }
+imagePullSecrets: []
+
+crm:
+  origin: https://crm.example.com
+  ssoIssuer: https://sso.example.com/realms/tfsc
+  ssoInternalUrl: ""          # e.g. http://keycloak.sso.svc:8080/realms/tfsc
+  oidcClientId: tfsc-crm
+  allowLocalLogin: false       # break-glass only
+  existingSecret: tfsc-crm     # keys: CRM_DATABASE_URL CRM_REDIS_URL CRM_PHONE_KEY_SECRET CRM_FIELD_KEY CRM_TFSC_BRIDGE_SECRET CRM_OIDC_CLIENT_SECRET CRM_METRICS_TOKEN
+  api:
+    replicas: 3
+    workers: 2
+    resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+    autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 20, targetCPUUtilizationPercentage: 65 }
+  dispatcher: { replicas: 2, resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } } }
+  scheduler: { replicas: 1, resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: 500m, memory: 512Mi } } }
+  dataVolume: { size: 5Gi, storageClass: "" }   # setup key + audit-anchor sink (ship anchors to object-lock storage)
+
+agreements:
+  origin: https://agreements.example.com
+  existingSecret: tfsc-agreements   # keys: DATABASE_URL TFSC_CRM_SHARED_SECRET (+ OIDC settings used by the portal)
+  api: { replicas: 2, resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "2", memory: 2Gi } } }
+  worker: { replicas: 1, resources: { requests: { cpu: 250m, memory: 1Gi }, limits: { cpu: "2", memory: 2Gi } } }
+  contractsVolume: { size: 20Gi, storageClass: "", accessMode: ReadWriteMany }
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"      # SSE
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "60m"
+  crmHost: crm.example.com
+  agreementsHost: agreements.example.com
+  tls: [{ secretName: tfsc-tls, hosts: [crm.example.com, agreements.example.com] }]
+
+podSecurityContext: { runAsNonRoot: true, fsGroup: 10002, seccompProfile: { type: RuntimeDefault } }
+containerSecurityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: false, capabilities: { drop: [ALL] } }
+networkPolicy: { enabled: true }

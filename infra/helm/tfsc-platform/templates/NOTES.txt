@@ -1,0 +1,14 @@
+TFSC platform {{ .Chart.AppVersion }} installed as "{{ .Release.Name }}".
+
+Before the first install create the secrets (never put them in values.yaml):
+  kubectl create secret generic {{ .Values.crm.existingSecret }} \
+    --from-literal=CRM_DATABASE_URL=postgresql+psycopg://crm:...@postgres:5432/crm \
+    --from-literal=CRM_REDIS_URL=redis://redis:6379/0 \
+    --from-literal=CRM_PHONE_KEY_SECRET=... --from-literal=CRM_FIELD_KEY=... \
+    --from-literal=CRM_TFSC_BRIDGE_SECRET=... --from-literal=CRM_OIDC_CLIENT_SECRET=... --from-literal=CRM_METRICS_TOKEN=...
+  kubectl create secret generic {{ .Values.agreements.existingSecret }} \
+    --from-literal=DATABASE_URL=postgresql+psycopg://tfsc:...@postgres:5432/tfsc --from-literal=TFSC_CRM_SHARED_SECRET=...
+
+Migrations run as a pre-install/pre-upgrade Job. The scheduler runs one replica (jobs are also idempotent).
+CRM:        {{ .Values.crm.origin }}
+Agreements: {{ .Values.agreements.origin }}

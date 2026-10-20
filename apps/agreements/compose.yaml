@@ -1,7 +1,9 @@
 name: tfsc-compliance
 x-common: &common
   image: tfsc-compliance:4.0.0
-  build: .
+  build:
+    context: ../..
+    dockerfile: apps/agreements/Dockerfile
   restart: unless-stopped
   environment: &environment
     TFSC_MODE: hosted

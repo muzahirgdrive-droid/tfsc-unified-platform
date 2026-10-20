@@ -1,0 +1,142 @@
+# TFSC unified platform: CRM v2 + Agreements + Keycloak + PostgreSQL + Redis.
+#   cp .env.example .env   # fill every secret
+#   docker compose --env-file .env up -d --build
+# Production adds the `edge` profile (Caddy TLS) and sets CRM_MODE=hosted with https origins.
+name: tfsc-unified
+
+x-crm: &crm
+  image: tfsc-crm:2
+  build: { context: ../.., dockerfile: apps/crm-api/Dockerfile }
+  restart: unless-stopped
+  environment: &crm-env
+    CRM_MODE: ${CRM_MODE:-hosted}
+    CRM_ORIGIN: ${CRM_ORIGIN:?set CRM_ORIGIN}
+    CRM_DATABASE_URL: postgresql+psycopg://crm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/crm
+    CRM_REDIS_URL: redis://redis:6379/0
+    CRM_PHONE_KEY_SECRET: ${CRM_PHONE_KEY_SECRET:?set CRM_PHONE_KEY_SECRET}
+    CRM_FIELD_KEY: ${CRM_FIELD_KEY:?set CRM_FIELD_KEY}
+    CRM_TFSC_URL: ${TFSC_ORIGIN}
+    CRM_TFSC_INTERNAL_URL: http://agreements:8000
+    CRM_TFSC_BRIDGE_SECRET: ${BRIDGE_SECRET:?set BRIDGE_SECRET}
+    CRM_OIDC_ISSUER: ${SSO_PUBLIC_URL:?set SSO_PUBLIC_URL}/realms/tfsc
+    CRM_OIDC_INTERNAL_URL: http://keycloak:8080/realms/tfsc
+    CRM_OIDC_CLIENT_ID: tfsc-crm
+    CRM_OIDC_CLIENT_SECRET: ${CRM_OIDC_CLIENT_SECRET:?set CRM_OIDC_CLIENT_SECRET}
+    CRM_ALLOW_LOCAL_LOGIN: ${CRM_ALLOW_LOCAL_LOGIN:-0}
+    CRM_INLINE_DISPATCHER: "0"
+    CRM_INLINE_SCHEDULER: "0"
+    CRM_METRICS_TOKEN: ${CRM_METRICS_TOKEN:-}
+  volumes: [crm-data:/data]
+
+x-agreements: &agreements
+  image: tfsc-agreements:4
+  build: { context: ../.., dockerfile: apps/agreements/Dockerfile }
+  restart: unless-stopped
+  environment: &agr-env
+    TFSC_MODE: ${TFSC_MODE:-hosted}
+    TFSC_ORIGIN: ${TFSC_ORIGIN:?set TFSC_ORIGIN}
+    DATABASE_URL: postgresql+psycopg://tfsc:${POSTGRES_PASSWORD}@postgres:5432/tfsc
+    TFSC_DATA_DIR: /data
+    TFSC_OUTPUT_ROOT: /contracts
+    TFSC_RENDERER: libreoffice
+    TFSC_CRM_URL: ${CRM_ORIGIN}
+    TFSC_CRM_INTERNAL_URL: http://crm-api:8000
+    TFSC_CRM_SHARED_SECRET: ${BRIDGE_SECRET}
+    DB_POOL_SIZE: "5"
+  volumes: [agreements-data:/data, contracts:/contracts]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_DB: crm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [postgres-data:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro]
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=300", "-c", "shared_buffers=512MB"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d crm"], interval: 5s, timeout: 5s, retries: 20 }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20 }
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    restart: unless-stopped
+    command: ["${KC_COMMAND:-start}", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HOSTNAME: ${SSO_PUBLIC_URL}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?set KC_ADMIN_PASSWORD}
+      KC_REALM_SSL_REQUIRED: ${KC_REALM_SSL_REQUIRED:-external}
+      CRM_ORIGIN: ${CRM_ORIGIN}
+      TFSC_ORIGIN: ${TFSC_ORIGIN}
+      CRM_OIDC_CLIENT_SECRET: ${CRM_OIDC_CLIENT_SECRET}
+      TFSC_OIDC_CLIENT_SECRET: ${TFSC_OIDC_CLIENT_SECRET:?set TFSC_OIDC_CLIENT_SECRET}
+    volumes: [../keycloak/realm-tfsc.json:/opt/keycloak/data/import/realm-tfsc.json:ro]
+    ports: ["${SSO_PORT:-8081}:8080"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  crm-migrate:
+    <<: *crm
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  crm-api:
+    <<: *crm
+    ports: ["${CRM_PORT:-8766}:8000"]
+    depends_on:
+      crm-migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  crm-dispatcher:
+    <<: *crm
+    command: ["python", "-m", "tfsc_crm.workers.dispatcher"]
+    healthcheck: { disable: true }
+    depends_on: { crm-migrate: { condition: service_completed_successfully } }
+
+  crm-scheduler:
+    <<: *crm
+    command: ["python", "-m", "tfsc_crm.workers.scheduler"]
+    healthcheck: { disable: true }
+    depends_on: { crm-migrate: { condition: service_completed_successfully } }
+
+  agreements:
+    <<: *agreements
+    ports: ["${TFSC_PORT:-8765}:8000"]
+    command: ["uvicorn", "portal:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  agreements-worker:
+    <<: *agreements
+    command: ["python", "worker.py"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  edge:
+    profiles: [edge]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment: { CRM_DOMAIN: "${CRM_DOMAIN:-}", TFSC_DOMAIN: "${TFSC_DOMAIN:-}", SSO_DOMAIN: "${SSO_DOMAIN:-}" }
+    ports: ["80:80", "443:443"]
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy-data:/data, caddy-config:/config]
+    depends_on: [crm-api, agreements, keycloak]
+
+volumes:
+  postgres-data:
+  crm-data:
+  agreements-data:
+  contracts:
+  caddy-data:
+  caddy-config:

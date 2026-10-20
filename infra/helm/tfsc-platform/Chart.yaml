@@ -1,0 +1,6 @@
+apiVersion: v2
+name: tfsc-platform
+description: TFSC Sales CRM v2 + TFSC Agreements (API, workers, scheduler, migrations). PostgreSQL, Redis and Keycloak are external.
+type: application
+version: 0.1.0
+appVersion: "2.0.0"

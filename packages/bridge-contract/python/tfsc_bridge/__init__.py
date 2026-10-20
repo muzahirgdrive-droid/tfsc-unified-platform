@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import time
@@ -23,7 +24,8 @@ __all__ = ['SCHEMAS', 'BridgeError', 'canonical_body', 'headers', 'sign', 'valid
 
 TOLERANCE_S = 300
 NONCE_RE = re.compile(r'^[A-Za-z0-9_-]{16,100}$')
-SCHEMA_DIR = Path(__file__).resolve().parents[2] / 'schemas'
+# Source checkout: packages/bridge-contract/schemas. Installed elsewhere: point TFSC_BRIDGE_SCHEMAS at that folder.
+SCHEMA_DIR = Path(os.getenv('TFSC_BRIDGE_SCHEMAS') or Path(__file__).resolve().parents[2] / 'schemas')
 
 
 class BridgeError(Exception):

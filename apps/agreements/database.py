@@ -67,10 +67,11 @@ def make_engine(url=URL):
 
 engine=make_engine()
 def init_db():
+    import migrate
     with engine.begin() as c:
         if engine.dialect.name=='postgresql':
             c.execute(text('SELECT pg_advisory_xact_lock(714872001)'))
-        meta.create_all(c)
+        migrate.upgrade_to_head(c,meta)
         if not c.execute(select(settings).where(settings.c.key=='schema_version')).first():
             c.execute(settings.insert().values(key='schema_version',value=1))
 

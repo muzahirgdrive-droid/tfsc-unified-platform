@@ -203,6 +203,8 @@ def deliver_pending(limit: int = 100) -> int:
     if not url or len(_secret()) < 32:
         return 0
     import httpx
+    from urllib.parse import urlsplit
+    internal = os.getenv('TFSC_CRM_INTERNAL_URL', '').rstrip('/') or url
     path = '/api/integrations/v1/tfsc/events'
     with db.engine.begin() as c:
         q = select(outbox).where(outbox.c.state == 'pending', outbox.c.next_attempt <= time.time()).order_by(outbox.c.created).limit(limit)
@@ -213,7 +215,9 @@ def deliver_pending(limit: int = 100) -> int:
             body = canonical_body(r['payload'])
             try:
                 h = headers(_secret(), 'POST', path, body, event_id=r['event_id'], schema=f"{r['topic']}@1")
-                resp = httpx.post(url + path, content=body, headers=h, timeout=10)
+                # In containers the CRM is reached on an internal URL; its Host check still expects the public origin.
+                h['Host'] = urlsplit(url).netloc
+                resp = httpx.post(internal + path, content=body, headers=h, timeout=10)
                 if resp.status_code >= 300 and resp.status_code != 409:
                     raise RuntimeError(f'CRM inbox HTTP {resp.status_code}: {resp.text[:200]}')
                 c.execute(update(outbox).where(outbox.c.id == r['id']).values(state='delivered', attempts=r['attempts'] + 1))

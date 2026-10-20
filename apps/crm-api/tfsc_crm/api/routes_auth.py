@@ -4,7 +4,7 @@ from __future__ import annotations
 import secrets
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 
 from ..config import get_settings
 from ..db import models as m
@@ -46,7 +46,8 @@ def server_time() -> TimeOut:
 @router.get('/auth/status', response_model=AuthStatus)
 def auth_status() -> AuthStatus:
     from ..config import get_settings as gs
-    return AuthStatus(setup_required=bootstrap.setup_required(), local_login=gs().allow_local_login, oidc=False)
+    from ..security import oidc
+    return AuthStatus(setup_required=bootstrap.setup_required(), local_login=gs().allow_local_login, oidc=oidc.enabled())
 
 
 def _session(request: Request, response: Response, user: dict) -> SessionOut:
@@ -100,6 +101,81 @@ def login(body: LoginIn, request: Request, response: Response) -> SessionOut:
     with tx(user['org_id'], user['id']) as c:
         audit.record(c, user['org_id'], user['id'], 'auth.login', 'user', user['id'], None, None, ip=ip, ua=request.headers.get('user-agent'))
     return out
+
+
+@router.get('/auth/oidc/start', include_in_schema=False)
+def oidc_start(request: Request, next: str | None = None) -> Response:
+    """Begin SSO: redirect to Keycloak with PKCE; state/nonce/verifier ride in a signed, short-lived cookie."""
+    from fastapi.responses import RedirectResponse
+
+    from ..security import oidc
+    if not oidc.enabled():
+        raise HTTPException(404, 'Single sign-on is not configured.')
+    ratelimit.enforce(f'oidc-start:{client_ip(request)}', 60, 900)
+    try:
+        url, cookie = oidc.start(next)
+    except (oidc.OidcError, Exception):
+        return RedirectResponse('/login?sso_error=unavailable', status_code=302)
+    resp = RedirectResponse(url, status_code=302)
+    resp.set_cookie(oidc.COOKIE, cookie, httponly=True, secure=get_settings().hosted, samesite='lax', max_age=oidc.TTL_S, path='/api/auth/oidc')
+    return resp
+
+
+@router.get('/auth/oidc/callback', include_in_schema=False)
+def oidc_callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None) -> Response:
+    """Finish SSO. Every failure lands on /login with a short reason code (details stay in the audit log)."""
+    from fastapi.responses import RedirectResponse
+
+    from ..security import oidc
+
+    def fail(reason: str, user: dict | None = None, detail: str = '') -> Response:
+        if user:
+            with tx(user['org_id'], None) as c:
+                audit.record(c, user['org_id'], user['id'], 'auth.login_failed', 'user', user['id'], None,
+                             {'method': 'oidc', 'reason': reason, 'detail': detail[:200]}, ip=client_ip(request))
+        r = RedirectResponse(f'/login?sso_error={reason}', status_code=302)
+        r.delete_cookie(oidc.COOKIE, path='/api/auth/oidc')
+        return r
+
+    if not oidc.enabled():
+        raise HTTPException(404, 'Single sign-on is not configured.')
+    ratelimit.enforce(f'oidc-cb:{client_ip(request)}', 60, 900)
+    if error or not code or not state:
+        return fail('cancelled')
+    try:
+        claims, next_path = oidc.finish(code, state, request.cookies.get(oidc.COOKIE))
+    except oidc.OidcError as e:
+        return fail(e.code)
+    except Exception:
+        return fail('unavailable')
+    iss, sub = claims['iss'], str(claims['sub'])
+    with system_tx() as c:
+        uid = c.execute(select(m.oidc_identities.c.user_id).where(m.oidc_identities.c.issuer == iss, m.oidc_identities.c.subject == sub)).scalar_one_or_none()
+        user = None
+        if uid:
+            user = c.execute(select(m.users).where(m.users.c.id == uid)).mappings().first()
+        elif claims.get('email') and claims.get('email_verified') is True:
+            user = c.execute(select(m.users).where(func.lower(m.users.c.email) == str(claims['email']).lower())).mappings().first()
+            if user:
+                linked = c.execute(select(m.oidc_identities.c.subject).where(m.oidc_identities.c.issuer == iss,
+                                                                         m.oidc_identities.c.user_id == user['id'])).first()
+                if linked:  # this CRM user is already bound to a different identity at this issuer
+                    return fail('identity_mismatch', dict(user))
+                c.execute(m.oidc_identities.insert().values(issuer=iss, subject=sub, user_id=user['id']))
+    if not user:
+        return fail('unknown_user')
+    u = dict(user)
+    if u['status'] != 'active' or u['crm_role'] == 'none':
+        return fail('inactive', u)
+    if (u['mfa_required'] or u['crm_role'] in ('supervisor', 'manager', 'director_admin', 'super_admin')) and not oidc.mfa_satisfied(claims):
+        return fail('mfa_required', u, f"acr={claims.get('acr')} amr={claims.get('amr')}")
+    resp = RedirectResponse(next_path, status_code=302)
+    _session(request, resp, u)
+    resp.delete_cookie(oidc.COOKIE, path='/api/auth/oidc')
+    with tx(u['org_id'], u['id']) as c:
+        audit.record(c, u['org_id'], u['id'], 'auth.login', 'user', u['id'], None, {'method': 'oidc', 'acr': claims.get('acr')},
+                     ip=client_ip(request), ua=request.headers.get('user-agent'))
+    return resp
 
 
 @router.post('/auth/logout', response_model=OkOut)

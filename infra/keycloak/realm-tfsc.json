@@ -1,0 +1,143 @@
+{
+  "realm": "tfsc",
+  "enabled": true,
+  "displayName": "24-7 Consultancy",
+  "sslRequired": "${KC_REALM_SSL_REQUIRED:external}",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(5)",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyLookAheadWindow": 1,
+  "webAuthnPolicyUserVerificationRequirement": "preferred",
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "accessTokenLifespan": 300,
+  "revokeRefreshToken": true,
+  "attributes": {
+    "frontendUrl": "",
+    "acr.loa.map": "{\"pwd\":\"1\",\"mfa\":\"2\"}"
+  },
+  "roles": {
+    "realm": [
+      { "name": "mfa-required", "description": "Supervisor and above: a second factor is mandatory (§21)." }
+    ]
+  },
+  "groups": [
+    { "name": "supervisors-and-above", "path": "/supervisors-and-above", "realmRoles": ["mfa-required"] },
+    { "name": "agents", "path": "/agents", "realmRoles": [] }
+  ],
+  "clients": [
+    {
+      "clientId": "tfsc-crm",
+      "name": "TFSC Sales CRM",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${CRM_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": ["${CRM_ORIGIN}/api/auth/oidc/callback"],
+      "webOrigins": ["${CRM_ORIGIN}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${CRM_ORIGIN}/login"
+      },
+      "defaultClientScopes": ["basic", "profile", "email", "acr"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "amr",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "config": { "id.token.claim": "true", "access.token.claim": "true", "introspection.token.claim": "true" }
+        }
+      ]
+    },
+    {
+      "clientId": "tfsc-agreements",
+      "name": "TFSC Agreements",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${TFSC_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["${TFSC_ORIGIN}/*"],
+      "webOrigins": ["${TFSC_ORIGIN}"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "defaultClientScopes": ["basic", "profile", "email", "acr"],
+      "protocolMappers": [
+        {
+          "name": "amr",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "config": { "id.token.claim": "true", "access.token.claim": "true", "introspection.token.claim": "true" }
+        }
+      ]
+    }
+  ],
+  "browserFlow": "browser-mfa-by-role",
+  "authenticationFlows": [
+    {
+      "alias": "browser-mfa-by-role",
+      "description": "Password for everyone; a second factor (TOTP) for users with the mfa-required role (Supervisor+).",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-cookie", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 10, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "ALTERNATIVE", "priority": 20, "flowAlias": "browser-mfa-by-role forms", "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "browser-mfa-by-role forms",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-username-password-form", "authenticatorConfig": "amr-pwd", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "requirement": "CONDITIONAL", "priority": 20, "flowAlias": "browser-mfa-by-role otp", "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "browser-mfa-by-role otp",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "conditional-user-role", "authenticatorConfig": "mfa-required-role", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorConfig": "amr-otp", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": true }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    { "alias": "mfa-required-role", "config": { "condUserRole": "mfa-required", "negate": "false" } },
+    { "alias": "amr-pwd", "config": { "default.reference.value": "pwd", "default.reference.maxAge": "43200" } },
+    { "alias": "amr-otp", "config": { "default.reference.value": "otp", "default.reference.maxAge": "43200" } }
+  ],
+  "requiredActions": [
+    { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": false, "priority": 10 },
+    { "alias": "UPDATE_PASSWORD", "name": "Update Password", "providerId": "UPDATE_PASSWORD", "enabled": true, "defaultAction": false, "priority": 30 }
+  ]
+}

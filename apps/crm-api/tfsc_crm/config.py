@@ -27,6 +27,14 @@ class Settings:
     allow_local_login: bool = field(default_factory=lambda: _bool('CRM_ALLOW_LOCAL_LOGIN', True))
     web_dist: str = field(default_factory=lambda: os.getenv('CRM_WEB_DIST', ''))
     sentry_dsn: str = field(default_factory=lambda: os.getenv('CRM_SENTRY_DSN', ''))
+    # OIDC / Keycloak (§21). Empty issuer = SSO off (local break-glass login only).
+    oidc_issuer: str = field(default_factory=lambda: os.getenv('CRM_OIDC_ISSUER', '').rstrip('/'))
+    oidc_internal_url: str = field(default_factory=lambda: os.getenv('CRM_OIDC_INTERNAL_URL', '').rstrip('/'))
+    oidc_client_id: str = field(default_factory=lambda: os.getenv('CRM_OIDC_CLIENT_ID', ''))
+    oidc_client_secret: str = field(default_factory=lambda: os.getenv('CRM_OIDC_CLIENT_SECRET', ''))
+    oidc_mfa_acr: str = field(default_factory=lambda: os.getenv('CRM_OIDC_MFA_ACR', 'mfa,2'))
+    oidc_state_secret: str = field(default_factory=lambda: os.getenv('CRM_OIDC_STATE_SECRET', ''))
+    metrics_token: str = field(default_factory=lambda: os.getenv('CRM_METRICS_TOKEN', ''))
 
     @property
     def hosted(self) -> bool:

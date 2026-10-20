@@ -1,0 +1,22 @@
+# Build context = repository root. Keep images small and never ship private data.
+.git
+**/.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.hypothesis
+**/.data
+**/.env
+handoff-out
+*.xlsx
+*.zip
+apps/agreements/private-assets
+apps/agreements/runtime
+apps/agreements/tests
+apps/crm-api/tests
+apps/crm-api/tests_v2
+apps/crm-web/test
+apps/crm-web/e2e
+apps/crm-web-pilot
+docs
