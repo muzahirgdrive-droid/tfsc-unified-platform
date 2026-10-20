@@ -1793,6 +1793,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{user_id}/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Invite
+         * @description Send the Keycloak invitation (again): set a password, and enrol TOTP for Supervisor and above.
+         */
+        post: operations["resend_invite_api_users__user_id__invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{user_id}/offboard": {
         parameters: {
             query?: never;
@@ -2110,6 +2130,11 @@ export interface components {
         };
         /** AuthStatus */
         AuthStatus: {
+            /**
+             * Invitations
+             * @default false
+             */
+            invitations: boolean;
             /** Local Login */
             local_login: boolean;
             /** Oidc */
@@ -7440,6 +7465,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgreementsAccessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_invite_api_users__user_id__invite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
                 };
             };
             /** @description Validation Error */

@@ -44,6 +44,10 @@ spec:
             - { name: TFSC_RENDERER, value: libreoffice }
             - { name: TFSC_CRM_URL, value: {{ $.Values.crm.origin | quote }} }
             - { name: TFSC_CRM_INTERNAL_URL, value: "http://{{ $.Release.Name }}-crm:8000" }
+            # Company SSO (same realm as the CRM; client secret TFSC_OIDC_CLIENT_SECRET in the existing secret)
+            - { name: TFSC_OIDC_ISSUER, value: {{ $.Values.crm.ssoIssuer | quote }} }
+            - { name: TFSC_OIDC_INTERNAL_URL, value: {{ $.Values.crm.ssoInternalUrl | quote }} }
+            - { name: TFSC_OIDC_CLIENT_ID, value: {{ $.Values.agreements.oidcClientId | quote }} }
           resources: {{- toYaml $cfg.resources | nindent 12 }}
           securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
           volumeMounts: [{ name: contracts, mountPath: /contracts }, { name: scratch, mountPath: /data }]

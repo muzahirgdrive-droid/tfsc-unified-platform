@@ -121,6 +121,7 @@ MATRIX = {
     ('GET', '/api/security/outbox/dead'): ('director', None),
     ('POST', '/api/security/outbox/{event_id}/retry'): ('super', None),
     ('POST', '/api/users/{user_id}/offboard'): ('manager', {'reason': 'matrix test'}),
+    ('POST', '/api/users/{user_id}/invite'): ('manager', None),
     ('POST', '/api/exports'): ('manager', {'kind': 'activities', 'start': '2026-10-01', 'end': '2026-10-02', 'reason': 'matrix test'}),
     ('GET', '/api/exports'): ('manager', None),
     ('POST', '/api/exports/{export_id}/decision'): ('director', {'approve': False}),

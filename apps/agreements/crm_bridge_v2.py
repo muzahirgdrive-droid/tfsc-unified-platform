@@ -165,14 +165,14 @@ def provision(c, body: dict) -> dict:
             c.execute(account_links.insert().values(crm_user_id=body['crm_user_id'], tfsc_user_id=target_id, status='active',
                                                     granted_by_crm_user_id=body['granting_crm_user_id'], created=now, updated=now))
         if body.get('oidc_issuer') and body.get('oidc_subject'):
+            import oidc_support
+            acc = oidc_support.accounts
             try:
-                import oidc_support
-                acc = getattr(oidc_support, 'accounts', None)
-                if acc is not None:
+                with c.begin_nested():  # optional: a failure here must not abort the provisioning transaction
                     c.execute(delete(acc).where(acc.c.issuer == body['oidc_issuer'], acc.c.subject == body['oidc_subject']))
-                    c.execute(acc.insert().values(issuer=body['oidc_issuer'], subject=body['oidc_subject'], user_id=target_id, created=now))
-            except Exception:  # noqa: BLE001 - OIDC linking is optional; login can be linked later by an admin
-                log.warning('OIDC link skipped for %s', target_id)
+                    c.execute(acc.insert().values(issuer=body['oidc_issuer'], subject=body['oidc_subject'], user_id=target_id))
+            except Exception:  # noqa: BLE001 - an admin can still link the identity on /reviews
+                log.exception('OIDC link skipped for %s', target_id)
         db.log(c, granter, 'crm.account_provisioned', detail={'tfsc_user_id': target_id, 'crm_user_id': body['crm_user_id'],
                                                               'role': body['role'], 'companies': companies, 'created': created})
         resp = {'tfsc_user_id': target_id, 'status': 'active', 'companies': companies, 'role': body['role'], 'created': created}

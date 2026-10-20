@@ -78,13 +78,17 @@ function UserForm({ user, users, teams, onClose }: { user: U | null; users: U[];
     team_id: '', group_id: '', group_leader: false, temporary_password: '', status: user?.status ?? 'active' });
   const [agr, setAgr] = useState<{ enabled: boolean; role: string; companies: string[] } | null>(null);
   const [offboard, setOffboard] = useState(false);
+  // Keycloak emails SSO invitations (set a password; TOTP enrolment for Supervisor+) when provisioning is configured
+  const invitations = useQuery({ queryKey: ['auth-status'], queryFn: () => raw<{ invitations: boolean }>('/api/auth/status') }).data?.invitations ?? false;
+  const invite = useMutation({ mutationFn: () => raw(`/api/users/${user!.id}/invite`, { method: 'POST' }),
+    onSuccess: () => toast.success('Invitation queued: the sign-in service emails a link to set a password.'), onError: (e) => toast.error(e.message) });
   const a = agr ?? { enabled: access.data?.enabled ?? false, role: access.data?.role ?? 'user', companies: access.data?.companies ?? [] };
   const proj = projects.data?.find((p) => p.id === v.project_id);
   const save = useMutation({
     mutationFn: async () => {
       const common = { phone: v.phone || null, employee_code: v.employee_code || null, domain_id: v.domain_id || null, project_id: v.project_id || null, vonage_extension: v.vonage_extension || null };
       const saved = user
-        ? await raw<U>(`/api/users/${user.id}`, { method: 'PATCH', body: JSON.stringify({ version: user.version, first_name: v.first_name, last_name: v.last_name, display_name: v.display_name || null, crm_role: v.crm_role, manager_id: v.manager_id || null, status: v.status, ...common }) })
+        ? await raw<U>(`/api/users/${user.id}`, { method: 'PATCH', body: JSON.stringify({ version: user.version, first_name: v.first_name, last_name: v.last_name, display_name: v.display_name || null, crm_role: v.crm_role, manager_id: v.manager_id || null, ...(v.status !== user.status ? { status: v.status } : {}), ...common }) })
         : await raw<U>('/api/users', { method: 'POST', body: JSON.stringify({ first_name: v.first_name, last_name: v.last_name, display_name: v.display_name || null, email: v.email, crm_role: v.crm_role, manager_id: v.manager_id || null,
           team_id: v.team_id || null, group_id: v.group_id || null, group_leader: v.group_leader, temporary_password: v.temporary_password || null, ...common }) });
       if (rank >= 3 && agr) await raw(`/api/users/${saved.id}/agreements`, { method: 'PUT', body: JSON.stringify({ enabled: agr.enabled, role: agr.role, companies: agr.companies }) });
@@ -96,6 +100,7 @@ function UserForm({ user, users, teams, onClose }: { user: U | null; users: U[];
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={user ? `Manage ${user.display_name}` : 'Create user'} dismissOnOutside={false} wide
       footer={<>{user && rank >= 2 && user.id !== me?.id && user.status !== 'offboarded' && <button className="btn-danger mr-auto" onClick={() => setOffboard(true)}>Offboard…</button>}
+        {user && invitations && rank >= 2 && ['invited', 'active'].includes(user.status) && <button className="btn-secondary" disabled={invite.isPending} onClick={() => invite.mutate()}>{user.status === 'invited' ? 'Resend invitation' : 'Send sign-in invitation'}</button>}
         <button className="btn-secondary" onClick={onClose}>Close</button><button className="btn-primary" disabled={save.isPending || !v.first_name || !v.last_name || !v.email} onClick={() => save.mutate()}>{user ? 'Save' : 'Create user'}</button></>}>
       {offboard && user && <OffboardDialog user={user} onClose={(done) => { setOffboard(false); if (done) onClose(); }} />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -110,8 +115,8 @@ function UserForm({ user, users, teams, onClose }: { user: U | null; users: U[];
           <div><label className="block"><span className="label">Team</span><select className="input" value={v.team_id} onChange={(e) => setV({ ...v, team_id: e.target.value })}><option value="">—</option>{teams.filter((t) => t.kind === 'team').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>
           <div><label className="block"><span className="label">Group</span><select className="input" value={v.group_id} onChange={(e) => setV({ ...v, group_id: e.target.value })}><option value="">—</option>{teams.filter((t) => t.kind === 'group').map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
             {v.group_id && <label className="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" checked={v.group_leader} onChange={(e) => setV({ ...v, group_leader: e.target.checked })} />Group leader</label>}</div>
-          {f('temporary_password', 'Temporary password (if no email invitation)', 'password')}</>}
-        {user && <div><label className="block"><span className="label">Status</span><select className="input" value={v.status} onChange={(e) => setV({ ...v, status: e.target.value })}><option value="active">Active</option><option value="suspended">Suspended</option></select></label></div>}
+          {f('temporary_password', invitations ? 'Temporary password (leave empty to email an SSO invitation)' : 'Temporary password (if no email invitation)', 'password')}</>}
+        {user && <div><label className="block"><span className="label">Status</span><select className="input" value={v.status} onChange={(e) => setV({ ...v, status: e.target.value })}>{user.status === 'invited' && <option value="invited">Invited (not signed in yet)</option>}<option value="active">Active</option><option value="suspended">Suspended</option></select></label></div>}
       </div>
       {rank >= 3 && <section className="mt-5 rounded-2xl border border-line p-4">
         <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={a.enabled} onChange={(e) => setAgr({ ...a, enabled: e.target.checked })} />TFSC Agreements access</label>

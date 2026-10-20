@@ -34,6 +34,10 @@ class Settings:
     oidc_client_secret: str = field(default_factory=lambda: os.getenv('CRM_OIDC_CLIENT_SECRET', ''))
     oidc_mfa_acr: str = field(default_factory=lambda: os.getenv('CRM_OIDC_MFA_ACR', 'mfa,2'))
     oidc_state_secret: str = field(default_factory=lambda: os.getenv('CRM_OIDC_STATE_SECRET', ''))
+    # Keycloak account lifecycle (invitations, groups, disable): a service-account client in the same realm.
+    keycloak_client_id: str = field(default_factory=lambda: os.getenv('CRM_KEYCLOAK_CLIENT_ID', 'tfsc-crm-provisioner'))
+    keycloak_client_secret: str = field(default_factory=lambda: os.getenv('CRM_KEYCLOAK_CLIENT_SECRET', ''))
+    invite_lifespan_hours: int = field(default_factory=lambda: int(os.getenv('CRM_INVITE_LIFESPAN_HOURS', '72')))
     metrics_token: str = field(default_factory=lambda: os.getenv('CRM_METRICS_TOKEN', ''))
 
     @property

@@ -46,8 +46,10 @@ def server_time() -> TimeOut:
 @router.get('/auth/status', response_model=AuthStatus)
 def auth_status() -> AuthStatus:
     from ..config import get_settings as gs
+    from ..integrations import keycloak
     from ..security import oidc
-    return AuthStatus(setup_required=bootstrap.setup_required(), local_login=gs().allow_local_login, oidc=oidc.enabled())
+    return AuthStatus(setup_required=bootstrap.setup_required(), local_login=gs().allow_local_login, oidc=oidc.enabled(),
+                      invitations=keycloak.configured())
 
 
 def _session(request: Request, response: Response, user: dict) -> SessionOut:
@@ -167,9 +169,18 @@ def oidc_callback(request: Request, code: str | None = None, state: str | None =
                 if linked:  # this CRM user is already bound to a different identity at this issuer
                     return fail('identity_mismatch', dict(user))
                 c.execute(m.oidc_identities.insert().values(issuer=iss, subject=sub, user_id=user['id']))
+                from .routes_agreements import relink_identity
+                relink_identity(c, dict(user), iss, sub)
     if not user:
         return fail('unknown_user')
     u = dict(user)
+    if u['status'] == 'invited' and u['crm_role'] != 'none':
+        # First SSO sign-in completes the invitation (the email was verified by Keycloak's invitation link).
+        with system_tx() as c:
+            c.execute(update(m.users).where(m.users.c.id == u['id'], m.users.c.status == 'invited').values(status='active', updated_at=utcnow()))
+            audit.record(c, u['org_id'], u['id'], 'user.activated', 'user', u['id'], {'status': 'invited'}, {'status': 'active', 'method': 'oidc'},
+                         ip=client_ip(request))
+        u['status'] = 'active'
     if u['status'] != 'active' or u['crm_role'] == 'none':
         return fail('inactive', u)
     if (u['mfa_required'] or u['crm_role'] in ('supervisor', 'manager', 'director_admin', 'super_admin')) and not oidc.mfa_satisfied(claims):

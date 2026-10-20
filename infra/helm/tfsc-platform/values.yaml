@@ -10,7 +10,9 @@ crm:
   ssoInternalUrl: ""          # e.g. http://keycloak.sso.svc:8080/realms/tfsc
   oidcClientId: tfsc-crm
   allowLocalLogin: false       # break-glass only
-  existingSecret: tfsc-crm     # keys: CRM_DATABASE_URL CRM_REDIS_URL CRM_PHONE_KEY_SECRET CRM_FIELD_KEY CRM_TFSC_BRIDGE_SECRET CRM_OIDC_CLIENT_SECRET CRM_METRICS_TOKEN
+  # keys: CRM_DATABASE_URL CRM_REDIS_URL CRM_PHONE_KEY_SECRET CRM_FIELD_KEY CRM_TFSC_BRIDGE_SECRET CRM_OIDC_CLIENT_SECRET CRM_METRICS_TOKEN
+  #       CRM_KEYCLOAK_CLIENT_SECRET (optional: Keycloak emails invitations, sets groups, disables leavers)
+  existingSecret: tfsc-crm
   api:
     replicas: 3
     workers: 2
@@ -29,7 +31,8 @@ crm:
 
 agreements:
   origin: https://agreements.example.com
-  existingSecret: tfsc-agreements   # keys: DATABASE_URL TFSC_CRM_SHARED_SECRET (+ OIDC settings used by the portal)
+  oidcClientId: tfsc-agreements
+  existingSecret: tfsc-agreements   # keys: DATABASE_URL TFSC_CRM_SHARED_SECRET TFSC_OIDC_CLIENT_SECRET
   api: { replicas: 2, resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "2", memory: 2Gi } } }
   worker: { replicas: 1, resources: { requests: { cpu: 250m, memory: 1Gi }, limits: { cpu: "2", memory: 2Gi } } }
   contractsVolume: { size: 20Gi, storageClass: "", accessMode: ReadWriteMany }

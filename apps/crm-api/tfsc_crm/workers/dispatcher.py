@@ -1,7 +1,8 @@
 """Outbox dispatcher: delivers outbox events at-least-once (§19.3, ADR-0008).
 
 - realtime topics -> realtime broker (SSE fan-out);
-- agreement/account topics -> TFSC inbox over the signed bridge (tfsc_crm.integrations.tfsc).
+- agreement/account topics -> TFSC inbox over the signed bridge (tfsc_crm.integrations.tfsc);
+- sso.* topics -> Keycloak admin API (tfsc_crm.integrations.keycloak).
 Rows are claimed with FOR UPDATE SKIP LOCKED so several dispatchers can run.
 Failures back off exponentially; after MAX_ATTEMPTS a row goes to the dead-letter state
 (admin retry UI in the Security Center).
@@ -38,6 +39,10 @@ def _deliver(row: dict) -> None:
     if topic in TFSC_TOPICS:
         from ..integrations.tfsc import deliver
         deliver(row)
+        return
+    if topic.startswith('sso.'):
+        from ..integrations import keycloak
+        keycloak.deliver(row)
         return
     log.info('outbox topic %s has no consumer; marking delivered', topic)
 

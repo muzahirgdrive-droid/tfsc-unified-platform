@@ -68,7 +68,9 @@ def session_response(c,user):
     c.execute(delete(db.sessions).where(db.sessions.c.expires<time.time()))
     c.execute(db.sessions.insert().values(token=sec.digest(token),user_id=user['id'],csrf=csrf,expires=time.time()+28800))
     response=JSONResponse({'user':sec.public(user),'csrf':csrf})
-    response.set_cookie('tfsc_session',token,httponly=True,secure=not db.LOCAL,samesite='strict',max_age=28800,path='/')
+    # Lax (like the CRM): sent on top-level arrivals from the identity provider and from the CRM's "Open Agreements"
+    # link; every state change still needs the X-CSRF-Token header, so cross-site requests cannot act.
+    response.set_cookie('tfsc_session',token,httponly=True,secure=not db.LOCAL,samesite='lax',max_age=28800,path='/')
     return response
 
 @app.get('/api/health')

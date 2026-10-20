@@ -10,5 +10,7 @@
    else d=await post(setup?'/api/auth/setup':'/api/auth/login',{email:$('email').value,password:$('password').value,name:$('account-name').value,setup_key:$('setup-key').value});
    csrf=d.csrf;if(d.user.reset_required){changeMode();}else location.href=target();
  }catch(e){error(e.message);}finally{$('login-submit').disabled=false;}});
- fetch('/api/auth/status').then(r=>r.json()).then(d=>{setup=d.setup_required;if(setup){$('setup-fields').hidden=false;$('setup-key').required=true;$('account-name').required=true;$('login-title').textContent='Create your workspace.';$('login-description').textContent='Set up the first Super Admin account.';$('login-submit').textContent='Create Super Admin';$('password').autocomplete='new-password';}}).catch(()=>error('The application is not responding. Start TFSC Compliance and try again.'));
+ // Company SSO (Keycloak) when configured, never during first setup; it returns to the same target, handoff code included.
+ const sso=()=>fetch('/api/auth/sso/status').then(r=>r.json()).then(d=>{if(d.enabled){$('login-sso').href='/api/auth/sso/login?next='+encodeURIComponent(target());$('login-sso').hidden=false;}}).catch(()=>{});
+ fetch('/api/auth/status').then(r=>r.json()).then(d=>{setup=d.setup_required;if(setup){$('setup-fields').hidden=false;$('setup-key').required=true;$('account-name').required=true;$('login-title').textContent='Create your workspace.';$('login-description').textContent='Set up the first Super Admin account.';$('login-submit').textContent='Create Super Admin';$('password').autocomplete='new-password';}else sso();}).catch(()=>error('The application is not responding. Start TFSC Compliance and try again.'));
 })();

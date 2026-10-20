@@ -22,6 +22,7 @@ x-crm: &crm
     CRM_OIDC_INTERNAL_URL: http://keycloak:8080/realms/tfsc
     CRM_OIDC_CLIENT_ID: tfsc-crm
     CRM_OIDC_CLIENT_SECRET: ${CRM_OIDC_CLIENT_SECRET:?set CRM_OIDC_CLIENT_SECRET}
+    CRM_KEYCLOAK_CLIENT_SECRET: ${CRM_KEYCLOAK_CLIENT_SECRET:-}
     CRM_ALLOW_LOCAL_LOGIN: ${CRM_ALLOW_LOCAL_LOGIN:-0}
     CRM_INLINE_DISPATCHER: "0"
     CRM_INLINE_SCHEDULER: "0"
@@ -42,6 +43,10 @@ x-agreements: &agreements
     TFSC_CRM_URL: ${CRM_ORIGIN}
     TFSC_CRM_INTERNAL_URL: http://crm-api:8000
     TFSC_CRM_SHARED_SECRET: ${BRIDGE_SECRET}
+    TFSC_OIDC_ISSUER: ${SSO_PUBLIC_URL}/realms/tfsc
+    TFSC_OIDC_INTERNAL_URL: http://keycloak:8080/realms/tfsc
+    TFSC_OIDC_CLIENT_ID: tfsc-agreements
+    TFSC_OIDC_CLIENT_SECRET: ${TFSC_OIDC_CLIENT_SECRET}
     DB_POOL_SIZE: "5"
   volumes: [agreements-data:/data, contracts:/contracts]
 
@@ -84,6 +89,18 @@ services:
       TFSC_ORIGIN: ${TFSC_ORIGIN}
       CRM_OIDC_CLIENT_SECRET: ${CRM_OIDC_CLIENT_SECRET}
       TFSC_OIDC_CLIENT_SECRET: ${TFSC_OIDC_CLIENT_SECRET:?set TFSC_OIDC_CLIENT_SECRET}
+      # always set: the realm always defines the provisioning client, and an empty secret must never be accepted
+      CRM_KEYCLOAK_CLIENT_SECRET: ${CRM_KEYCLOAK_CLIENT_SECRET:?set CRM_KEYCLOAK_CLIENT_SECRET}
+      # Outgoing mail (invitations, password resets). The `trial` profile's Mailpit is the default sink.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@example.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-24-7 Consultancy}
+      SMTP_AUTH: ${SMTP_AUTH:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_SSL: ${SMTP_SSL:-false}
     volumes: [../keycloak/realm-tfsc.json:/opt/keycloak/data/import/realm-tfsc.json:ro]
     ports: ["${SSO_PORT:-8081}:8080"]
     depends_on: { postgres: { condition: service_healthy } }
@@ -131,6 +148,13 @@ services:
     <<: *agreements
     command: ["python", "worker.py"]
     depends_on: { postgres: { condition: service_healthy } }
+
+  # Local mail sink for trials: catches every email Keycloak sends (web UI on MAILPIT_PORT, default 8025).
+  mailpit:
+    profiles: [trial]
+    image: axllent/mailpit:v1.27.7
+    restart: unless-stopped
+    ports: ["${MAILPIT_PORT:-8025}:8025"]
 
   edge:
     profiles: [edge]

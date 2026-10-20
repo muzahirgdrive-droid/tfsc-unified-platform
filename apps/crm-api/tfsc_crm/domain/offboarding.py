@@ -11,6 +11,7 @@ from sqlalchemy import Connection, select, update
 
 from ..db import models as m
 from ..ids import uuid7
+from ..integrations import keycloak
 from ..pacific import business_date, utcnow
 from ..security.roles import Actor, in_scope
 from . import assignment, audit, duplicates, notify, outbox
@@ -64,6 +65,8 @@ def offboard(c: Connection, actor: Actor, uid: uuid.UUID, reason: str) -> dict:
             'granting_crm_user_id': str(actor.id), 'email': u['email'], 'display_name': u['display_name'], 'role': grant['role'],
             'companies': grant['companies'], 'parent_admin_tfsc_user_id': None, 'link_tfsc_user_id': None, 'oidc_issuer': None, 'oidc_subject': None},
             key=str(uid))
+    if keycloak.configured():  # disable the SSO account and end its Keycloak sessions
+        outbox.emit(c, actor.org_id, 'sso.user.disable', {'email': u['email']}, key=str(uid))
     notify.notify(c, actor.org_id, [queue_owner], 'user.offboarded',
                   {'message': f"{u['display_name']} was offboarded. {fu} follow-up(s) and {len(leads) - shared} lead(s) moved to your queue"
                               + (f"; {shared} lead(s) shared out by round-robin." if shared else '.')})

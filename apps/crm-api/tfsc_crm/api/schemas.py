@@ -72,6 +72,7 @@ class AuthStatus(Out):
     setup_required: bool
     local_login: bool
     oidc: bool
+    invitations: bool = False  # Keycloak emails invitations for new SSO users
 
 
 class ClockItem(Out):

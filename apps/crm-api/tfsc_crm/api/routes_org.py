@@ -11,8 +11,9 @@ from sqlalchemy import Connection, func, or_, select, update
 
 from ..db import models as m
 from ..db.session import read, tx
-from ..domain import audit, notify
+from ..domain import audit, notify, outbox
 from ..ids import uuid7
+from ..integrations import keycloak
 from ..pacific import business_date, utcnow
 from ..security.auth import hash_password
 from ..security.roles import MANAGER, ROLE_LABEL, SUPER, SUPERVISOR, Actor, can_grant_role, in_scope, scope_ids
@@ -120,6 +121,8 @@ def create_user(body: UserCreate, a: ActorDep, request: Request):
         audit.record(c, a.org_id, a.id, 'user.created', 'user', uid, None,
                      {'email': body.email, 'role': body.crm_role, 'manager_id': str(manager_id), 'domain_id': domain_id, 'project_id': project_id},
                      ip=client_ip(request))
+        if not temp and keycloak.configured():  # SSO account: Keycloak emails the invitation (set password, TOTP for Supervisor+)
+            _invite(c, a, uid, body.email, body.first_name, body.last_name, body.crm_role)
         r = dict(c.execute(select(m.users).where(m.users.c.id == uid)).mappings().one())
     return user_out(a, r, set())
 
@@ -177,9 +180,37 @@ def update_user(user_id: str, body: UserUpdate, a: ActorDep):
         c.execute(update(m.users).where(m.users.c.id == uid).values(**vals))
         if vals.get('status') == 'suspended':
             c.execute(update(m.user_sessions).where(m.user_sessions.c.user_id == uid, m.user_sessions.c.revoked_at.is_(None)).values(revoked_at=utcnow()))
+        if ('crm_role' in vals or 'status' in vals) and keycloak.configured():  # keep the SSO group (TOTP) and enabled flag in step
+            role, status = vals.get('crm_role', r['crm_role']), vals.get('status', r['status'])
+            outbox.emit(c, a.org_id, 'sso.user.sync', {'email': r['email'], 'mfa': role in ('supervisor', 'manager', 'director_admin', 'super_admin'),
+                                                       'enabled': status in ('active', 'invited')}, key=str(uid))
         audit.record(c, a.org_id, a.id, 'user.updated', 'user', uid, {k: str(r[k]) for k in vals if k in r}, {k: str(v) for k, v in vals.items()})
         fresh = dict(c.execute(select(m.users).where(m.users.c.id == uid)).mappings().one())
     return user_out(a, fresh)
+
+
+def _invite(c: Connection, a: Actor, uid: uuid.UUID, email: str, first: str | None, last: str | None, role: str) -> None:
+    outbox.emit(c, a.org_id, 'sso.invite.requested', {'email': email, 'first_name': first, 'last_name': last,
+                                                      'mfa': role in ('supervisor', 'manager', 'director_admin', 'super_admin')}, key=str(uid))
+    audit.record(c, a.org_id, a.id, 'user.invited', 'user', uid, None, {'email': email, 'totp': role in ('supervisor', 'manager', 'director_admin', 'super_admin')})
+
+
+@router.post('/users/{user_id}/invite', response_model=OkOut)
+def resend_invite(user_id: str, a: ActorDep) -> OkOut:
+    """Send the Keycloak invitation (again): set a password, and enrol TOTP for Supervisor and above."""
+    if a.rank < MANAGER:
+        raise HTTPException(403, 'A Manager or above sends invitations.')
+    if not keycloak.configured():
+        raise HTTPException(503, 'Email invitations are not configured (Keycloak provisioning client).')
+    uid = parse_uuid(user_id)
+    with tx(a.org_id, a.id) as c:
+        r = c.execute(select(m.users).where(m.users.c.id == uid)).mappings().first()
+        if not r or not in_scope(c, a, uid):
+            raise HTTPException(404, 'User not found.')
+        if r['status'] not in ('invited', 'active'):
+            raise HTTPException(409, 'Reactivate this person before inviting them.')
+        _invite(c, a, uid, r['email'], r['first_name'], r['last_name'], r['crm_role'])
+    return OkOut()
 
 
 @router.post('/users/request', response_model=OkOut)

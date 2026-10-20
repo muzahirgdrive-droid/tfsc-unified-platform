@@ -54,6 +54,19 @@ class ProvisioningTests(unittest.TestCase):
         self.assertEqual(ok.status_code, 200, ok.text)
         self.assertEqual(self.signed(self.req(granting_crm_user_id='unknown')).status_code, 403)
 
+    def test_verified_sso_identity_is_linked_and_regranting_moves_it(self):
+        import oidc_support
+        iss = 'https://sso.example.com/realms/tfsc'
+        r = self.signed(self.req(oidc_issuer=iss, oidc_subject='kc-sub-1')); self.assertEqual(r.status_code, 200, r.text)
+        uid = r.json()['tfsc_user_id']
+        acc = oidc_support.accounts
+        with db.engine.connect() as c:
+            self.assertEqual(c.execute(select(acc.c.user_id).where(acc.c.issuer == iss, acc.c.subject == 'kc-sub-1')).scalar_one(), uid)
+        # the same grant re-sent once the person's identity is known (first SSO sign-in in the CRM) links it too
+        r = self.signed(self.req(oidc_issuer=iss, oidc_subject='kc-sub-2')); self.assertEqual(r.json()['tfsc_user_id'], uid)
+        with db.engine.connect() as c:
+            self.assertEqual(c.execute(select(acc.c.subject).where(acc.c.user_id == uid).order_by(acc.c.subject)).scalars().all(), ['kc-sub-1', 'kc-sub-2'])
+
     def test_existing_email_is_never_matched_implicitly(self):
         r = self.signed(self.req(email=self.u1['email'])); self.assertEqual(r.status_code, 409)
         r = self.signed(self.req(email=self.u1['email'], link_tfsc_user_id=self.u1['id'])); self.assertEqual(r.status_code, 200, r.text)

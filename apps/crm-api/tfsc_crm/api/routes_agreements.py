@@ -117,6 +117,21 @@ def set_access(user_id: str, body: AgreementsAccessIn, a: ActorDep) -> Agreement
                                tfsc_user_id=resp.get('tfsc_user_id'), status='active' if body.enabled else 'revoked')
 
 
+def relink_identity(c, user: dict, issuer: str, subject: str) -> None:
+    """Granted Agreements before their first SSO sign-in: send TFSC the now-verified identity with the same grant, so
+    TFSC single sign-on works without an administrator linking it by hand (delivered through the outbox)."""
+    g = c.execute(select(m.module_grants).where(m.module_grants.c.user_id == user['id'], m.module_grants.c.module == 'agreements',
+                                                m.module_grants.c.revoked_at.is_(None), m.module_grants.c.status == 'active')).mappings().first()
+    if not g or not g['granted_by']:
+        return
+    req = {'idempotency_key': f"{user['id'].hex[:16]}-link-{hashlib.sha256(f'{issuer}|{subject}'.encode()).hexdigest()[:24]}",
+           'action': 'grant', 'crm_user_id': str(user['id']), 'granting_crm_user_id': str(g['granted_by']), 'email': user['email'],
+           'display_name': user['display_name'], 'role': g['role'], 'companies': g['companies'], 'parent_admin_tfsc_user_id': g['parent_admin_ref'],
+           'link_tfsc_user_id': None, 'oidc_issuer': issuer, 'oidc_subject': subject}
+    validate('account_provision_request', req)
+    outbox.emit(c, user['org_id'], 'account.provision.requested', req, key=str(user['id']))
+
+
 @router.get('/agreements/launch')
 def launch(a: ActorDep) -> dict:
     """The Agreements ↗ menu item: only with an explicit grant (never implied by a sales role)."""

@@ -1105,6 +1105,11 @@
    },
    "AuthStatus": {
     "properties": {
+     "invitations": {
+      "default": false,
+      "title": "Invitations",
+      "type": "boolean"
+     },
      "local_login": {
       "title": "Local Login",
       "type": "boolean"
@@ -12685,6 +12690,49 @@
     "summary": "Set Access",
     "tags": [
      "agreements"
+    ]
+   }
+  },
+  "/api/users/{user_id}/invite": {
+   "post": {
+    "description": "Send the Keycloak invitation (again): set a password, and enrol TOTP for Supervisor and above.",
+    "operationId": "resend_invite_api_users__user_id__invite_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "user_id",
+      "required": true,
+      "schema": {
+       "title": "User Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OkOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resend Invite",
+    "tags": [
+     "people"
     ]
    }
   },

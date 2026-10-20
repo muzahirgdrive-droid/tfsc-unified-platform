@@ -17,6 +17,23 @@
   "minimumQuickLoginWaitSeconds": 60,
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
+  "smtpServer": {
+    "host": "${SMTP_HOST:mailpit}",
+    "port": "${SMTP_PORT:1025}",
+    "from": "${SMTP_FROM:no-reply@example.com}",
+    "fromDisplayName": "${SMTP_FROM_NAME:24-7 Consultancy}",
+    "auth": "${SMTP_AUTH:false}",
+    "user": "${SMTP_USER:}",
+    "password": "${SMTP_PASSWORD:}",
+    "starttls": "${SMTP_STARTTLS:false}",
+    "ssl": "${SMTP_SSL:false}"
+  },
+  "localizationTexts": {
+    "en": {
+      "executeActionsSubject": "Set up your 24-7 Consultancy sign-in",
+      "passwordResetSubject": "Reset your 24-7 Consultancy password"
+    }
+  },
   "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(5)",
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA1",
@@ -55,7 +72,7 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "frontchannelLogout": true,
-      "redirectUris": ["${CRM_ORIGIN}/api/auth/oidc/callback"],
+      "redirectUris": ["${CRM_ORIGIN}/api/auth/oidc/callback", "${CRM_ORIGIN}/login"],
       "webOrigins": ["${CRM_ORIGIN}"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
@@ -95,6 +112,29 @@
           "config": { "id.token.claim": "true", "access.token.claim": "true", "introspection.token.claim": "true" }
         }
       ]
+    },
+    {
+      "clientId": "tfsc-crm-provisioner",
+      "name": "TFSC CRM account provisioning",
+      "description": "Service account the CRM uses to create SSO accounts, send invitation emails, set groups and disable leavers.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${CRM_KEYCLOAK_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "defaultClientScopes": ["basic"]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-tfsc-crm-provisioner",
+      "enabled": true,
+      "serviceAccountClientId": "tfsc-crm-provisioner",
+      "clientRoles": { "realm-management": ["manage-users", "view-users", "query-users", "query-groups"] }
     }
   ],
   "browserFlow": "browser-mfa-by-role",
