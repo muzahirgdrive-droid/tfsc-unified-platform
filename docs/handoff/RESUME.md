@@ -64,8 +64,10 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 - [x] Core: ids (UUIDv7), config, crypto (blind index + AES-GCM), pacific clock, db session (SET LOCAL ROLE + app.org_id)
 - [x] Domain: roles/scope/capabilities, auth sessions, audit chain, outbox, notify, scoring ledger, duplicates engine,
       activities lifecycle, rollups, pipeline (strong FU → lead → sign-up, attribution, reassignment)
-- [ ] API layer (`tfsc_crm/api/*`, Pydantic models) + `tfsc_crm/main.py` app factory
-- [ ] Authz matrix tests + agent leak tests + RLS tests (tests_v2)
+- [x] API layer (`tfsc_crm/api/*`, Pydantic models) + `tfsc_crm/main.py` app factory (auth, people/teams, settings, activities,
+      refine/batch, precheck, follow-ups, strong FU, leads, flags, notifications)
+- [x] Authz matrix tests (every OpenAPI op classified) + agent leak scan + RLS isolation test — `tests_v2/test_security.py`
+- [x] Acceptance 1-10, 14, 15 as API tests (`tests_v2/test_api_capture.py`, `test_api_pipeline.py`) — 52 v2 tests green
 - [ ] Bridge contract package (`packages/bridge-contract`, Py + TS)
 - [ ] Keycloak realm export + OIDC (`infra/keycloak`), design system + app shell + world clock (crm-web v2)
 - [ ] OpenAPI → TS client generation

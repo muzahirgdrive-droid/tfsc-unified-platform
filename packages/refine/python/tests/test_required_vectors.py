@@ -1,5 +1,6 @@
 """Owner-mandated vectors from master command §10.1 (hand-written; never regenerate)."""
 import pytest
+
 from tfsc_refine import refine_name
 
 REQUIRED = [

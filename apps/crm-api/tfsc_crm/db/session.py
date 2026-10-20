@@ -36,6 +36,8 @@ def dispose() -> None:
 
 
 def _apply_scope(c: Connection, org_id: uuid.UUID | str | None, actor_id: uuid.UUID | str | None) -> None:
+    for k in ('settings_cache', 'owner_stamp'):  # per-transaction memo caches (see domain.settings)
+        c.info.pop(k, None)
     role = get_settings().db_app_role
     if role:
         if not _ROLE.match(role):
@@ -64,4 +66,6 @@ def read(org_id: uuid.UUID | str, actor_id: uuid.UUID | str | None = None) -> It
 @contextmanager
 def system_tx() -> Iterator[Connection]:
     with engine().begin() as c:
+        c.info.pop('settings_cache', None)
+        c.info.pop('owner_stamp', None)
         yield c

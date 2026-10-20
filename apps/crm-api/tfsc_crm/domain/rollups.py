@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import Connection, select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -48,7 +49,7 @@ def _bump_day(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, d: date, del
     t = m.agent_day_stats
     ins = insert(t).values(org_id=org_id, user_id=user_id, business_date=d, domain_id=domain_id, project_id=project_id,
                            last_activity_at=at, **{k: v for k, v in delta.items()})
-    upd = {k: t.c[k] + ins.excluded[k] for k in delta}
+    upd: dict[str, Any] = {k: t.c[k] + ins.excluded[k] for k in delta}
     upd['updated_at'] = text('now()')
     if at is not None:
         upd['last_activity_at'] = text('GREATEST(agent_day_stats.last_activity_at, excluded.last_activity_at)')

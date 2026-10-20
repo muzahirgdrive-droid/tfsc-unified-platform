@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import Connection, func, select, text
+from sqlalchemy import Connection, func, select
 
 from ..db import models as m
 from ..ids import uuid7
@@ -81,7 +81,8 @@ def apply(c: Connection, org_id: uuid.UUID, activity: dict, new_points: int, at:
         return 0
     at = at or utcnow()
     bd = business_date(at)
-    c.execute(text('SELECT crm_ensure_partition_for(:p, :d)'), {'p': 'score_ledger', 'd': bd})
+    from .settings import ensure_partition
+    ensure_partition(c, 'score_ledger', bd)
     c.execute(m.score_ledger.insert(), [{
         'id': uuid7(), 'org_id': org_id, 'activity_id': activity['id'], 'activity_date': activity['business_date'],
         'user_id': activity['owner_id'], 'business_date': bd, 'delta_points': d, 'reason': r, 'rule_version': RULE_VERSION, 'at': at,

@@ -740,5 +740,18 @@ exports = Table(
     *_stamps(),
 )
 
+# Created in migration 0003. DB-backed object store for local/single-node mode (photos, import files);
+# hosted deployments may switch to S3-compatible storage (ADR-0015).
+stored_files = Table(
+    'stored_files', metadata,
+    Column('key', String(300), primary_key=True),
+    _org(),
+    Column('content_type', String(100), nullable=False),
+    Column('size', Integer, nullable=False),
+    Column('sha256', String(64), nullable=False),
+    Column('data', LargeBinary, nullable=False),
+    Column('created_at', TS, nullable=False, server_default=func.now()),
+)
+
 # Tables guarded by Row-Level Security (ADR-0007): every table with org_id.
 RLS_TABLES = [t.name for t in metadata.sorted_tables if 'org_id' in t.c and t.name != 'orgs']

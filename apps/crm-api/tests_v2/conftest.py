@@ -53,3 +53,89 @@ def db_url():
     from tfsc_crm.db import session as dbs
     dbs.dispose()
     drop_database(url)
+
+
+# ---------------------------------------------------------------------------- API workspace
+PW = 'Synthetic-test-password-512!'
+
+
+class Client:
+    """Thin wrapper over TestClient that keeps the CSRF header for one signed-in user."""
+
+    def __init__(self, app, user: dict | None = None):
+        from fastapi.testclient import TestClient
+        self.http = TestClient(app, base_url='http://testserver')
+        self.user = user or {}
+
+    @property
+    def id(self) -> str:
+        return self.user['id']
+
+    def login(self, email: str):
+        r = self.http.post('/api/auth/login', json={'email': email, 'password': PW})
+        assert r.status_code == 200, r.text
+        self.http.headers['X-CSRF-Token'] = r.json()['csrf']
+        self.user = r.json()['user']
+        return self
+
+    def __getattr__(self, name):
+        return getattr(self.http, name)
+
+
+@pytest.fixture(scope='session')
+def app(db_url, tmp_path_factory):
+    os.environ.update({'CRM_DATA_DIR': str(tmp_path_factory.mktemp('crmdata')), 'CRM_MODE': 'test', 'CRM_ORIGIN': 'http://testserver',
+                       'CRM_DB_APP_ROLE': 'crm_app'})
+    from tfsc_crm.config import get_settings
+    get_settings.cache_clear()
+    from tfsc_crm.main import create_app
+    application = create_app()
+    from tfsc_crm.domain import bootstrap
+    bootstrap.ensure_setup_key()
+    return application
+
+
+@pytest.fixture(scope='session')
+def ws(app):
+    """Hierarchy: super > director > manager > {sup, sup2}; sup > {a, b}; sup2 > {c}; group(a leader, b)."""
+    from tfsc_crm.domain import bootstrap
+    root = Client(app)
+    r = root.post('/api/auth/setup', json={'setup_key': bootstrap.read_setup_key(), 'name': 'Root Super', 'email': 'super@crm.test', 'password': PW})
+    assert r.status_code == 200, r.text
+    root.http.headers['X-CSRF-Token'] = r.json()['csrf']
+    root.user = r.json()['user']
+    out = {'super': root}
+
+    def mk(key, role, manager, creator='super', **extra):
+        body = {'first_name': key.capitalize(), 'last_name': 'Test', 'email': f'{key}@crm.test', 'crm_role': role,
+                'manager_id': out[manager].id, 'temporary_password': PW, **extra}
+        r = out[creator].post('/api/users', json=body)
+        assert r.status_code == 200, r.text
+        c = Client(app).login(f'{key}@crm.test')
+        r = c.post('/api/auth/password', json={'current_password': PW, 'new_password': PW + 'x'})
+        assert r.status_code == 200, r.text
+        # restore the shared password for simplicity
+        r = c.post('/api/auth/password', json={'current_password': PW + 'x', 'new_password': PW})
+        out[key] = Client(app).login(f'{key}@crm.test')
+
+    mk('director', 'director_admin', 'super')
+    mk('manager', 'manager', 'director')
+    mk('sup', 'supervisor', 'manager', creator='director')
+    mk('sup2', 'supervisor', 'manager', creator='director')
+    mk('a', 'sales_agent', 'sup', creator='manager', project_id='P0007')
+    mk('b', 'sales_agent', 'sup', creator='manager')
+    mk('c', 'sales_agent', 'sup2', creator='manager')
+    r = out['sup'].post('/api/teams', json={'name': 'Group One', 'kind': 'group', 'supervisor_id': out['sup'].id,
+                                             'member_ids': [out['a'].id, out['b'].id], 'leader_id': out['a'].id})
+    assert r.status_code == 200, r.text
+    out['a'] = Client(app).login('a@crm.test')  # re-login so the session reflects group leadership
+    out['app'] = app
+    return out
+
+
+_phone_counter = [1000]
+
+
+def new_phone() -> str:
+    _phone_counter[0] += 1
+    return f'(415) 555-{_phone_counter[0] % 10000:04d}'

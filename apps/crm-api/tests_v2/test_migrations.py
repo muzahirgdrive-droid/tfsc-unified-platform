@@ -35,7 +35,7 @@ def test_pilot_data_migrates_and_downgrade_restores():
     url = create_database('crm_pilot')
     try:
         alembic(url, 'upgrade', '0001_pilot_baseline')
-        env = {**os.environ, 'CRM_DATABASE_URL': url, 'CRM_DATA_DIR': tempfile.mkdtemp(prefix='pilot-')}
+        env = {**os.environ, 'CRM_DATABASE_URL': url, 'CRM_DATA_DIR': tempfile.mkdtemp(prefix='pilot-'), 'CRM_MODE': 'local', 'CRM_ORIGIN': 'http://testserver'}
         r = subprocess.run([sys.executable, 'tests_v2/pilot_seed_script.py'], cwd=APP, env=env, capture_output=True, text=True)
         assert r.returncode == 0, r.stderr[-3000:]
         assert json.loads(r.stdout.strip().splitlines()[-1])['lead_stage'] == 'qualified_lead'

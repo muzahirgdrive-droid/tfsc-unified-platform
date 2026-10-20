@@ -18,6 +18,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import Connection, and_, select, text
+
 from tfsc_refine import refine_row
 
 from .. import crypto
@@ -65,8 +66,11 @@ def _window(c: Connection, org_id: uuid.UUID, source: str) -> int:
 
 
 def _owner_stamp(c: Connection, owner_id: uuid.UUID) -> tuple[str | None, str | None]:
-    r = c.execute(select(m.users.c.default_domain_id, m.users.c.default_project_id).where(m.users.c.id == owner_id)).one()
-    return r[0], r[1]
+    cache = c.info.setdefault('owner_stamp', {})
+    if owner_id not in cache:
+        r = c.execute(select(m.users.c.default_domain_id, m.users.c.default_project_id).where(m.users.c.id == owner_id)).one()
+        cache[owner_id] = (r[0], r[1])
+    return cache[owner_id]
 
 
 def _followup_due(next_followup: str | None) -> datetime | None:
@@ -126,7 +130,7 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
         dup = duplicates.evaluate(c, actor.org_id, reg, values, historical=historical)
         if dup.severity in ('amber', 'red'):
             values['conflict'] = dup.severity
-    c.execute(text('SELECT crm_ensure_partition_for(:p, :d)'), {'p': 'activities', 'd': bd})
+    cfg.ensure_partition(c, 'activities', bd)
     c.execute(m.activities.insert().values(**values))
     if reg is not None:
         duplicates.record_contact(c, actor.org_id, reg, values, now)
@@ -140,6 +144,8 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
     values['score_points'] = 0
     scoring.apply(c, actor.org_id, values, pts, now)
     values['score_points'] = pts
+    for k in ('deleted_at', 'deleted_by', 'delete_reason', 'conflict', 'prospect_id', 'legacy_id'):
+        values.setdefault(k, None)
     from . import rollups
     rollups.on_activity(c, actor.org_id, None, values, now)
     return SaveResult(values, dup, [i for i in r['issues'] if i['severity'] != 'red'])
@@ -254,7 +260,7 @@ def soft_delete(c: Connection, actor: Actor, activity_id: uuid.UUID, reason: str
     if not (reason or '').strip():
         raise HTTPException(400, 'A reason is required.')
     now = utcnow()
-    vals = {'deleted_at': None, 'deleted_by': None, 'delete_reason': None} if restore else {'deleted_at': now, 'deleted_by': actor.id, 'delete_reason': reason.strip()}
+    vals: dict[str, Any] = {'deleted_at': None, 'deleted_by': None, 'delete_reason': None} if restore else {'deleted_at': now, 'deleted_by': actor.id, 'delete_reason': reason.strip()}
     vals.update(updated_at=now, version=a['version'] + 1)
     c.execute(m.activities.update().where(m.activities.c.id == a['id'], m.activities.c.business_date == a['business_date']).values(**vals))
     after = {**a, **vals}

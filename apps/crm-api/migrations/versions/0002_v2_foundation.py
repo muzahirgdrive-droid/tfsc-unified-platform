@@ -24,7 +24,7 @@ PARTITIONED = ('activities', 'score_ledger')
 
 PARTITION_FN = """
 CREATE OR REPLACE FUNCTION crm_ensure_partitions(months_back int DEFAULT 2, months_ahead int DEFAULT 3)
-RETURNS void LANGUAGE plpgsql AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   parent text; m date; start_m date; stop_m date; part text;
 BEGIN
@@ -49,7 +49,7 @@ END $$;
 # Backfills of historical data (e.g. 2026 workbook) land in monthly partitions created on demand.
 PARTITION_FOR_FN = """
 CREATE OR REPLACE FUNCTION crm_ensure_partition_for(parent text, d date)
-RETURNS void LANGUAGE plpgsql AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE m date := date_trunc('month', d)::date; part text := format('%s_%s', parent, to_char(date_trunc('month', d), 'YYYY_MM'));
 BEGIN
   IF to_regclass(part) IS NULL THEN

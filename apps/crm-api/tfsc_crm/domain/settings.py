@@ -22,8 +22,20 @@ DEFAULTS: dict[str, Any] = {
 
 
 def get(c: Connection, org_id: uuid.UUID, key: str) -> Any:
-    v = c.execute(select(m.settings.c.value).where(m.settings.c.org_id == org_id, m.settings.c.key == key)).scalar_one_or_none()
-    return DEFAULTS.get(key) if v is None else v
+    cache = c.info.setdefault('settings_cache', {})  # per-transaction memo (batch saves read settings once)
+    if (org_id, key) not in cache:
+        v = c.execute(select(m.settings.c.value).where(m.settings.c.org_id == org_id, m.settings.c.key == key)).scalar_one_or_none()
+        cache[(org_id, key)] = DEFAULTS.get(key) if v is None else v
+    return cache[(org_id, key)]
+
+
+def ensure_partition(c: Connection, parent: str, d: date) -> None:
+    done = c.info.setdefault('partitions_ensured', set())
+    k = (parent, d.year, d.month)
+    if k not in done:
+        from sqlalchemy import text
+        c.execute(text('SELECT crm_ensure_partition_for(:p, :d)'), {'p': parent, 'd': d})
+        done.add(k)
 
 
 def target_for(c: Connection, org_id: uuid.UUID, d: date) -> dict:

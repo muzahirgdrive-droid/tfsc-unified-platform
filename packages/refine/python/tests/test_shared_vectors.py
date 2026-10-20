@@ -4,6 +4,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
+
 from tfsc_refine import parse_date, parse_tri, refine_email, refine_name, refine_phone, refine_row
 
 V = json.loads((Path(__file__).resolve().parents[2] / 'vectors.json').read_text(encoding='utf-8'))
