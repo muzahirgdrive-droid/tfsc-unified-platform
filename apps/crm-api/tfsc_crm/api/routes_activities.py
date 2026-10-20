@@ -16,7 +16,7 @@ from .. import crypto
 from ..db import models as m
 from ..db.session import read, tx
 from ..domain import activities as svc
-from ..domain import duplicates, file_import, scoring
+from ..domain import duplicates, file_import, rollups, scoring
 from ..domain.anti_scraping import record_reads
 from ..ids import uuid7
 from ..pacific import business_date, utcnow
@@ -78,7 +78,8 @@ def create_activity(body: ActivityIn, a: ActorDep) -> SaveOut:
     ratelimit.enforce(f'act:{a.id}', 600, 60, 'You are saving entries too quickly. Please slow down.')
     row = body.model_dump(exclude={'owner_id'})
     with tx(a.org_id, a.id) as c:
-        res = svc.create(c, a, row, source='manual', owner_id=body.owner_id)
+        with rollups.batched(c):  # one rollup/ledger/registry write each instead of one per bump
+            res = svc.create(c, a, row, source='manual', owner_id=body.owner_id)
         out = activity_out(a, res.activity)
     return SaveOut(activity=out, duplicate_notice=res.duplicate.notice, duplicate_severity=res.duplicate.severity if a.rank >= SUPERVISOR else
                    (None if res.duplicate.severity in (None, 'info') else 'notice'), issues=_issues(res.issues))

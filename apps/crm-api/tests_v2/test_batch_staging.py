@@ -33,3 +33,26 @@ def test_failed_row_after_staging_leaves_no_rollup_or_ledger_trace(ws, monkeypat
                              'HAVING coalesce(sum(l.delta_points), 0) <> a.score_points) x'), {'b': out['batch_id']}).scalar_one()
         orphans = c.execute(text('SELECT count(*) FROM score_ledger l LEFT JOIN activities a ON a.id = l.activity_id WHERE a.id IS NULL')).scalar_one()
     assert bad == 0 and orphans == 0
+
+
+def test_concurrent_batches_sharing_numbers_in_opposite_order_do_not_deadlock(ws, caplog):
+    import logging
+    import threading
+    phones = [new_phone() for _ in range(150)]
+    rows = [{'name': f'overlap clinic {i}', 'phone': p, 'called': 'Yes'} for i, p in enumerate(phones)]
+    jobs = [(ws['a'], 'overlap-forward-01', rows), (ws['b'], 'overlap-reverse-01', rows[::-1])]
+    start, out = threading.Barrier(2), {}
+
+    def paste(client, key, body):
+        start.wait()
+        out[key] = client.post('/api/activities/batch', json={'request_key': key, 'rows': body, 'source': 'grid'})
+
+    with caplog.at_level(logging.WARNING, logger='tfsc_crm.file_import'):
+        threads = [threading.Thread(target=paste, args=job) for job in jobs]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(60)
+    assert [out[k].status_code for k in ('overlap-forward-01', 'overlap-reverse-01')] == [200, 200]
+    assert all(r.json()['saved'] == 150 for r in out.values())
+    assert 'saving row by row' not in caplog.text  # a deadlock would abort the fast path

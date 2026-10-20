@@ -66,6 +66,19 @@ _LOCK = (insert(m.phone_registry).values(org_id=bindparam('org_id'), phone_key=b
          .returning(*m.phone_registry.c))
 
 
+def lock_registries(c: Connection, org_id: uuid.UUID, phones: list) -> None:
+    """Take the registry row locks for a whole batch up front, in phone-key order, in one statement. Two batches that
+    share numbers would otherwise lock them in their own row orders and deadlock (seen under load with concurrent pastes).
+    Rows created here for a number whose row is then rejected stay as state 'none' with no facts, which reads as new."""
+    from tfsc_refine import refine_phone
+
+    from .. import crypto
+    keys = sorted({k for p in phones if p and (k := crypto.phone_key(refine_phone(p).e164))})
+    if keys:
+        c.execute(insert(m.phone_registry).values([{'org_id': org_id, 'phone_key': k, 'state': 'none'} for k in keys])
+                  .on_conflict_do_update(index_elements=['org_id', 'phone_key'], set_={'updated_at': m.phone_registry.c.updated_at}))
+
+
 def record_contact(c: Connection, org_id: uuid.UUID, reg: dict, activity: dict, at: datetime) -> None:
     """Update first-seen / first-attempt / first-connect facts (only if not set yet)."""
     vals: dict = {'last_activity_at': at, 'updated_at': at}

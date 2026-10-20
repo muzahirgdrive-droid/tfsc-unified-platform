@@ -192,6 +192,7 @@ def patch_settings(body: SettingsPatch, a: ActorDep) -> SettingsOut:
         ins = insert(m.settings).values(org_id=a.org_id, key=body.key, value=v, updated_by=a.id)
         c.execute(ins.on_conflict_do_update(index_elements=['org_id', 'key'], set_={'value': v, 'updated_by': a.id, 'updated_at': utcnow()}))
         audit.record(c, a.org_id, a.id, 'settings.updated', 'settings', body.key, {'value': before}, {'value': v})
+        c.info.pop('settings_cache', None)  # the memo was filled before the write
         return SettingsOut(values={k: cfg.get(c, a.org_id, k) for k in cfg.DEFAULTS})
 
 

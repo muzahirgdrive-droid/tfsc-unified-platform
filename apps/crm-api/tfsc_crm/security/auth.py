@@ -8,7 +8,7 @@ from datetime import timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import HTTPException, Request, Response
-from sqlalchemy import Connection, select, update
+from sqlalchemy import Connection, bindparam, func, select, update
 
 from ..config import get_settings
 from ..db import models as m
@@ -76,18 +76,19 @@ def load_actor(request: Request, allow_reset: bool = False) -> Actor:
     s = get_settings()
     now = utcnow()
     with system_tx() as c:
-        row = c.execute(select(m.user_sessions).where(
-            m.user_sessions.c.token_hash == digest(token), m.user_sessions.c.revoked_at.is_(None),
-            m.user_sessions.c.expires_at > now, m.user_sessions.c.idle_expires_at > now)).mappings().first()
+        # One round trip: session + user + led groups + Agreements grant (this runs on every request).
+        row = c.execute(_SESSION_ACTOR, {'h': digest(token), 'now': now}).mappings().first()
         if not row:
             raise HTTPException(401, 'Your session has expired. Please sign in again.')
-        u = c.execute(select(m.users).where(m.users.c.id == row['user_id'])).mappings().first()
-        if not u or u['status'] != 'active':
+        u = row
+        if u['status'] != 'active':
             raise HTTPException(401, 'Your account is not active.')
         if (now - row['last_seen_at']).total_seconds() > 60:
             c.execute(update(m.user_sessions).where(m.user_sessions.c.token_hash == row['token_hash']).values(
                 last_seen_at=now, idle_expires_at=now + timedelta(minutes=s.session_idle_minutes)))
-        actor = build_actor(c, dict(u), row['csrf'], row['token_hash'])
+        actor = Actor(id=u['id'], org_id=u['org_id'], role=u['crm_role'], display_name=u['display_name'], email=u['email'],
+                      routing_view=u['routing_view'], led_group_ids=list(u['led_group_ids'] or []), agreements_grant=u['agreements_grant'],
+                      employee_code=u['employee_code'], csrf=row['csrf'], session_hash=row['token_hash'])
     if u['reset_required'] and not allow_reset:
         raise HTTPException(403, 'Change your temporary password before continuing.')
     if request.method not in ('GET', 'HEAD', 'OPTIONS') and not secrets.compare_digest(request.headers.get('x-csrf-token', ''), row['csrf']):
@@ -110,3 +111,20 @@ def actor_for_user(c: Connection, user_id) -> Actor:
     """An Actor for a stored user (no session), e.g. to apply a requester's scope in a background step."""
     u = c.execute(select(m.users).where(m.users.c.id == user_id)).mappings().one()
     return build_actor(c, dict(u), '', '')
+
+
+def _session_actor_query():
+    s, u, t, g = m.user_sessions, m.users, m.teams, m.module_grants
+    groups = (select(func.array_agg(t.c.id)).where(t.c.leader_id == u.c.id, t.c.kind == 'group', t.c.active.is_(True))
+              .scalar_subquery().label('led_group_ids'))
+    grant = (select(func.json_build_object('role', g.c.role, 'companies', g.c.companies, 'external_account_id', g.c.external_account_id))
+             .where(g.c.user_id == u.c.id, g.c.module == 'agreements', g.c.revoked_at.is_(None), g.c.status == 'active')
+             .limit(1).scalar_subquery().label('agreements_grant'))
+    return (select(s.c.token_hash, s.c.csrf, s.c.last_seen_at, u.c.id, u.c.org_id, u.c.crm_role, u.c.display_name, u.c.email,
+                   u.c.routing_view, u.c.employee_code, u.c.status, u.c.reset_required, groups, grant)
+            .join(u, u.c.id == s.c.user_id)
+            .where(s.c.token_hash == bindparam('h'), s.c.revoked_at.is_(None), s.c.expires_at > bindparam('now'),
+                   s.c.idle_expires_at > bindparam('now')))
+
+
+_SESSION_ACTOR = _session_actor_query()

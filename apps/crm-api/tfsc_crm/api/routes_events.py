@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import timedelta
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
+from starlette.concurrency import run_in_threadpool
 
 from ..db import models as m
 from ..db.session import read
@@ -25,10 +27,41 @@ def _sse(event: dict) -> bytes:
     return f'id: {eid}\nevent: {event.get("topic", "message")}\ndata: {json.dumps(event, default=str)}\n\n'.encode()
 
 
-@router.get('/events', include_in_schema=False)
-async def events(request: Request) -> StreamingResponse:
+async def relay(subscription: AsyncIterator[dict], is_disconnected: Callable[[], Awaitable[bool]], uid: str, rank: int,
+                backlog: list[dict]) -> AsyncIterator[bytes]:
+    """The body of one SSE response: backlog, then live events visible to this user, with keep-alives."""
+    yield b'retry: 3000\n\n'
+    for e in backlog:
+        yield _sse(e)
+    sub = subscription.__aiter__()
+    pending: asyncio.Future | None = None
+    try:
+        while True:
+            if await is_disconnected():
+                break
+            if pending is None:
+                pending = asyncio.ensure_future(sub.__anext__())
+            done, _ = await asyncio.wait({pending}, timeout=HEARTBEAT_S)
+            if not done:
+                yield b': keep-alive\n\n'
+                continue
+            event = pending.result()
+            pending = None
+            if visible_to(event, uid, rank):
+                yield _sse(event)
+    finally:
+        # The subscription may be running inside `pending` (the client went away while we waited for an event).
+        # Cancelling that task ends the generator, whose own finally unsubscribes; closing a running generator
+        # directly raises "aclose(): asynchronous generator is already running".
+        if pending is not None and not pending.done():
+            pending.cancel()
+        else:
+            await sub.aclose()  # type: ignore[attr-defined]
+
+
+def _open(request: Request) -> tuple[str, str, int, list[dict]]:
+    """Authenticate and load the catch-up backlog (blocking DB work, so it runs in the threadpool)."""
     a = load_actor(request)
-    org, uid, rank = str(a.org_id), str(a.id), a.rank
     # Anyone who signs in within 10 minutes of a sale sees the celebration once (client de-duplicates by id).
     with read(a.org_id, a.id) as c:
         recent = c.execute(select(m.celebrations, m.users.c.display_name.label('agent_name'))
@@ -37,33 +70,15 @@ async def events(request: Request) -> StreamingResponse:
                            .order_by(m.celebrations.c.created_at)).mappings().all()
     backlog = [{'id': f'c-{r["id"]}', 'topic': 'sale.celebrated', 'celebration_id': str(r['id']), 'agent_id': str(r['agent_id']),
                 'agent_name': r['agent_name'], 'message': r['message'], 'audience': 'all', 'at': r['created_at'].isoformat()} for r in recent]
+    return str(a.org_id), str(a.id), a.rank, backlog
 
-    async def stream():
-        yield b'retry: 3000\n\n'
-        for e in backlog:
-            yield _sse(e)
-        sub = broker().subscribe(org).__aiter__()
-        pending: asyncio.Task | None = None
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                if pending is None:
-                    pending = asyncio.ensure_future(sub.__anext__())
-                done, _ = await asyncio.wait({pending}, timeout=HEARTBEAT_S)
-                if not done:
-                    yield b': keep-alive\n\n'
-                    continue
-                event = pending.result()
-                pending = None
-                if visible_to(event, uid, rank):
-                    yield _sse(event)
-        finally:
-            if pending is not None:
-                pending.cancel()
-            await sub.aclose()  # type: ignore[attr-defined]
 
-    return StreamingResponse(stream(), media_type='text/event-stream', headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
+@router.get('/events', include_in_schema=False)
+async def events(request: Request) -> StreamingResponse:
+    # Blocking calls on the event loop would stall every open stream in this worker while one browser connects.
+    org, uid, rank, backlog = await run_in_threadpool(_open, request)
+    return StreamingResponse(relay(broker().subscribe(org), request.is_disconnected, uid, rank, backlog), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
 
 
 @router.get('/celebrations')

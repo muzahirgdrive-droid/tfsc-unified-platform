@@ -22,11 +22,12 @@ DEFAULTS: dict[str, Any] = {
 
 
 def get(c: Connection, org_id: uuid.UUID, key: str) -> Any:
-    cache = c.info.setdefault('settings_cache', {})  # per-transaction memo (batch saves read settings once)
-    if (org_id, key) not in cache:
-        v = c.execute(select(m.settings.c.value).where(m.settings.c.org_id == org_id, m.settings.c.key == key)).scalar_one_or_none()
-        cache[(org_id, key)] = DEFAULTS.get(key) if v is None else v
-    return cache[(org_id, key)]
+    """Per-transaction memo: the first read loads every setting of the org in one query."""
+    cache = c.info.setdefault('settings_cache', {})
+    if org_id not in cache:
+        cache[org_id] = dict(c.execute(select(m.settings.c.key, m.settings.c.value).where(m.settings.c.org_id == org_id)).all())
+    v = cache[org_id].get(key)
+    return DEFAULTS.get(key) if v is None else v
 
 
 def ensure_partition(c: Connection, parent: str, d: date) -> None:

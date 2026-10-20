@@ -25,7 +25,7 @@ from ..db import models as m
 from ..db.session import read, tx
 from ..ids import uuid7
 from ..security.roles import Actor
-from . import activities, rollups
+from . import activities, duplicates, rollups
 
 log = logging.getLogger('tfsc_crm.file_import')
 MAX_ROWS = 50_000
@@ -145,6 +145,7 @@ def save_rows(c: Connection, actor: Actor, batch_id: uuid.UUID, rows: list[tuple
     """Save many rows with staged rollups. Fast path: no per-row savepoint (every rejection in activities.create
     happens before its first write). If anything unexpected fails, the fast path is rolled back as a whole and the rows
     are saved again one savepoint each, so one bad row can never take the others down."""
+    duplicates.lock_registries(c, actor.org_id, [r.get('phone') for _, r in rows])  # outside the savepoint: kept on fallback
     try:
         with c.begin_nested(), rollups.batched(c):
             return [process_row(c, actor, batch_id, n, r, source, owner_id, savepoint=False) for n, r in rows]
