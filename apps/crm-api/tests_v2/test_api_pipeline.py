@@ -97,8 +97,8 @@ def test_concurrent_conversions_exactly_one_owner(ws):
     sid = ws['a'].post(f"/api/activities/{act['id']}/strong", json={}).json()['id']
     v = next(x for x in ws['sup'].get('/api/strong').json() if x['id'] == sid)['version']
     ws['sup'].post(f'/api/strong/{sid}/decide', json={'version': v, 'decision': 'confirmed'})
-    with cf.ThreadPoolExecutor(8) as pool:
-        codes = list(pool.map(lambda who: ws[who].post(f'/api/strong/{sid}/convert', json={}).status_code, ['sup', 'manager', 'director', 'super'] * 3))
+    with cf.ThreadPoolExecutor(16) as pool:  # §26: 100 parallel conversions -> exactly 1 owner
+        codes = list(pool.map(lambda who: ws[who].post(f'/api/strong/{sid}/convert', json={}).status_code, ['sup', 'manager', 'director', 'super'] * 25))
     assert codes.count(200) == 1 and all(c == 409 for c in codes if c != 200), codes
     from tfsc_crm.db.session import system_tx
     with system_tx() as c:
