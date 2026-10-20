@@ -104,8 +104,10 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 
 ### P8 — "complete everything" (owner asked 2026-10-20: "complete everything. make the complete product.")
 Work through these in order; each: implement, test, commit + push, tick here, note in SESSION-LOG.md.
-1. [ ] Quick fixes: TFSC /reviews styling + inline approval reason (TFSC-V2-01); ESLint for crm-web in CI (V2-D08);
-       concurrent same-lead Agreements handoff test (legacy CRM-11)
+1. [x] Quick fixes: TFSC /reviews styling + inline approval reason (TFSC-V2-01); ESLint for crm-web in CI (V2-D08);
+       concurrent same-lead Agreements handoff test (legacy CRM-11). Commits 22ae3b5, ff107e4. The CRM-11 test found a
+       real race (two TFSC workers -> 500s/timeouts on parallel handoffs); fixed with a per-CRM-client advisory lock.
+       (Known-issues CSVs are updated in item 9.)
 2. [ ] Round-robin auto-assignment per team, weighted by open-lead capacity, off by default (§14.4, V2-D06);
        90-day lead protection: supervisor prompted to release/renew, never auto-release with a meeting (§27)
 3. [ ] Keycloak email invitations (set password + MFA enrollment) and password recovery via SMTP (§4.2, §6),

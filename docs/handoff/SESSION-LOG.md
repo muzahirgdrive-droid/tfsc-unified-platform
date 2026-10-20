@@ -94,3 +94,12 @@ start doing all the work from where you stop with all the chat history as well."
 - Tests at the end: v2 153, pilot 17, refine 300 + bridge 12 (Python), agreements 43 (+42 subtests), web 21,
   refine TS 285, bridge TS 6, E2E 49.
 
+
+## 2026-10-20 — P8 "complete everything" (owner: "complete everything. make the complete product.")
+- P8.1 done. TFSC /reviews: styled with the portal design, inline required decision reason (no browser prompt), state
+  badges and the reviewer's recorded reason; axe WCAG 2 A/AA clean. ESLint (typescript-eslint type-checked +
+  react-hooks) for crm-web, enforced in CI; 146 findings fixed. Concurrent same-lead handoff test (legacy CRM-11)
+  against TFSC on PostgreSQL with 2 workers. It found a real race (parallel handoffs -> 500s/timeouts, shown in
+  the CRM as "TFSC unreachable"); fixed with a per-CRM-client advisory lock in TFSC.
+- A usage-limit pause and two worker restarts happened mid-item; the dev PostgreSQL/Redis must be restarted after a
+  restart (`tools/dev_services.sh start`).
