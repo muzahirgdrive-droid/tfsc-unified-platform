@@ -3931,6 +3931,13 @@ export interface components {
             head: string | null;
             /** Ok */
             ok: boolean;
+            /** Remote Anchors */
+            remote_anchors?: number | null;
+            /**
+             * Remote Failed
+             * @default []
+             */
+            remote_failed: string[];
             /** Rows */
             rows: number;
         };

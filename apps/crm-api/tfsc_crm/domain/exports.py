@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import Connection, select
 
-from .. import crypto
+from .. import crypto, storage
 from ..db import models as m
 from ..ids import uuid7
 from ..pacific import utcnow
@@ -117,8 +117,7 @@ def decide(c: Connection, actor: Actor, eid: uuid.UUID, approve: bool, note: str
     password = secrets.token_urlsafe(18)
     data = _zip(f'{e["kind"]}-{start}-{end}-{str(eid)[:8]}.csv', buf.getvalue().encode('utf-8-sig'), password)
     key = f'exports/{actor.org_id}/{eid}.zip'
-    c.execute(m.stored_files.insert().values(key=key, org_id=actor.org_id, content_type='application/zip', size=len(data),
-                                             sha256=hashlib.sha256(data).hexdigest(), data=data))
+    storage.put(c, actor.org_id, key, data, 'application/zip')
     c.execute(m.exports.update().where(m.exports.c.id == eid).values(
         status='ready', approved_by=actor.id, approved_at=now, expires_at=now + TTL, row_count=len(rows), object_key=key, watermark=mark[:200],
         file_sha256=hashlib.sha256(data).hexdigest(), password_enc=crypto.encrypt(password)))
@@ -159,9 +158,12 @@ def reveal_password(c: Connection, actor: Actor, eid: uuid.UUID) -> str:
     return pw
 
 
-def download(c: Connection, actor: Actor, eid: uuid.UUID) -> tuple[str, bytes]:
+def download(c: Connection, actor: Actor, eid: uuid.UUID) -> tuple[str, bytes | None, str | None]:
+    """(filename, bytes, None) for a database-held file, or (filename, None, presigned URL) for one in the bucket."""
     e = _mine(c, actor, eid)
-    data = c.execute(select(m.stored_files.c.data).where(m.stored_files.c.key == e['object_key'])).scalar_one()
+    name = f'tfsc-crm-{e["kind"]}-{str(eid)[:8]}.zip'
+    url = storage.download_url(c, e['object_key'], name)
+    data = None if url else storage.get(c, e['object_key'])
     c.execute(m.exports.update().where(m.exports.c.id == eid).values(downloads=e['downloads'] + 1))
-    audit.record(c, actor.org_id, actor.id, 'export.downloaded', 'export', eid, None, {'sha256': e['file_sha256']})
-    return f'tfsc-crm-{e["kind"]}-{str(eid)[:8]}.zip', data
+    audit.record(c, actor.org_id, actor.id, 'export.downloaded', 'export', eid, None, {'sha256': e['file_sha256'], 'presigned': bool(url)})
+    return name, data, url

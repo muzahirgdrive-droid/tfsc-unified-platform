@@ -17,4 +17,11 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 - { name: CRM_INLINE_DISPATCHER, value: "0" }
 - { name: CRM_INLINE_SCHEDULER, value: "0" }
 - { name: CRM_DATA_DIR, value: /data }
+- { name: CRM_STORAGE, value: {{ .Values.files.storage | quote }} }
+- { name: CRM_S3_ENDPOINT, value: {{ .Values.files.endpoint | quote }} }
+- { name: CRM_S3_PUBLIC_ENDPOINT, value: {{ .Values.files.publicEndpoint | quote }} }
+- { name: CRM_S3_BUCKET, value: {{ .Values.files.bucket | quote }} }
+- { name: CRM_ANCHOR_BUCKET, value: {{ .Values.files.anchorBucket | quote }} }
+- { name: CRM_S3_URL_TTL, value: {{ .Values.files.urlTtlSeconds | quote }} }
+- { name: CRM_CLAMAV, value: {{ ternary (printf "%s-clamav:3310" .Release.Name) .Values.clamav.address .Values.clamav.enabled | quote }} }
 {{- end -}}

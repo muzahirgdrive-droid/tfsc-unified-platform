@@ -13,9 +13,9 @@ import { asText } from '@/lib/text';
 type Count = { key: string; count: number };
 type Overview = { open_red_flags: Count[]; scraping_suspected_7d: number; failed_logins_24h: number; failed_logins_by_user: Count[]; active_sessions: number;
   supervisors_without_sso: number; offboarded_30d: number; exports_pending: number; exports_ready: number; outbox_pending: number; outbox_dead: number;
-  sse_connections: number; audit_rows: number; last_anchor: { day: string; rows: number; sink: string; head: string } | null; jobs: { job: string; last_run: string | null }[] };
+  sse_connections: number; audit_rows: number; last_anchor: { day: string; rows: number; sink: string; head: string; remote: boolean } | null; jobs: { job: string; last_run: string | null }[] };
 type AuditRow = { id: number; at: string; actor: string | null; action: string; resource: string; resource_id: string | null; ip: string | null; after: Record<string, unknown> | null };
-type Verify = { ok: boolean; rows: number; broken_links: number[]; altered_rows: number[]; anchors: number; anchors_failed: string[] };
+type Verify = { ok: boolean; rows: number; broken_links: number[]; altered_rows: number[]; anchors: number; anchors_failed: string[]; remote_anchors: number | null; remote_failed: string[] };
 type Session = { id: string; user_id: string; user: string; created_at: string; last_seen_at: string; ip: string | null; user_agent: string | null };
 type Dead = { id: number; topic: string; attempts: number; last_error: string | null; created_at: string };
 const TABS = ['overview', 'audit', 'sessions', 'exports', 'deliveries'] as const;
@@ -52,7 +52,7 @@ function OverviewTab({ super: isSuper }: { super: boolean }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="card p-5"><h3 className="mb-3 font-semibold">Audit chain</h3>
           <dl className="space-y-1 text-sm"><Row k="Entries" v={o?.audit_rows.toLocaleString()} /><Row k="Last daily anchor" v={o?.last_anchor ? `${o.last_anchor.day} · ${o.last_anchor.rows.toLocaleString()} rows` : 'none yet'} />
-            <Row k="Anchor head" v={o?.last_anchor?.head ? `${o.last_anchor.head}…` : '—'} /><Row k="Anchor sink" v={o?.last_anchor?.sink ?? '—'} /></dl></div>
+            <Row k="Anchor head" v={o?.last_anchor?.head ? `${o.last_anchor.head}…` : '—'} /><Row k="Anchor sink" v={o?.last_anchor ? `${o.last_anchor.sink}${o.last_anchor.remote ? ' + object-lock bucket' : ''}` : '—'} /></dl></div>
         <div className="card p-5"><h3 className="mb-3 font-semibold">Deliveries & real time</h3>
           <dl className="space-y-1 text-sm"><Row k="Outbox pending" v={o?.outbox_pending} /><Row k="Dead letters" v={o?.outbox_dead} warn={!!o?.outbox_dead} />
             <Row k="Live connections (this node)" v={o?.sse_connections} /><Row k="Exports awaiting approval" v={o?.exports_pending} /><Row k="Offboarded (30 days)" v={o?.offboarded_30d} /></dl></div>
@@ -82,8 +82,8 @@ function AuditTab({ super: isSuper }: { super: boolean }) {
     <div className="space-y-4">
       {isSuper && <div className="card flex flex-wrap items-center gap-3 p-4">
         <button className="btn-primary" disabled={verify.isPending} onClick={() => verify.mutate()}>{verify.isPending ? 'Verifying…' : 'Verify audit chain'}</button>
-        {v && (v.ok ? <span className="flex items-center gap-1 text-sm text-success"><CheckCircle2 size={16} />Intact: {v.rows.toLocaleString()} entries, {v.anchors} anchors checked.</span>
-          : <span className="flex items-center gap-1 text-sm text-danger"><TriangleAlert size={16} />Tampering detected: {v.broken_links.length} broken links, {v.altered_rows.length} altered entries, {v.anchors_failed.length} anchors failed.</span>)}
+        {v && (v.ok ? <span className="flex items-center gap-1 text-sm text-success"><CheckCircle2 size={16} />Intact: {v.rows.toLocaleString()} entries, {v.anchors} anchors checked{v.remote_anchors !== null ? `, ${v.remote_anchors} write-once copies match` : ''}.</span>
+          : <span className="flex items-center gap-1 text-sm text-danger"><TriangleAlert size={16} />Tampering detected: {v.broken_links.length} broken links, {v.altered_rows.length} altered entries, {v.anchors_failed.length} anchors failed{v.remote_failed.length ? `, ${v.remote_failed.length} write-once copies differ` : ''}.</span>)}
       </div>}
       <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Audit log">
         <div className="mb-3 flex flex-wrap items-end gap-2"><div><label className="label" htmlFor="aa">Action starts with</label><input id="aa" className="input w-64" placeholder="e.g. user. or export." value={action} onChange={(e) => { setAction(e.target.value); setCursor(null); }} /></div></div>

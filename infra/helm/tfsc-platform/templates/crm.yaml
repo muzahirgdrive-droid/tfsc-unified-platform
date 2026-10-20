@@ -32,6 +32,30 @@ spec:
           envFrom: [{ secretRef: { name: {{ .Values.crm.existingSecret }} } }]
           env: {{- include "tfsc.crmEnv" . | nindent 12 }}
           securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-crm-storage-init-{{ .Release.Revision }}
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+  # after the migration; creates the buckets if missing and checks that the anchor bucket has object lock
+  annotations: { "helm.sh/hook": pre-install,pre-upgrade, "helm.sh/hook-weight": "5", "helm.sh/hook-delete-policy": before-hook-creation }
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: storage-init
+          image: {{ include "tfsc.crmImage" . }}
+          command: [python, -m, tfsc_crm.storage, init]
+          envFrom: [{ secretRef: { name: {{ .Values.crm.existingSecret }} } }]
+          env: {{- include "tfsc.crmEnv" . | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
 {{- $deployments := dict "api" .Values.crm.api "dispatcher" .Values.crm.dispatcher "scheduler" .Values.crm.scheduler }}
 {{- if .Values.crm.bulk.enabled }}{{- $_ := set $deployments "bulk" .Values.crm.bulk }}{{- end }}
 {{- range $name, $cfg := $deployments }}

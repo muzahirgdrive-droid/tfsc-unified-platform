@@ -1,0 +1,47 @@
+{{- if .Values.clamav.enabled }}
+# Virus scanner for uploads (§4.2): clamd on 3310; freshclam inside the container keeps signatures current.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-clamav
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clamav
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/component: clamav } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: clamav, app.kubernetes.io/part-of: tfsc-platform }
+    spec:
+      containers:
+        - name: clamav
+          image: {{ .Values.clamav.image }}
+          ports: [{ name: clamd, containerPort: 3310 }]
+          readinessProbe: { tcpSocket: { port: clamd }, initialDelaySeconds: 30, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: clamd }, initialDelaySeconds: 300, periodSeconds: 30 }
+          resources: {{- toYaml .Values.clamav.resources | nindent 12 }}
+          volumeMounts: [{ name: db, mountPath: /var/lib/clamav }]
+      volumes: [{ name: db, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-clamav
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: clamav }
+  ports: [{ name: clamd, port: 3310, targetPort: clamd }]
+{{- if .Values.networkPolicy.enabled }}
+---
+# Only the CRM pods may send files to the scanner.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ .Release.Name }}-clamav }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/component: clamav } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchExpressions: [{ key: app.kubernetes.io/component, operator: In, values: [crm-api, crm-bulk] }] } }]
+      ports: [{ port: 3310 }]
+{{- end }}
+{{- end }}

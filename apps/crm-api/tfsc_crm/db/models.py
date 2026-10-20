@@ -766,6 +766,7 @@ audit_anchors = Table(
     Column('rows', Integer, nullable=False),
     Column('sink', String(40), nullable=False),
     Column('sink_ref', String(300)),
+    Column('remote_ref', String(300)),  # object key in the write-once (object-lock) bucket, once shipped
     Column('created_at', TS, nullable=False, server_default=func.now()),
     UniqueConstraint('org_id', 'anchored_for'),
 )
@@ -791,8 +792,10 @@ stored_files = Table(
     Column('content_type', String(100), nullable=False),
     Column('size', Integer, nullable=False),
     Column('sha256', String(64), nullable=False),
-    Column('data', LargeBinary, nullable=False),
+    Column('data', LargeBinary),  # NULL when the bytes live in the S3 bucket (storage.py)
+    Column('backend', String(10), nullable=False, server_default='db'),
     Column('created_at', TS, nullable=False, server_default=func.now()),
+    CheckConstraint("backend IN ('db', 's3') AND (backend = 's3' OR data IS NOT NULL)", name='backend'),
 )
 
 # Tables guarded by Row-Level Security (ADR-0007): every table with org_id.

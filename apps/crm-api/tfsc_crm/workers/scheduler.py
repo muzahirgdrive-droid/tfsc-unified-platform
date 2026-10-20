@@ -78,11 +78,19 @@ def job_audit_anchor(now: datetime) -> dict:
     from ..domain.bootstrap import data_dir
     sink = data_dir() / 'audit-anchors'
     out = 0
+    shipped = 0
     with system_tx() as c:
         for org in _orgs(c):
             if audit.anchor(c, org, day, sink):
                 out += 1
-    return {'anchored': out, 'day': day.isoformat()}
+    with system_tx() as c:  # separately: a bucket outage must not lose the day's anchor; unshipped ones go next run
+        for org in _orgs(c):
+            try:
+                with c.begin_nested():
+                    shipped += audit.ship_pending(c, org)
+            except Exception:
+                log.exception('shipping audit anchors to the object-lock bucket failed for %s', org)
+    return {'anchored': out, 'shipped': shipped, 'day': day.isoformat()}
 
 
 def job_reconcile(now: datetime) -> dict:

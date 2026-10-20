@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import RedirectResponse
 from pydantic import Field
 from sqlalchemy import ColumnElement, func, select, update
 
@@ -70,6 +71,8 @@ class VerifyOut(Out):
     altered_rows: list[int]
     anchors: int
     anchors_failed: list[str]
+    remote_anchors: int | None = None  # copies in the object-lock bucket (None: no bucket configured)
+    remote_failed: list[str] = []
     head: str | None
 
 
@@ -172,7 +175,8 @@ def overview(a: ActorDep) -> SecurityOverviewOut:
         failed_logins_24h=sum(n for _u, n in failed), failed_logins_by_user=[CountOut(key=names.get(uid, 'unknown'), count=n) for uid, n in failed],
         active_sessions=active, supervisors_without_sso=no_sso, offboarded_30d=offb, exports_pending=ex.get('requested', 0), exports_ready=ex.get('ready', 0),
         outbox_pending=ob.get('pending', 0), outbox_dead=ob.get('dead', 0), sse_connections=sse, audit_rows=audit_rows,
-        last_anchor={'day': last['anchored_for'].isoformat(), 'rows': last['rows'], 'sink': last['sink'], 'head': last['head_hash'][:16]} if last else None,
+        last_anchor={'day': last['anchored_for'].isoformat(), 'rows': last['rows'], 'sink': last['sink'], 'head': last['head_hash'][:16],
+                     'remote': last['remote_ref'] is not None} if last else None,
         jobs=[{'job': j['job'], 'last_run': j['last_run'].isoformat() if j['last_run'] else None} for j in jobs])
 
 
@@ -335,5 +339,7 @@ def export_password(export_id: str, a: ActorDep) -> PasswordOut:
 def export_download(export_id: str, a: ActorDep) -> Response:
     a.require('export.request')
     with tx(a.org_id, a.id) as c:
-        name, data = exports.download(c, a, parse_uuid(export_id))
+        name, data, url = exports.download(c, a, parse_uuid(export_id))
+    if url:  # object storage: a presigned URL valid for CRM_S3_URL_TTL seconds, handed out only after the checks above
+        return RedirectResponse(url, status_code=303, headers={'Cache-Control': 'no-store'})
     return Response(data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{name}"', 'Cache-Control': 'no-store'})

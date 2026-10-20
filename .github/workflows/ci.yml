@@ -16,9 +16,16 @@ jobs:
       redis:
         image: redis:7
         ports: ["6379:6379"]
+      s3:  # S3-compatible object storage (presigned URLs, object lock) for tests_v2/test_object_storage.py
+        image: rustfs/rustfs:1.0.1
+        env: {RUSTFS_ACCESS_KEY: ci-access-key, RUSTFS_SECRET_KEY: ci-secret-key-not-a-real-secret}
+        ports: ["9000:9000"]
     env:
       CRM_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/crm_test
       CRM_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      CRM_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      CRM_TEST_S3_ACCESS_KEY: ci-access-key
+      CRM_TEST_S3_SECRET_KEY: ci-secret-key-not-a-real-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,9 +48,11 @@ jobs:
       - name: CRM pilot tests (v1.0.1 behaviour preserved)
         working-directory: apps/crm-api
         run: python -m pytest -q tests
-      - name: CRM v2 tests (PostgreSQL, RLS)
+      - name: CRM v2 tests (PostgreSQL, RLS, S3)
         working-directory: apps/crm-api
-        run: python -m pytest -q tests_v2 --cov=tfsc_crm.domain --cov=tfsc_crm.security --cov-report=term --cov-fail-under=85
+        run: |
+          for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:9000/ && break; sleep 2; done
+          python -m pytest -q tests_v2 --cov=tfsc_crm.domain --cov=tfsc_crm.security --cov-report=term --cov-fail-under=85
       - name: Refine engine vectors (Python)
         run: python -m pytest -q packages/refine/python --cov=tfsc_refine --cov-fail-under=85
       - name: Bridge contract (Python)

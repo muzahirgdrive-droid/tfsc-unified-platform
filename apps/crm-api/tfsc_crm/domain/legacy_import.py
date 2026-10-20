@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import Connection, func, select
 
+from .. import storage
 from ..db import models as m
 from ..db.session import read, tx
 from ..ids import uuid7
@@ -48,7 +49,7 @@ def historical_at(d: date) -> datetime:
 
 
 def _load_scan(c: Connection, batch: dict) -> lw.Scan:
-    data = c.execute(select(m.stored_files.c.data).where(m.stored_files.c.key == batch['file_object_key'])).scalar_one()
+    data = storage.get(c, batch['file_object_key'])
     with tempfile.NamedTemporaryFile(suffix='.xlsx') as f:
         f.write(data)
         f.flush()
@@ -60,12 +61,9 @@ def _load_scan(c: Connection, batch: dict) -> lw.Scan:
 
 def create_batch(c: Connection, actor: Actor, data: bytes, filename: str) -> uuid.UUID:
     import hashlib
-
-    from sqlalchemy.dialects.postgresql import insert
     sha = hashlib.sha256(data).hexdigest()
     key = file_key(actor.org_id, sha)
-    c.execute(insert(m.stored_files).values(key=key, org_id=actor.org_id, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                            size=len(data), sha256=sha, data=data).on_conflict_do_nothing())
+    storage.put(c, actor.org_id, key, data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', replace=False)
     bid = uuid7()
     c.execute(m.import_batches.insert().values(id=bid, org_id=actor.org_id, owner_id=actor.id, created_by=actor.id, kind='legacy',
                                                file_object_key=key, sha256=sha, sheet=filename[:120], status='uploaded',

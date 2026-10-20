@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
-from datetime import UTC, date
+from datetime import UTC, date, timedelta
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Connection, func, select, text
 
+from ..config import get_settings
 from ..db import models as m
 from ..pacific import utcnow
 
 GENESIS = '0' * 64
+log = logging.getLogger('tfsc_crm.audit')
 
 
 def _canonical(row: dict[str, Any]) -> str:
@@ -69,15 +72,67 @@ def verify_chain(c: Connection, org_id: uuid.UUID) -> dict:
         prev = r['hash']
     anchors = c.execute(select(m.audit_anchors).where(m.audit_anchors.c.org_id == org_id).order_by(m.audit_anchors.c.id)).mappings().all()
     bad_anchors = [a['anchored_for'].isoformat() for a in anchors if hash_at.get(a['last_audit_id']) != a['head_hash']]
-    ok = not broken and not altered and not bad_anchors
+    # The write-once copies are the independent reference: someone able to rewrite both audit tables still cannot
+    # change or delete an object-locked anchor, so every one of them must match the chain (and the database copy).
+    remote = remote_anchors(org_id)
+    by_day = {a['anchored_for'].isoformat(): a for a in anchors}
+    bad_remote = sorted({r['anchored_for'] for r in remote or [] if r.get('deleted') or hash_at.get(r['last_audit_id']) != r['head_hash']
+                         or (r['anchored_for'] in by_day and by_day[r['anchored_for']]['head_hash'] != r['head_hash'])})
+    if remote is not None:  # shipped according to the database, but no write-once copy (bucket swapped or emptied)
+        held = {r['anchored_for'] for r in remote if not r.get('deleted')}
+        bad_remote = sorted(set(bad_remote) | {d for d, a in by_day.items() if a['remote_ref'] and d not in held})
+    ok = not broken and not altered and not bad_anchors and not bad_remote
     return {'rows': count, 'broken_links': broken[:100], 'altered_rows': altered[:100], 'anchors': len(anchors),
-            'anchors_failed': bad_anchors[:100], 'ok': ok, 'head': prev}
+            'anchors_failed': bad_anchors[:100], 'remote_anchors': len([r for r in remote if not r.get('deleted')]) if remote is not None else None,
+            'remote_failed': bad_remote[:100], 'ok': ok, 'head': prev}
+
+
+def _anchor_key(org_id: uuid.UUID, day: str) -> str:
+    return f'anchors/{org_id}/{day}.json'
+
+
+def remote_anchors(org_id: uuid.UUID) -> list[dict] | None:
+    """Every version of every anchor in the object-lock bucket for this org (None when no bucket is configured).
+    Versions, not just the latest objects: a delete marker or a newer version cannot hide a locked original. A delete
+    marker comes back as {'anchored_for': <day>, 'deleted': True}."""
+    s = get_settings()
+    if not s.anchor_bucket:
+        return None
+    from .. import storage
+    out: list[dict] = []
+    for page in storage.s3().get_paginator('list_object_versions').paginate(Bucket=s.anchor_bucket, Prefix=f'anchors/{org_id}/'):
+        for v in page.get('Versions', []):
+            body = storage.s3().get_object(Bucket=s.anchor_bucket, Key=v['Key'], VersionId=v['VersionId'])['Body'].read()
+            out.append(json.loads(body))
+        for d in page.get('DeleteMarkers', []):
+            out.append({'anchored_for': d['Key'].rsplit('/', 1)[-1].removesuffix('.json'), 'deleted': True})
+    return out
+
+
+def ship_pending(c: Connection, org_id: uuid.UUID) -> int:
+    """Copy anchors not yet shipped to the object-lock bucket (COMPLIANCE retention: nobody can delete or overwrite them
+    before CRM_ANCHOR_RETENTION_DAYS). Runs with the scheduler's role; the app role cannot update anchors."""
+    s = get_settings()
+    if not s.anchor_bucket:
+        return 0
+    from .. import storage
+    rows = c.execute(select(m.audit_anchors).where(m.audit_anchors.c.org_id == org_id, m.audit_anchors.c.remote_ref.is_(None))
+                     .order_by(m.audit_anchors.c.id)).mappings().all()
+    for a in rows:
+        day = a['anchored_for'].isoformat()
+        rec = {'org_id': str(org_id), 'anchored_for': day, 'last_audit_id': a['last_audit_id'], 'head_hash': a['head_hash'], 'rows': a['rows'],
+               'at': a['created_at'].isoformat()}
+        key = _anchor_key(org_id, day)
+        storage.s3().put_object(Bucket=s.anchor_bucket, Key=key, Body=json.dumps(rec, sort_keys=True).encode(), ContentType='application/json',
+                                ObjectLockMode='COMPLIANCE', ObjectLockRetainUntilDate=utcnow() + timedelta(days=s.anchor_retention_days),
+                                ChecksumAlgorithm='SHA256')
+        c.execute(m.audit_anchors.update().where(m.audit_anchors.c.id == a['id']).values(remote_ref=f's3://{s.anchor_bucket}/{key}'))
+    return len(rows)
 
 
 def anchor(c: Connection, org_id: uuid.UUID, day: date, sink_dir: Path | None = None) -> dict | None:
     """Daily anchor (§21): record the chain head in `audit_anchors` (write-once for the app role) and append it to an
-    append-only sink file. Shipping that file to a write-once (object-lock) bucket is a deployment step
-    (docs/runbooks/backups-and-restore.md); no remote sink is claimed here."""
+    append-only sink file; the scheduler then ships it to the object-lock bucket when one is configured (ship_pending)."""
     head = c.execute(select(m.audit_log.c.id, m.audit_log.c.hash).where(m.audit_log.c.org_id == org_id)
                      .order_by(m.audit_log.c.id.desc()).limit(1)).first()
     if head is None:

@@ -6867,6 +6867,25 @@
       "title": "Ok",
       "type": "boolean"
      },
+     "remote_anchors": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Remote Anchors"
+     },
+     "remote_failed": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Remote Failed",
+      "type": "array"
+     },
      "rows": {
       "title": "Rows",
       "type": "integer"

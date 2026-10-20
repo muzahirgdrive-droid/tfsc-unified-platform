@@ -1,4 +1,4 @@
-# TLS edge (profile `edge`). Set CRM_DOMAIN, TFSC_DOMAIN, SSO_DOMAIN in .env; Caddy obtains certificates.
+# TLS edge (profile `edge`). Set CRM_DOMAIN, TFSC_DOMAIN, SSO_DOMAIN, FILES_DOMAIN in .env; Caddy obtains certificates.
 {$CRM_DOMAIN} {
 	encode zstd gzip
 	# Bulk saves and imports go to their own processes so a 1,000-row paste never slows interactive requests.
@@ -18,4 +18,8 @@
 }
 {$SSO_DOMAIN} {
 	reverse_proxy keycloak:8080
+}
+# Presigned downloads only: the buckets are private, every URL is signed for this host and expires within minutes.
+{$FILES_DOMAIN} {
+	reverse_proxy objects:9000
 }

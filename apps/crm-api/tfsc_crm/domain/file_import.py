@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import Connection, func, select
 
+from .. import storage
 from ..db import models as m
 from ..db.session import read, tx
 from ..ids import uuid7
@@ -192,16 +193,14 @@ def jsonable(row: dict) -> dict:
 
 
 def create_upload(c: Connection, actor: Actor, data: bytes, filename: str) -> uuid.UUID:
-    from sqlalchemy.dialects.postgresql import insert
     tables = read_tables(data, filename)
     if not any(tables.values()):
         raise HTTPException(400, 'The file has no rows.')
     sha = hashlib.sha256(data).hexdigest()
     ext = 'xlsx' if data.startswith(b'PK') else 'csv'
     key = f'imports/file/{actor.org_id}/{sha}.{ext}'
-    c.execute(insert(m.stored_files).values(key=key, org_id=actor.org_id, content_type='text/csv' if ext == 'csv' else
-                                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                            size=len(data), sha256=sha, data=data).on_conflict_do_nothing())
+    storage.put(c, actor.org_id, key, data, 'text/csv' if ext == 'csv' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                replace=False)
     bid = uuid7()
     c.execute(m.import_batches.insert().values(id=bid, org_id=actor.org_id, owner_id=actor.id, created_by=actor.id, kind='file',
                                                file_object_key=key, sha256=sha, status='uploaded',
@@ -232,7 +231,7 @@ def _set(c: Connection, bid: uuid.UUID, **vals: Any) -> None:
 def _run(actor: Actor, bid: uuid.UUID) -> None:
     with read(actor.org_id, actor.id) as c:
         b = dict(c.execute(select(m.import_batches).where(m.import_batches.c.id == bid)).mappings().one())
-        data = c.execute(select(m.stored_files.c.data).where(m.stored_files.c.key == b['file_object_key'])).scalar_one()
+        data = storage.get(c, b['file_object_key'])
         done = {r[0] for r in c.execute(select(m.import_rows.c.row_no).where(m.import_rows.c.batch_id == bid))}
     cfg = b['mapping']
     rows = read_tables(data, b['totals'].get('filename', ''))[b['sheet']]

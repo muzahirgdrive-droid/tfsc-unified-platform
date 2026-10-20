@@ -1,7 +1,6 @@
 """People, teams, groups and photos (§6-§8)."""
 from __future__ import annotations
 
-import hashlib
 import io
 import uuid
 from datetime import date
@@ -9,12 +8,14 @@ from datetime import date
 from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 from sqlalchemy import Connection, func, or_, select, update
 
+from .. import storage
 from ..db import models as m
 from ..db.session import read, tx
 from ..domain import audit, notify, outbox
 from ..ids import uuid7
 from ..integrations import keycloak
 from ..pacific import business_date, utcnow
+from ..security import antivirus
 from ..security.auth import hash_password
 from ..security.roles import MANAGER, ROLE_LABEL, SUPER, SUPERVISOR, Actor, can_grant_role, in_scope, scope_ids
 from .deps import ActorDep, client_ip, decode_cursor, encode_cursor, parse_uuid
@@ -232,6 +233,7 @@ async def upload_photo(user_id: str, a: ActorDep, file: UploadFile = File(...)) 
     data = await file.read(5_000_001)
     if len(data) > 5_000_000:
         raise HTTPException(413, 'Use an image smaller than 5 MB.')
+    await antivirus.check_upload(a, data, file.filename or 'photo')
     try:
         from PIL import Image, ImageOps
         src = Image.open(io.BytesIO(data))
@@ -250,10 +252,7 @@ async def upload_photo(user_id: str, a: ActorDep, file: UploadFile = File(...)) 
         if uid != a.id and (a.rank < MANAGER or not in_scope(c, a, uid)):
             raise HTTPException(403, 'You can only change your own photo.')
         key = f'photos/{uid}.jpg'
-        from sqlalchemy.dialects.postgresql import insert
-        ins = insert(m.stored_files).values(key=key, org_id=a.org_id, content_type='image/jpeg', size=len(jpg),
-                                                    sha256=hashlib.sha256(jpg).hexdigest(), data=jpg)
-        c.execute(ins.on_conflict_do_update(index_elements=['key'], set_={'data': jpg, 'size': len(jpg), 'sha256': hashlib.sha256(jpg).hexdigest()}))
+        storage.put(c, a.org_id, key, jpg, 'image/jpeg')
         c.execute(update(m.users).where(m.users.c.id == uid).values(photo_object_key=key))
         audit.record(c, a.org_id, a.id, 'user.photo_updated', 'user', uid)
     return OkOut()
@@ -266,10 +265,10 @@ def photo(user_id: str, a: ActorDep) -> Response:
         key = c.execute(select(m.users.c.photo_object_key).where(m.users.c.id == uid)).scalar_one_or_none()
         if not key:
             raise HTTPException(404, 'Photo not found.')
-        sf = m.stored_files
-        data = c.execute(select(sf.c.data).where(sf.c.key == key)).scalar_one_or_none()
-    if data is None:
-        raise HTTPException(404, 'Photo not found.')
+        try:
+            data = storage.get(c, key)
+        except storage.StorageError:
+            raise HTTPException(404, 'Photo not found.') from None
     # Photos are visible org-wide (leaderboard, celebrations); they carry no client data.
     return Response(bytes(data), media_type='image/jpeg', headers={'Cache-Control': 'private, max-age=300'})
 

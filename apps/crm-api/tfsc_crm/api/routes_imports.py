@@ -14,6 +14,7 @@ from ..domain import audit
 from ..domain import legacy_import as li
 from ..domain import legacy_workbook as lw
 from ..pacific import utcnow
+from ..security import antivirus
 from .deps import ActorDep, parse_uuid
 from .schemas import Model, OkOut, Out
 
@@ -90,6 +91,7 @@ async def upload(a: ActorDep, file: UploadFile | None = File(None)) -> LegacyBat
         raise HTTPException(413, 'Use a workbook smaller than 60 MB.')
     if not data.startswith(b'PK'):
         raise HTTPException(400, 'Upload the .xlsx workbook.')
+    await antivirus.check_upload(a, data, file.filename or 'workbook.xlsx')
     with tx(a.org_id, a.id) as c:
         bid = li.create_batch(c, a, data, file.filename or 'workbook.xlsx')
     li.start_thread(li.run_scan, a, bid)

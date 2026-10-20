@@ -38,6 +38,20 @@ class Settings:
     keycloak_client_id: str = field(default_factory=lambda: os.getenv('CRM_KEYCLOAK_CLIENT_ID', 'tfsc-crm-provisioner'))
     keycloak_client_secret: str = field(default_factory=lambda: os.getenv('CRM_KEYCLOAK_CLIENT_SECRET', ''))
     invite_lifespan_hours: int = field(default_factory=lambda: int(os.getenv('CRM_INVITE_LIFESPAN_HOURS', '72')))
+    # Files (§4.2): `db` keeps bytes in PostgreSQL; `s3` uses an S3-compatible bucket with presigned downloads.
+    storage: str = field(default_factory=lambda: os.getenv('CRM_STORAGE', 'db'))
+    s3_endpoint: str = field(default_factory=lambda: os.getenv('CRM_S3_ENDPOINT', '').rstrip('/'))
+    s3_public_endpoint: str = field(default_factory=lambda: os.getenv('CRM_S3_PUBLIC_ENDPOINT', '').rstrip('/'))
+    s3_bucket: str = field(default_factory=lambda: os.getenv('CRM_S3_BUCKET', 'crm-files'))
+    s3_region: str = field(default_factory=lambda: os.getenv('CRM_S3_REGION', 'us-east-1'))
+    s3_access_key: str = field(default_factory=lambda: os.getenv('CRM_S3_ACCESS_KEY', ''))
+    s3_secret_key: str = field(default_factory=lambda: os.getenv('CRM_S3_SECRET_KEY', ''))
+    s3_url_ttl: int = field(default_factory=lambda: int(os.getenv('CRM_S3_URL_TTL', '120')))
+    # Daily audit anchors also go to this object-lock (write-once) bucket when set (same S3 credentials).
+    anchor_bucket: str = field(default_factory=lambda: os.getenv('CRM_ANCHOR_BUCKET', ''))
+    anchor_retention_days: int = field(default_factory=lambda: int(os.getenv('CRM_ANCHOR_RETENTION_DAYS', '2557')))
+    # Virus scan of uploads: clamd `host:port`, or `off`.
+    clamav: str = field(default_factory=lambda: os.getenv('CRM_CLAMAV', ''))
     metrics_token: str = field(default_factory=lambda: os.getenv('CRM_METRICS_TOKEN', ''))
 
     @property
@@ -51,6 +65,12 @@ class Settings:
                 raise RuntimeError('Hosted mode requires: ' + ', '.join(missing))
             if not self.origin.startswith('https://'):
                 raise RuntimeError('Hosted mode requires an https:// CRM_ORIGIN.')
+            if not self.clamav:
+                raise RuntimeError('Hosted mode requires CRM_CLAMAV (clamd host:port, or "off" to accept unscanned uploads).')
+        if self.storage not in ('db', 's3'):
+            raise RuntimeError('CRM_STORAGE must be db or s3.')
+        if (self.storage == 's3' or self.anchor_bucket) and not (self.s3_endpoint and self.s3_access_key and self.s3_secret_key):
+            raise RuntimeError('S3 storage needs CRM_S3_ENDPOINT, CRM_S3_ACCESS_KEY and CRM_S3_SECRET_KEY.')
 
 
 @lru_cache(maxsize=1)

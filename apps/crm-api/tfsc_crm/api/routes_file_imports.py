@@ -14,7 +14,7 @@ from ..db.session import read, tx
 from ..domain import audit
 from ..domain import file_import as fi
 from ..pacific import utcnow
-from ..security import ratelimit
+from ..security import antivirus, ratelimit
 from ..security.roles import SUPERVISOR, in_scope
 from .deps import ActorDep, parse_uuid
 from .schemas import Model, Out
@@ -90,6 +90,7 @@ async def upload(a: ActorDep, file: UploadFile | None = File(None)) -> ImportOut
     name = (file.filename or 'upload').strip()
     if not name.lower().endswith(('.xlsx', '.csv', '.tsv', '.txt')):
         raise HTTPException(400, 'Upload an .xlsx, .csv or .tsv file.')
+    await antivirus.check_upload(a, data, name)
     with tx(a.org_id, a.id) as c:
         bid = fi.create_upload(c, a, data, name)
         return _out(_get(c, a, bid))

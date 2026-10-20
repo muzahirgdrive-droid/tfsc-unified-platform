@@ -2,7 +2,7 @@
 
 | Path | What |
 |---|---|
-| `compose/` | Single-server stack (pilot, §27): PostgreSQL 16, Redis 7, Keycloak 26, CRM (migrate, api, bulk, dispatcher, scheduler), Agreements (api, worker), optional Caddy TLS edge (`--profile edge`, which routes pastes and imports to `crm-bulk`) |
+| `compose/` | Single-server stack (pilot, §27): PostgreSQL 16, Redis 7, Keycloak 26, CRM (migrate, api, bulk, dispatcher, scheduler), Agreements (api, worker), S3-compatible object storage (`objects`, RustFS) + bucket setup (`objects-init`), ClamAV (`clamav`), optional Caddy TLS edge (`--profile edge`, which routes pastes and imports to `crm-bulk` and serves presigned downloads on `FILES_DOMAIN`), Mailpit for trials (`--profile trial`) |
 | `keycloak/realm-tfsc.json` | Realm import: CRM + Agreements clients (PKCE S256), the CRM's provisioning service account (`tfsc-crm-provisioner`: create users, groups, disable), SMTP settings from `SMTP_*`, brute-force protection, password policy, TOTP required for the `mfa-required` role (group `supervisors-and-above`), `amr` claim, email subjects |
 | `keycloak/dev_seed.py` | Local trials only: creates test users (optionally with a known TOTP secret for automated tests) |
 | `keycloak/trial_seed.py` | Local trials only: bootstraps both Super Admins, links them, invites synthetic users (pairs with `apps/crm-web/e2e/sso-invites.mjs`) |
@@ -24,6 +24,22 @@ the `agents` and `supervisors-and-above` groups; suspension and offboarding disa
 This needs `CRM_KEYCLOAK_CLIENT_SECRET` (the realm's `tfsc-crm-provisioner` client) and working `SMTP_*` settings;
 "Forgot password?" on the sign-in page uses the same mail settings. Federating a company directory instead is also
 possible: emails must match the CRM accounts.
+
+## Files, virus scan and write-once audit anchors (verified on the compose stack 2026-10-20)
+- Photos, uploaded import files, legacy workbooks and export ZIPs go to the private bucket `crm-files`
+  (`CRM_STORAGE=s3`); PostgreSQL keeps type, size and SHA-256, and every read is checked against that hash.
+  Export downloads are presigned URLs valid for `CRM_S3_URL_TTL` seconds (default 120), handed out only after the
+  approval and requester checks; the edge serves them on `FILES_DOMAIN`. Anonymous bucket access is refused.
+- Every upload is scanned by clamd before it is stored (archives included); a detection returns 422 and is audited
+  as `file.rejected`; if the scanner is unreachable the upload is refused (503). Hosted mode will not start until
+  `CRM_CLAMAV` is set (`host:port`, or `off` as an explicit choice).
+- The scheduler copies each daily audit anchor to `crm-audit-anchors`, created with object lock; every copy has
+  COMPLIANCE retention for `CRM_ANCHOR_RETENTION_DAYS` (default 2557, seven years): nobody, including the CRM's own
+  keys, can delete it or shorten that. "Verify audit chain" in the Security Center reads every version of every
+  copy, so an edited database, a forged newer version or a delete marker shows as a failure.
+- RustFS replaces MinIO in the bundled stack: MinIO stopped publishing community images. Any S3-compatible service
+  with object lock works (`CRM_S3_ENDPOINT`, `CRM_S3_PUBLIC_ENDPOINT`). For production, give the CRM keys that
+  cannot delete objects, and back up the `crm-files` bucket (versioning or replication) with the database.
 
 ## Compose: local trial (verified 2026-10-20)
 Use http origins (`CRM_MODE=local`, `TFSC_MODE=local`, `KC_COMMAND=start-dev`, `KC_REALM_SSL_REQUIRED=none`) and
