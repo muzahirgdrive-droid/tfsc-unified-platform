@@ -112,8 +112,11 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        90-day lead protection: supervisor prompted to release/renew, never auto-release with a meeting (§27).
        Commit 136d9cf: domain/assignment.py, domain/protection.py, migration 0005, scheduler job lead_protection
        (daily 05:00 PT), POST /api/leads/{id}/protection, team settings in People -> Teams, tests_v2/test_assignment_protection.py
-3. [ ] Keycloak email invitations (set password + MFA enrollment) and password recovery via SMTP (§4.2, §6),
-       verified on the compose stack with a local mail sink; TFSC OIDC sign-in verified (TFSC-12)
+3. [x] Keycloak email invitations (set password + MFA enrollment) and password recovery via SMTP (§4.2, §6),
+       verified on the compose stack with a local mail sink; TFSC OIDC sign-in verified (TFSC-12). Commit a6e1c94:
+       integrations/keycloak.py (sso.* outbox topics), realm provisioner client + SMTP_*, Mailpit (--profile trial),
+       TFSC SSO fixes (identity link, Lax cookie, reset_required, back-channel URL). Re-run the trial: infra/README.md
+       "invitation, recovery and TFSC SSO trial". Trial env lives only in the scratchpad (secrets; never committed).
 4. [ ] Files: S3-compatible object storage (MinIO) with presigned short-lived URLs + AV scan on upload (§4.2);
        audit anchors shipped to an object-lock bucket (V2-D04). Client file storage stays deferred (§13).
 5. [ ] Observability: structured JSON logs, OpenTelemetry traces (OTLP), Sentry (API + web) when configured,

@@ -108,3 +108,8 @@ start doing all the work from where you stop with all the chat history as well."
   leads per agent. Offboarding uses it too when the team has it on. Protection review: daily job, amber flag +
   notification to the supervisor, renew or release (release = lost with reason, number freed); never for a lead
   with a scheduled meeting. Tests: v2 158 (+4), E2E 49 green; UI checked in a real browser (axe clean).
+- P8.3 done (a6e1c94). Keycloak invitations from the CRM (set password; TOTP for Supervisor+), group sync, disable on
+  suspension/offboarding, password reset by email; Mailpit in the compose `trial` profile. Verifying TFSC SSO on the
+  compose stack found four real bugs (CRM-sent identity never linked; Strict session cookie dropped after the IdP and
+  after the CRM's Open Agreements link; reset_required kept after SSO; no back-channel URL), all fixed. Full flow
+  re-run green on a fresh stack with the committed scripts. Tests: v2 164, agreements 44 (+42 subtests), E2E 49.
