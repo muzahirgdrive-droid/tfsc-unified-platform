@@ -51,8 +51,13 @@ def _apply_scope(c: Connection, org_id: uuid.UUID | str | None, actor_id: uuid.U
 def tx(org_id: uuid.UUID | str, actor_id: uuid.UUID | str | None = None) -> Iterator[Connection]:
     """Read-write transaction scoped to one org under RLS."""
     with engine().begin() as c:
+        c.info.pop('kick_dispatcher', None)
         _apply_scope(c, org_id, actor_id)
         yield c
+        kick = c.info.pop('kick_dispatcher', False)
+    if kick:  # after commit: deliver realtime events (celebrations) without waiting for the poll
+        from ..workers.dispatcher import kick as wake
+        wake()
 
 
 @contextmanager

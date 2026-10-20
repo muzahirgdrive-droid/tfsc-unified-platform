@@ -8,6 +8,7 @@ import database as db
 import security as sec
 import server as legacy
 from entities import signature_path
+import crm_bridge_v2 as events
 
 actors=Table('crm_actor_links',db.meta,Column('crm_actor_id',String(64),primary_key=True),Column('user_id',String(32),ForeignKey('users.id'),nullable=False),Column('created',Float,nullable=False))
 nonces=Table('crm_bridge_nonces',db.meta,Column('nonce',String(100),primary_key=True),Column('created',Float,nullable=False))
@@ -53,6 +54,8 @@ def check_worker(c,job):
 def finish_worker(c,job,files):
  check_worker(c,job)
  c.execute(reviews.update().where(reviews.c.job_id==job['id']).values(state='issued',manifest=[{'id':f['id'],'sha256':f['sha256'],'name':f['name']} for f in files],updated=time.time()))
+ r=c.execute(select(reviews).where(reviews.c.job_id==job['id'])).mappings().first()
+ if r:events.emit(c,r['client_id'],'agreement.issued','issued',dict(r),files)
 def check_download(c,document):
  # Legacy finalized documents have no review link. New reviewed artifacts must match their released manifest.
  row=c.execute(select(reviews).where(reviews.c.job_id==document['contract_id'].removeprefix('TFSC-').lower())).mappings().first()
@@ -71,6 +74,10 @@ async def signed(request,c):
  if c.execute(select(nonces).where(nonces.c.nonce==nonce)).first():raise HTTPException(409,'Bridge request was already received.')
  c.execute(nonces.insert().values(nonce=nonce,created=time.time()))
  body=json.loads(raw);link=c.execute(select(actors).where(actors.c.crm_actor_id==body.get('crm_actor_id'))).mappings().first()
+ if not link:
+  # v2: accounts provisioned from the CRM (crm_bridge_v2.account_links) need no manual UUID mapping
+  v2=c.execute(select(events.account_links).where(events.account_links.c.crm_user_id==str(body.get('crm_actor_id')),events.account_links.c.status=='active')).mappings().first()
+  link={'user_id':v2['tfsc_user_id']} if v2 else None
  if not link:raise HTTPException(403,'Map this CRM actor to an agreements account first.')
  return body,current_actor(c,link['user_id'])
 
@@ -104,6 +111,7 @@ def install(app):
    raw={**body.get('client',{}),'entity':body['entity'],'effective_date':body.get('effective_date'),'document_types':body.get('document_types',['baa']),'services':body.get('services',[]),'output_root':str(db.OUTPUT),'id':mapped['client_id'] if mapped else ''}
    draft=legacy.validate(raw,True);client_id=portal.save_draft(c,a,draft)
    if not mapped:c.execute(links.insert().values(id=db.uid(),crm_client_id=crm_id,owner_id=a['id'],client_id=client_id))
+   events.emit(c,client_id,'agreement.draft_created','draft')
    hid=db.uid();c.execute(handoffs.insert().values(id=hid,owner_id=a['id'],request_key=key,body_hash=digest(body),client_id=client_id,token_hash=sec.digest(token),expires=time.time()+600,created=time.time()))
    db.log(c,a,'crm.handoff_received',client_id,{'handoff_id':hid,'crm_client_id':crm_id});return {'handoff_id':hid,'tfsc_client_id':client_id,'redeem_token':token,'redeem_url':'/reviews'}
  @app.post('/api/handoffs/redeem')
@@ -126,9 +134,10 @@ def install(app):
    a=sec.get_actor(request,c);cid=payload.get('client_id');client=portal.client_allowed(c,a,cid)
    if client['owner_id']!=a['id']:raise HTTPException(403,'The draft owner must submit the request.')
    d=legacy.validate(client['draft']);d['id']=cid;d['output_root']=str(portal.output_path(d['output_root'],a));sec.ensure_company(a,d['entity']);now=time.time()
+   for old in c.execute(select(reviews).where(reviews.c.client_id==cid,reviews.c.state.in_(['submitted','approved']))).mappings().all():events.emit(c,cid,'agreement.superseded','superseded',dict(old))
    c.execute(reviews.update().where(reviews.c.client_id==cid,reviews.c.state.in_(['submitted','approved'])).values(state='superseded',updated=now))
    r=dict(id=db.uid(),owner_id=a['id'],client_id=cid,entity=d['entity'],payload=d,payload_hash=digest(d),assets_hash=asset_hash(d['entity']),state='submitted',version=1,created=now,updated=now)
-   c.execute(reviews.insert().values(**r));db.log(c,a,'agreement.review_submitted',cid,{'review_id':r['id'],'hash':r['payload_hash']});return r
+   c.execute(reviews.insert().values(**r));db.log(c,a,'agreement.review_submitted',cid,{'review_id':r['id'],'hash':r['payload_hash']});events.emit(c,cid,'agreement.submitted','submitted',r);return r
  @app.post('/api/reviews/{id}/decision')
  def decide(id:str,payload:dict,request:Request):
   with db.engine.begin() as c:
@@ -141,7 +150,7 @@ def install(app):
    if r['assets_hash']!=asset_hash(r['entity']):raise HTTPException(409,'Template or signature changed. Submit a new revision.')
    state='approved' if payload['decision']=='approve' else 'changes_requested'
    if c.execute(reviews.update().where(reviews.c.id==id,reviews.c.version==r['version'],reviews.c.state=='submitted').values(state=state,approver_id=a['id'],reason=reason,version=r['version']+1,updated=time.time())).rowcount!=1:raise HTTPException(409,'Review changed.')
-   db.log(c,a,'agreement.'+state,r['client_id'],{'review_id':id,'reason':reason});return {'state':state}
+   db.log(c,a,'agreement.'+state,r['client_id'],{'review_id':id,'reason':reason});events.emit(c,r['client_id'],'agreement.'+state,state,{**dict(r),'version':r['version']+1});return {'state':state}
  @app.post('/api/reviews/{id}/generate')
  def issue(id:str,request:Request):
   import portal

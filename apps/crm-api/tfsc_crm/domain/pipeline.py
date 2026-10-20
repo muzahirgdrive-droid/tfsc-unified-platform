@@ -260,6 +260,7 @@ def _celebrate(c: Connection, actor: Actor, ld) -> None:
     # No client name or details in the celebration (§18).
     outbox.emit(c, actor.org_id, 'sale.celebrated', {'celebration_id': str(cid), 'agent_id': str(ld['owner_id']), 'agent_name': agent,
                                                      'supervisor_name': actor.display_name, 'message': message}, key=str(ld['id']))
+    c.info['kick_dispatcher'] = True
 
 
 def reassign(c: Connection, actor: Actor, lead_id: uuid.UUID, to_user: uuid.UUID, reason: str, incentive_split: dict, version: int) -> dict:

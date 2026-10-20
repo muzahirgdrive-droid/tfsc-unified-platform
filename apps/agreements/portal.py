@@ -398,6 +398,8 @@ def import_legacy(request:Request):
     return import_existing(a)
 
 crm_bridge.install(app)
+import crm_bridge_v2
+crm_bridge_v2.install(app)
 import oidc_support
 oidc_support.install(app,db,sec,session_response,ORIGIN,'TFSC',sec.get_actor)
 PUBLIC={'styles.css','tfsc.css','portal.css','login.js'}

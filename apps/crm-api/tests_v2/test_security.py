@@ -76,6 +76,20 @@ MATRIX = {
     ('POST', '/api/flags/ack'): ('sup', {'ids': [X]}),
     ('GET', '/api/notifications'): ('any', None),
     ('POST', '/api/notifications/read'): ('any', None),
+    ('GET', '/api/celebrations'): ('any', None),
+    ('POST', '/api/leads/{lead_id}/meetings'): ('sup', {'title': 'x', 'starts_at': '2026-11-02T18:00:00Z'}),
+    ('GET', '/api/meetings'): ('sup', None),
+    ('GET', '/api/users/{user_id}/agreements'): ('director', None),
+    ('PUT', '/api/users/{user_id}/agreements'): ('director', {'enabled': False}),
+    ('GET', '/api/agreements/launch'): ('any', None),
+    ('GET', '/api/leads/{lead_id}/agreements/preflight'): ('sup', None),
+    ('POST', '/api/leads/{lead_id}/agreements/handoff'): ('sup', {'legal_name': 'x', 'effective_date': '2026-10-20', 'entity': 'SCRIBE ALIGN LLC'}),
+    ('GET', '/api/clients'): ('any', None),
+    ('GET', '/api/clients/{client_id}'): ('any', None),
+    ('PATCH', '/api/meetings/{meeting_id}'): ('sup', {'version': 1}),
+    ('GET', '/api/integrations/google/status'): ('sup', None),
+    ('POST', '/api/integrations/google/disconnect'): ('sup', None),
+    ('POST', '/api/meetings/sync'): ('sup', None),
 }
 
 

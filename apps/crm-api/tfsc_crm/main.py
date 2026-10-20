@@ -5,6 +5,7 @@ Run: uvicorn tfsc_crm.main:app  (CRM_DATABASE_URL must point at a migrated Postg
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -35,7 +36,13 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         from .domain import bootstrap
         bootstrap.ensure_setup_key()
+        stop = None
+        if os.getenv('CRM_INLINE_DISPATCHER', '1' if not s.hosted else '0') == '1':
+            from .workers import dispatcher
+            stop = dispatcher.start_background()
         yield
+        if stop is not None:
+            stop()
         from .db.session import dispose
         dispose()
 

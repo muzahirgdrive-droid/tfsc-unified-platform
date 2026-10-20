@@ -41,12 +41,12 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 | Phase | Status | Notes |
 |---|---|---|
 | P0 Baseline | done | pilot 47 tests + 42 subtests green; baseline migration = pilot schema (diff 0); CI; ADRs |
-| P1 Foundation | in progress | see P1 checklist |
-| P2 Capture | not started | |
-| P3 Integrity | not started | |
-| P4 Meetings & Celebration | not started | |
-| P5 Dashboards | not started | |
-| P6 Agreements v2 | not started | |
+| P1 Foundation | backend done; web pending | see P1 checklist (Keycloak realm + design system/app shell remain) |
+| P2 Capture | backend done; web pending | refine engine, lifecycle/locks, Refine & Save, precheck — Sheet View/My Work UI pending; XLSX import job pending |
+| P3 Integrity | backend done; web pending | duplicates/flags/follow-ups/strong FU/leads/auto-assign/attribution; SLA escalation job pending |
+| P4 Meetings & Celebration | backend done; web pending | SSE gateway, dispatcher, celebration < 3 s (measured in-process), Google adapter (mock-tested), Wall of Fame |
+| P5 Dashboards | rollups done; API + web pending | score ledger + agent_day/hour rollups + reconcile exist; dashboard endpoints pending |
+| P6 Agreements v2 | backend done (both apps); web pending | provisioning, handoff + Agreement Lock, signed events, inbox, client profile; E2E acceptance 12-13 green with real LibreOffice |
 | P7 Hardening & Scale | not started | |
 
 ## P0 checklist
@@ -68,12 +68,21 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
       refine/batch, precheck, follow-ups, strong FU, leads, flags, notifications)
 - [x] Authz matrix tests (every OpenAPI op classified) + agent leak scan + RLS isolation test — `tests_v2/test_security.py`
 - [x] Acceptance 1-10, 14, 15 as API tests (`tests_v2/test_api_capture.py`, `test_api_pipeline.py`) — 52 v2 tests green
-- [ ] Bridge contract package (`packages/bridge-contract`, Py + TS)
+- [x] Bridge contract package (`packages/bridge-contract`, Py + TS)
 - [ ] Keycloak realm export + OIDC (`infra/keycloak`), design system + app shell + world clock (crm-web v2)
 - [ ] OpenAPI → TS client generation
 
 ## Next actions (do the first unchecked one)
-Continue the P1 checklist above, then P2..P7 per §28 of the master command.
+1. [ ] P5 dashboard API: metric catalog endpoints over rollups (agent/GL/supervisor/manager/super), leaderboard (paginated),
+       layouts (validated widget ids), period presets, comparison; workbook reconciliation importer (§20.5, needs the xlsx)
+2. [ ] crm-web v2 (biggest remaining item): React 19 + TanStack + Tailwind v4 design system (§22), app shell + nav + world clock,
+       My Work quick entry + toggles + calendar + precheck, Sheet View (Glide grid paste/refine/save), follow-ups board,
+       strong FU queue, leads, meetings, flags center, people & teams, settings, dashboards (ECharts + react-grid-layout),
+       celebration overlay (SSE), agreements pre-flight, client profile, mobile bottom nav; OpenAPI TS client
+3. [ ] XLSX/CSV import job (resumable, all sheets, 50k rows) + legacy workbook historical import (Super Admin)
+4. [ ] P7: security center, exports (watermarked, approval), offboarding, flag SLA escalation job, audit anchor, Keycloak realm,
+       k6 load tests + docs/PERFORMANCE.md, backups/runbooks, compose/Helm, agreements Alembic baseline
+5. [ ] Playwright E2E + screenshots; regenerate both _HANDOFF zips (§29)
 
 ## How to run v2 tests
 `tools/dev_services.sh start` then `cd apps/crm-api && python -m pytest -q tests_v2` (uses CRM_TEST_DATABASE_URL,
