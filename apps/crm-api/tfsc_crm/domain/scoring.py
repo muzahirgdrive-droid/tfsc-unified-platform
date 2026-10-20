@@ -90,7 +90,7 @@ def apply(c: Connection, org_id: uuid.UUID, activity: dict, new_points: int, at:
     c.execute(m.activities.update().where(m.activities.c.id == activity['id'], m.activities.c.business_date == activity['business_date'])
               .values(score_points=new_points))
     from . import rollups
-    rollups.on_ledger(c, org_id, activity['owner_id'], at, new_points - old)
+    rollups.on_score(c, org_id, activity['owner_id'], at, activity['business_date'], new_points - old)
     return new_points - old
 
 

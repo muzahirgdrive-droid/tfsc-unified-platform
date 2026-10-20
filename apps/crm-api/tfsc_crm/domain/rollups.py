@@ -69,6 +69,7 @@ def _bump_hour(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, d: date, ho
 def on_activity(c: Connection, org_id: uuid.UUID, old: dict | None, new: dict, at: datetime, post_lock: bool = False) -> None:
     before, after = contribution(old), contribution(new)
     delta = {k: after[k] - before[k] for k in DAY_FIELDS}
+    hour_points = delta.pop('points')  # day-level points are applied once, by scoring.apply (see on_score)
     if post_lock:
         delta['post_lock_edits'] = 1
     if new.get('conflict') and not (old or {}).get('conflict'):
@@ -79,11 +80,13 @@ def on_activity(c: Connection, org_id: uuid.UUID, old: dict | None, new: dict, a
     committed_at = new.get('first_committed_at') or (old or {}).get('first_committed_at')
     if committed_at:
         local = committed_at.astimezone(PACIFIC)
-        _bump_hour(c, org_id, new['owner_id'], local.date(), local.hour, delta)
+        _bump_hour(c, org_id, new['owner_id'], local.date(), local.hour, {**delta, 'points': hour_points})
 
 
-def on_ledger(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, at: datetime, points: int) -> None:
+def on_score(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, at: datetime, activity_date: date, points: int) -> None:
+    """A score change: event-time credit on the day it happened, activity-date credit on the activity's day."""
     _bump_day(c, org_id, user_id, business_date(at), {'points_event': points}, None)
+    _bump_day(c, org_id, user_id, activity_date, {'points': points}, None)
 
 
 def bump(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, at: datetime, **counts: int) -> None:
