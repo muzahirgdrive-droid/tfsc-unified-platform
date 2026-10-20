@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn';
 import { clearDraft, loadDraft, saveDraft } from '@/lib/drafts';
 import { refineInWorker } from '@/lib/refine';
 import { COLUMNS, emptyRow, parseTable, toRows, type ColKey, type SheetRow } from '@/lib/sheet';
+import { asText } from '@/lib/text';
 
 const FIELD_OF: Partial<Record<string, ColKey>> = { name: 'name', phone: 'phone', email: 'email', business_date: 'business_date', next_followup: 'next_followup', last_followup: 'last_followup', followup_count: 'followup_count' };
 const SEV_BG: Record<string, string> = { green: '#e5f6ec', amber: '#fff3dc', red: '#fde8e8' };
@@ -29,10 +30,10 @@ const theme: Partial<Theme> = {
 };
 
 function displayValue(k: ColKey, r: SheetRow, st?: RowState): string {
-  const ref = st?.refined?.refined as Record<string, unknown> | undefined;
+  const ref = st?.refined?.refined;
   if (!ref) return r[k];
-  if (k === 'name' || k === 'phone' || k === 'email' || k === 'remarks') return String(ref[k] ?? r[k] ?? '');
-  if (['business_date', 'next_followup', 'last_followup'].includes(k)) return String(ref[k] ?? r[k] ?? '');
+  if (k === 'name' || k === 'phone' || k === 'email' || k === 'remarks') return asText(ref[k] ?? r[k]);
+  if (['business_date', 'next_followup', 'last_followup'].includes(k)) return asText(ref[k] ?? r[k]);
   const col = COLUMNS.find((c) => c.key === k);
   if (col?.toggle) { const v = ref[k]; return v === true ? 'Yes' : v === false ? 'No' : ''; }
   return r[k];
@@ -52,7 +53,7 @@ export default function Sheet() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { const m = window.matchMedia('(max-width: 767px)'); const f = () => setMobile(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f); }, []);
-  useEffect(() => { if (me) loadDraft<SheetRow[]>(me.id).then((d) => { if (d?.length) { setRows(d); toast.message('Restored your unsaved sheet draft.'); } }); }, [me]);
+  useEffect(() => { if (me) void loadDraft<SheetRow[]>(me.id).then((d) => { if (d?.length) { setRows(d); toast.message('Restored your unsaved sheet draft.'); } }); }, [me]);
   useEffect(() => { if (!me) return; const t = setTimeout(() => saveDraft(me.id, rows.filter((r) => Object.values(r).some(Boolean))), 800); return () => clearTimeout(t); }, [rows, me]);
 
   const commit = useCallback((next: SheetRow[]) => {
@@ -76,7 +77,7 @@ export default function Sheet() {
     if (!c) {
       const id = columns[col]!.id;
       if (id === 'quality') {
-        const ref = st?.refined?.refined as Record<string, unknown> | undefined;
+        const ref = st?.refined?.refined;
         const q = !ref ? '' : ref.called === true ? (ref.connected ? ((ref.text_sent || ref.email_sent) ? '30' : '20') : '10') : (Object.keys(ref).length ? '0' : '');
         return { kind: GridCellKind.Text, data: q, displayData: q, allowOverlay: false, readonly: true };
       }
@@ -96,7 +97,7 @@ export default function Sheet() {
     for (const { location: [col, row], value } of items) {
       const c = COLUMNS[col]; if (!c) continue;
       while (next.length <= row && next.length < MAX_ROWS) next.push(emptyRow());
-      if (next[row]) next[row]![c.key] = String((value as { data: unknown }).data ?? '');
+      if (next[row]) next[row][c.key] = asText((value as { data: unknown }).data);
     }
     commit(next);
     return true;
@@ -143,9 +144,9 @@ export default function Sheet() {
       if (me && !keep.length) await clearDraft(me.id);
       const notices = out.rows.filter((r) => r.duplicate_notice).length;
       toast.success(`Saved ${out.saved} rows in ${(out.ms / 1000).toFixed(1)} s${out.rejected ? ` · ${out.rejected} kept with reasons` : ''}${out.review ? ` · ${out.review} sent to review` : ''}${notices ? ` · ${notices} duplicate notices` : ''}`);
-      qc.invalidateQueries({ queryKey: ['activities'] });
+      void qc.invalidateQueries({ queryKey: ['activities'] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toast.error(e.message),
   });
 
   const fillDown = (sel: { x: number; y: number; width: number; height: number } | undefined) => {
@@ -190,11 +191,11 @@ export default function Sheet() {
           <button className="btn-secondary" onClick={redo} disabled={!history.future.length} aria-label="Redo"><Redo2 size={16} /></button>
           <button className="btn-secondary" onClick={() => fileRef.current?.click()}><FileUp size={16} />Upload file</button>
           <button className="btn-secondary" onClick={async () => { try { pasteText(await navigator.clipboard.readText()); } catch { toast.message('Click a cell and press Ctrl+V to paste.'); } }}><ClipboardPaste size={16} />Paste</button>
-          <button className="btn-secondary" onClick={() => { commit(Array.from({ length: 30 }, emptyRow)); if (me) clearDraft(me.id); }}><Eraser size={16} />Discard</button>
+          <button className="btn-secondary" onClick={() => { commit(Array.from({ length: 30 }, emptyRow)); if (me) void clearDraft(me.id); }}><Eraser size={16} />Discard</button>
           <button className="btn-secondary" onClick={refine}><Wand2 size={16} />Refine</button>
           <button className="btn-primary" disabled={save.isPending || !filled.length} onClick={async () => { await refine(); save.mutate(); }}><Sparkles size={16} />{save.isPending ? 'Saving…' : 'Refine & Save'}</button>
         </>} />
-      <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) onFile(e.target.files[0]); e.target.value = ''; }} />
+      <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) void onFile(e.target.files[0]); e.target.value = ''; }} />
       {importFile && <ImportDialog file={importFile} onClose={() => setImportFile(null)} />}
       {preview && (
         <div className="card mb-3 flex flex-wrap items-center gap-3 p-3 text-sm">
@@ -215,8 +216,8 @@ export default function Sheet() {
               <div className="flex flex-wrap gap-1.5">{(['called', 'connected', 'text_sent', 'email_sent'] as ColKey[]).map((k) => (
                 <button key={k} className={cn('chip h-8', r[k] === 'Yes' ? 'bg-success-bg text-success' : r[k] === 'No' ? 'bg-danger-bg text-danger' : 'bg-bg text-muted')}
                   onClick={() => { const n = rows.map((x) => ({ ...x })); n[i]![k] = r[k] === '' ? 'Yes' : r[k] === 'Yes' ? 'No' : ''; commit(n); }}>{COLUMNS.find((c) => c.key === k)!.title}: {r[k] || 'Unset'}</button>))}</div>
-              {state[i]?.result ? <p className="text-xs font-medium text-danger">{[state[i]!.result!.status, ...state[i]!.result!.issues.map((x) => x.message)].join(' · ')}</p>
-                : state[i]?.refined?.issues.length ? <p className="text-xs text-muted">{state[i]!.refined!.issues.map((x) => x.message).join(' · ')}</p> : null}
+              {state[i]?.result ? <p className="text-xs font-medium text-danger">{[state[i].result.status, ...state[i].result.issues.map((x) => x.message)].join(' · ')}</p>
+                : state[i]?.refined?.issues.length ? <p className="text-xs text-muted">{state[i].refined.issues.map((x) => x.message).join(' · ')}</p> : null}
             </div>
           ))}
         </div>

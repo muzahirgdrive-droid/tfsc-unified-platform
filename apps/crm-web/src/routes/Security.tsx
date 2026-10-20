@@ -8,6 +8,7 @@ import { PageHeader, Stat } from '@/components/ui/bits';
 import { raw } from '@/lib/api';
 import { rankOf, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
+import { asText } from '@/lib/text';
 
 type Count = { key: string; count: number };
 type Overview = { open_red_flags: Count[]; scraping_suspected_7d: number; failed_logins_24h: number; failed_logins_by_user: Count[]; active_sessions: number;
@@ -69,13 +70,13 @@ function OverviewTab({ super: isSuper }: { super: boolean }) {
   );
 }
 
-const Row = ({ k, v, warn }: { k: string; v: unknown; warn?: boolean }) => <div className="flex justify-between gap-2"><dt className="text-muted">{k}</dt><dd className={cn('tabular-nums', warn && 'font-semibold text-danger')}>{v === undefined || v === null ? '—' : String(v)}</dd></div>;
+const Row = ({ k, v, warn }: { k: string; v: unknown; warn?: boolean }) => <div className="flex justify-between gap-2"><dt className="text-muted">{k}</dt><dd className={cn('tabular-nums', warn && 'font-semibold text-danger')}>{asText(v, '—')}</dd></div>;
 
 function AuditTab({ super: isSuper }: { super: boolean }) {
   const [action, setAction] = useState('');
   const [cursor, setCursor] = useState<number | null>(null);
   const q = useQuery({ queryKey: ['audit', action, cursor], queryFn: () => raw<{ items: AuditRow[]; next_cursor: number | null }>(`/api/security/audit?limit=50${action ? `&action=${encodeURIComponent(action)}` : ''}${cursor ? `&cursor=${cursor}` : ''}`) });
-  const verify = useMutation({ mutationFn: () => raw<Verify>('/api/security/audit/verify', { method: 'POST' }), onError: (e) => toast.error((e as Error).message) });
+  const verify = useMutation({ mutationFn: () => raw<Verify>('/api/security/audit/verify', { method: 'POST' }), onError: (e) => toast.error(e.message) });
   const v = verify.data;
   return (
     <div className="space-y-4">
@@ -88,7 +89,7 @@ function AuditTab({ super: isSuper }: { super: boolean }) {
         <div className="mb-3 flex flex-wrap items-end gap-2"><div><label className="label" htmlFor="aa">Action starts with</label><input id="aa" className="input w-64" placeholder="e.g. user. or export." value={action} onChange={(e) => { setAction(e.target.value); setCursor(null); }} /></div></div>
         <table className="w-full min-w-[760px] text-sm"><thead><tr className="table-head"><th className="pb-2">When</th><th>Who</th><th>Action</th><th>Resource</th><th>IP</th></tr></thead>
           <tbody>{q.data?.items.map((r) => <tr key={r.id} className="border-t border-line"><td className="py-2 whitespace-nowrap">{new Date(r.at).toLocaleString()}</td><td>{r.actor ?? 'system'}</td><td className="font-medium">{r.action}</td><td className="text-muted">{r.resource}{r.resource_id ? ` · ${r.resource_id.slice(0, 12)}` : ''}</td><td className="text-muted">{r.ip ?? ''}</td></tr>)}</tbody></table>
-        <div className="mt-3 flex gap-2">{cursor && <button className="btn-secondary h-8 px-3" onClick={() => setCursor(null)}>Newest</button>}{q.data?.next_cursor && <button className="btn-secondary h-8 px-3" onClick={() => setCursor(q.data!.next_cursor)}>Older</button>}</div>
+        <div className="mt-3 flex gap-2">{cursor && <button className="btn-secondary h-8 px-3" onClick={() => setCursor(null)}>Newest</button>}{q.data?.next_cursor && <button className="btn-secondary h-8 px-3" onClick={() => setCursor(q.data.next_cursor)}>Older</button>}</div>
       </div>
     </div>
   );
@@ -98,7 +99,7 @@ function SessionsTab({ super: isSuper }: { super: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['security-sessions'], queryFn: () => raw<Session[]>('/api/security/sessions') });
   const revoke = useMutation({ mutationFn: (id: string) => raw(`/api/security/sessions/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { toast.success('Session ended'); qc.invalidateQueries({ queryKey: ['security-sessions'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Session ended'); void qc.invalidateQueries({ queryKey: ['security-sessions'] }); }, onError: (e) => toast.error(e.message) });
   return (
     <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Signed-in sessions"><table className="w-full min-w-[760px] text-sm"><thead><tr className="table-head"><th className="pb-2">User</th><th>Signed in</th><th>Last seen</th><th>IP</th><th>Device</th><th /></tr></thead>
       <tbody>{q.data?.map((s) => <tr key={s.id} className="border-t border-line"><td className="py-2">{s.user}</td><td>{new Date(s.created_at).toLocaleString()}</td><td>{new Date(s.last_seen_at).toLocaleString()}</td><td className="text-muted">{s.ip ?? ''}</td>
@@ -110,7 +111,7 @@ function DeadTab({ super: isSuper }: { super: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['dead-letters'], queryFn: () => raw<Dead[]>('/api/security/outbox/dead') });
   const retry = useMutation({ mutationFn: (id: number) => raw(`/api/security/outbox/${id}/retry`, { method: 'POST' }),
-    onSuccess: () => { toast.success('Queued for delivery'); qc.invalidateQueries({ queryKey: ['dead-letters'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Queued for delivery'); void qc.invalidateQueries({ queryKey: ['dead-letters'] }); }, onError: (e) => toast.error(e.message) });
   return (
     <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Undelivered events"><h3 className="mb-1 font-semibold">Undelivered events</h3><p className="mb-3 text-sm text-muted">Events that failed 12 times (e.g. TFSC unreachable). Retrying re-queues them; deliveries are idempotent on the receiving side.</p>
       {q.data && !q.data.length ? <p className="text-sm text-muted">Nothing stuck.</p> : <table className="w-full min-w-[640px] text-sm"><thead><tr className="table-head"><th className="pb-2">Event</th><th>Attempts</th><th>Last error</th><th /></tr></thead>

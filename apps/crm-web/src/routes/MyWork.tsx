@@ -19,7 +19,7 @@ const EMPTY: Draft = { name: '', phone: '', email: '', called: null, connected: 
 
 /** Toggle rules mirrored from the server: Connected = Yes auto-sets Called = Yes; Called = No disables Connected. */
 export function applyToggle(d: Draft, key: keyof Draft, v: Tri): Draft {
-  const n = { ...d, [key]: v } as Draft;
+  const n = { ...d, [key]: v };
   if (key === 'connected' && v === true) n.called = true;
   if (key === 'called' && v === false && n.connected === true) n.connected = null;
   if (key === 'called' && v === null) n.connected = null;
@@ -27,10 +27,10 @@ export function applyToggle(d: Draft, key: keyof Draft, v: Tri): Draft {
 }
 
 export function LockChip({ a }: { a: Act }) {
-  useTick(1000);
+  const now = useTick(1000).getTime();
   if (a.state === 'data_hunting') return <span className="chip bg-bg text-muted" title="No outcome toggled: research only, no timer">Data hunting</span>;
   if (a.state === 'deleted') return <span className="chip bg-danger-bg text-danger">Deleted</span>;
-  const left = a.edit_deadline ? (new Date(a.edit_deadline).getTime() - Date.now()) / 1000 : 0;
+  const left = a.edit_deadline ? (new Date(a.edit_deadline).getTime() - now) / 1000 : 0;
   if (left <= 0) return <span className="chip bg-bg text-muted"><Lock size={12} aria-hidden />Locked</span>;
   return <span className="chip bg-info-bg text-info tabular-nums" aria-label={`Editable for ${countdown(left)}`}>Editable {countdown(left)}</span>;
 }
@@ -46,12 +46,12 @@ function QuickEntry({ onSaved }: { onSaved: () => void }) {
       r.issues.filter((i) => i.severity === 'amber').forEach((i) => toast.message(i.message));
       setD(EMPTY); onSaved(); nameRef.current?.focus();
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toast.error(e.message),
   });
   const submit = (e?: FormEvent) => { e?.preventDefault(); if (d.name.trim()) save.mutate(); };
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); submit(); } };
   const [eng, setEng] = useState<typeof import('@tfsc/refine') | null>(null);
-  useEffect(() => { import('@tfsc/refine').then(setEng); }, []);
+  useEffect(() => { void import('@tfsc/refine').then(setEng); }, []);
   const nameHint = d.name && eng ? eng.refineName(d.name).value : '';
   const phoneHint = d.phone && eng ? eng.refinePhone(d.phone) : null;
   const t = (k: keyof Draft, label: string) => <Toggle3 label={label} value={d[k] as Tri} onChange={(v) => setD(applyToggle(d, k, v))} disabled={k === 'connected' && d.called === false} />;
@@ -86,7 +86,7 @@ function EditDialog({ a, onClose }: { a: Act; onClose: () => void }) {
   const needsReason = a.state === 'locked' || a.owner_id !== me?.id;
   const save = useMutation({
     mutationFn: () => call(client.PATCH('/api/activities/{activity_id}', { params: { path: { activity_id: a.id } }, body: { version: a.version, reason: reason || null, ...d, email: d.email || null, phone: d.phone || null } })),
-    onSuccess: () => { toast.success('Updated'); qc.invalidateQueries({ queryKey: ['activities'] }); qc.invalidateQueries({ queryKey: ['today'] }); onClose(); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { toast.success('Updated'); void qc.invalidateQueries({ queryKey: ['activities'] }); void qc.invalidateQueries({ queryKey: ['today'] }); onClose(); }, onError: (e) => toast.error(e.message),
   });
   const t = (k: keyof Draft, label: string) => <Toggle3 label={label} value={d[k] as Tri} onChange={(v) => setD(applyToggle(d, k, v))} disabled={k === 'connected' && d.called === false} />;
   return (
@@ -107,9 +107,9 @@ function EditDialog({ a, onClose }: { a: Act; onClose: () => void }) {
 
 export function ActivityRow({ a, onEdit, onStrong, onDelete }: { a: Act; onEdit: () => void; onStrong: () => void; onDelete?: () => void }) {
   const { me } = useAuth();
-  useTick(1000);
+  const now = useTick(1000).getTime();
   // An agent's row locks the moment its countdown ends; supervisors can still edit locked rows (with a reason).
-  const lockedForMe = rankOf(me) < 1 && !!a.edit_deadline && new Date(a.edit_deadline).getTime() <= Date.now();
+  const lockedForMe = rankOf(me) < 1 && !!a.edit_deadline && new Date(a.edit_deadline).getTime() <= now;
   const out = (v: Tri | undefined, l: string) => v === null || v === undefined ? null : <span className={cn('chip', v ? 'bg-success-bg text-success' : 'bg-danger-bg text-danger')}>{l} {v ? '✓' : '✕'}</span>;
   return (
     <li className="flex flex-col gap-2 border-t border-line py-3 sm:flex-row sm:items-center">
@@ -133,7 +133,7 @@ export function StrongDialog({ a, onClose }: { a: Act; onClose: () => void }) {
   const [win, setWin] = useState('2–3 weeks');
   const [note, setNote] = useState('');
   const m = useMutation({ mutationFn: () => call(client.POST('/api/activities/{activity_id}/strong', { params: { path: { activity_id: a.id } }, body: { target_window: win, note } })),
-    onSuccess: () => { toast.success('Strong follow-up requested. Your supervisor will confirm it.'); onClose(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Strong follow-up requested. Your supervisor will confirm it.'); onClose(); }, onError: (e) => toast.error(e.message) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title="Request strong follow-up" description={`${a.provider_name} — a provisional lead. Only a supervisor can confirm it.`}
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => m.mutate()} disabled={m.isPending}>Send to supervisor</button></>}>
@@ -155,7 +155,7 @@ export default function MyWork() {
   return (
     <div>
       <PageHeader eyebrow="My work" title="Today's conversations" subtitle={`Business date ${today.data?.business_date ?? ''} (Pacific). ${today.data ? `${today.data.attempts} attempts · ${today.data.connected} connected · ${today.data.points_event} points` : ''}`} />
-      <QuickEntry onSaved={() => { qc.invalidateQueries({ queryKey: ['activities'] }); qc.invalidateQueries({ queryKey: ['today'] }); }} />
+      <QuickEntry onSaved={() => { void qc.invalidateQueries({ queryKey: ['activities'] }); void qc.invalidateQueries({ queryKey: ['today'] }); }} />
       <div className="card p-5">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">Recent entries</h2>

@@ -23,7 +23,7 @@ export default function Followups() {
   const [note, setNote] = useState(''); const [date, setDate] = useState(''); const [time, setTime] = useState('10:00');
   const m = useMutation({
     mutationFn: () => raw(`/api/followups/${act!.f.id}/action`, { method: 'POST', body: JSON.stringify({ version: act!.f.version, action: act!.kind, note: note || null, due_at: act!.kind === 'reschedule' && date ? ptToUtc(date, time).toISOString() : null }) }),
-    onSuccess: () => { toast.success('Follow-up updated'); setAct(null); setNote(''); qc.invalidateQueries({ queryKey: ['followups'] }); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { toast.success('Follow-up updated'); setAct(null); setNote(''); void qc.invalidateQueries({ queryKey: ['followups'] }); }, onError: (e) => toast.error(e.message),
   });
   return (
     <div>

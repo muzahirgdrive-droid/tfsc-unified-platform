@@ -11,7 +11,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   useEffect(() => {
     const t0 = Date.now();
-    fetch('/api/time').then((r) => r.json()).then((t) => setServerOffset(t.server_time, t0, Date.now())).catch(() => undefined);
+    fetch('/api/time').then((r) => r.json() as Promise<{ server_time: string }>).then((t) => setServerOffset(t.server_time, t0, Date.now())).catch(() => undefined);
     const onUnauthorized = () => { qc.clear(); qc.setQueryData(['me'], null); };
     window.addEventListener('crm:unauthorized', onUnauthorized);
     return () => window.removeEventListener('crm:unauthorized', onUnauthorized);

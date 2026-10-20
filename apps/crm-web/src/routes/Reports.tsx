@@ -24,10 +24,10 @@ export default function Reports() {
         <div className="card overflow-x-auto p-5 xl:col-span-2" tabIndex={0} role="region" aria-label="Report metrics">
           <table className="w-full text-sm"><thead><tr className="table-head"><th className="pb-2">Metric</th><th className="text-right">{s.data?.period.label ?? 'Period'}</th><th className="text-right">Previous</th><th className="text-right">Change</th></tr></thead>
             <tbody>{ROWS.map(([k, l, t]) => {
-              const cur = s.data?.current[k] as number | null | undefined; const prev = s.data?.previous[k] as number | null | undefined;
+              const cur = s.data?.current[k]; const prev = s.data?.previous[k];
               const fmt = (x: number | null | undefined) => (t === 'p' ? pct(x) : num(x));
               const d = cur !== undefined && cur !== null && prev !== undefined && prev !== null ? cur - prev : null;
-              return <tr key={k} className="border-t border-line"><td className="py-2"><span className="flex items-center gap-1.5">{l}{s.data?.definitions[k] && <Hint text={s.data.definitions[k]!} />}</span></td><td className="text-right tabular-nums font-semibold">{fmt(cur)}</td><td className="text-right tabular-nums text-muted">{fmt(prev)}</td>
+              return <tr key={k} className="border-t border-line"><td className="py-2"><span className="flex items-center gap-1.5">{l}{s.data?.definitions[k] && <Hint text={s.data.definitions[k]} />}</span></td><td className="text-right tabular-nums font-semibold">{fmt(cur)}</td><td className="text-right tabular-nums text-muted">{fmt(prev)}</td>
                 <td className={`text-right tabular-nums ${d === null || d === 0 ? 'text-muted' : d > 0 ? 'text-success' : 'text-danger'}`}>{d === null ? '—' : `${d > 0 ? '+' : ''}${t === 'p' ? pct(d) : num(d)}`}</td></tr>;
             })}</tbody></table>
           <p className="mt-3 text-xs text-muted">Band: {String(s.data?.current.band ?? '—')} · workdays {String(s.data?.current.workdays ?? '—')} · roster-days {String(s.data?.current.roster_days ?? '—')} · targets {s.data?.current.targets.call_target} calls/day, {pct(s.data?.current.targets.conn_target)} connection.</p>

@@ -11,9 +11,9 @@ export default function Me() {
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => raw<{ id: string; current: boolean; created_at: string; last_seen_at: string; ip: string | null; user_agent: string | null }[]>('/api/auth/sessions'), enabled: !me?.reset_required });
   const change = useMutation({ mutationFn: () => raw('/api/auth/password', { method: 'POST', body: JSON.stringify({ current_password: pw.current_password, new_password: pw.new_password }) }),
-    onSuccess: () => { toast.success('Password changed. Other sessions were signed out.'); setPw({ current_password: '', new_password: '', confirm: '' }); qc.invalidateQueries({ queryKey: ['me'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Password changed. Other sessions were signed out.'); setPw({ current_password: '', new_password: '', confirm: '' }); void qc.invalidateQueries({ queryKey: ['me'] }); }, onError: (e) => toast.error(e.message) });
   const photo = useMutation({ mutationFn: (f: File) => { const fd = new FormData(); fd.append('file', f); return raw(`/api/users/${me!.id}/photo`, { method: 'POST', body: fd }); },
-    onSuccess: () => { toast.success('Photo updated'); qc.invalidateQueries({ queryKey: ['me'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Photo updated'); void qc.invalidateQueries({ queryKey: ['me'] }); }, onError: (e) => toast.error(e.message) });
   const revoke = useMutation({ mutationFn: (id: string) => raw(`/api/auth/sessions/${id}`, { method: 'DELETE' }), onSuccess: () => sessions.refetch() });
   if (!me) return null;
   return (

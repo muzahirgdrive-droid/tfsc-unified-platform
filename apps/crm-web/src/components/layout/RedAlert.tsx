@@ -6,6 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ShieldAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useCrmEvents, type CrmEvent } from '@/lib/sse';
+import { asText } from '@/lib/text';
 
 export function RedAlert({ enabled }: { enabled: boolean }) {
   const [alerts, setAlerts] = useState<CrmEvent[]>([]);
@@ -28,7 +29,7 @@ export function RedAlert({ enabled }: { enabled: boolean }) {
             <ShieldAlert className="mt-0.5 shrink-0 text-danger" aria-hidden />
             <div>
               <D.Title className="text-lg font-semibold text-danger">{alerts.length > 1 ? `${alerts.length} red alerts` : 'Red alert'}: protected lead contacted</D.Title>
-              <D.Description className="mt-1 text-sm">{String(alerts.at(-1)?.message ?? '')} Clarify it before incentives are paid.</D.Description>
+              <D.Description className="mt-1 text-sm">{asText(alerts.at(-1)?.message)} Clarify it before incentives are paid.</D.Description>
             </div>
           </div>
           <div className="mt-6 flex flex-wrap justify-end gap-2">

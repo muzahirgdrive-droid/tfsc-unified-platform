@@ -7,11 +7,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfig } from '@/lib/config';
 import { useCrmEvents, type CrmEvent } from '@/lib/sse';
 import { Avatar } from '@/components/ui/bits';
+import { asText } from '@/lib/text';
 
 // No web worker: canvas-confetti's worker is a blob: URL, which our CSP (script-src 'self') blocks.
 const confettiFire = confetti.create(undefined, { resize: true, useWorker: false });
 const SEEN = 'crm.celebrations.seen';
-const seen = (): string[] => { try { return JSON.parse(localStorage.getItem(SEEN) ?? '[]'); } catch { return []; } };
+const seen = (): string[] => { try { return JSON.parse(localStorage.getItem(SEEN) ?? '[]') as string[]; } catch { return []; } };
 const markSeen = (id: string) => { try { localStorage.setItem(SEEN, JSON.stringify([...seen(), id].slice(-50))); } catch { /* ignore */ } };
 
 export function CelebrationOverlay({ enabled }: { enabled: boolean }) {
@@ -21,7 +22,7 @@ export function CelebrationOverlay({ enabled }: { enabled: boolean }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onEvent = useCallback((e: CrmEvent) => {
     if (e.topic !== 'sale.celebrated') return;
-    const id = String(e.celebration_id ?? e.id);
+    const id = asText(e.celebration_id ?? e.id);
     if (seen().includes(id)) return;
     markSeen(id);
     setCurrent(e);
@@ -53,8 +54,8 @@ export function CelebrationOverlay({ enabled }: { enabled: boolean }) {
             <motion.div animate={reduced ? {} : { rotate: [0, -8, 8, -4, 0], scale: [1, 1.1, 1] }} transition={{ duration: 1.2 }} className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white/10">
               <Trophy size={44} className="text-[#ffd166]" aria-hidden />
             </motion.div>
-            <div className="mx-auto mb-4 flex justify-center"><Avatar name={String(current.agent_name ?? '')} userId={String(current.agent_id ?? '')} hasPhoto size={64} onDark /></div>
-            <p className="text-xl font-semibold leading-snug">{String(current.message ?? '')}</p>
+            <div className="mx-auto mb-4 flex justify-center"><Avatar name={asText(current.agent_name)} userId={asText(current.agent_id)} hasPhoto size={64} onDark /></div>
+            <p className="text-xl font-semibold leading-snug">{asText(current.message)}</p>
           </motion.div>
         </motion.div>
       )}

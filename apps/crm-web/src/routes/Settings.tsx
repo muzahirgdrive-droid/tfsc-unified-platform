@@ -8,6 +8,7 @@ import { raw } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { LegacyImport } from './LegacyImport';
+import { asText } from '@/lib/text';
 
 type D = { id: string; name: string; legal_name: string | null; tfsc_entity_key: string | null; active: boolean; sort: number; version: number };
 type P = { id: string; name: string | null; domain_id: string | null; owner_user_id: string | null; owner_name: string | null; owner_email: string | null; owner_phone: string | null; status: string; notes: string | null; in_use: boolean; version: number };
@@ -33,7 +34,7 @@ function Domains() {
   const [edit, setEdit] = useState<Partial<D> | null>(null);
   const save = useMutation({ mutationFn: () => edit!.version ? raw(`/api/settings/domains/${edit!.id}`, { method: 'PATCH', body: JSON.stringify({ version: edit!.version, name: edit!.name, legal_name: edit!.legal_name, tfsc_entity_key: edit!.tfsc_entity_key || null, active: edit!.active }) })
     : raw('/api/settings/domains', { method: 'POST', body: JSON.stringify({ id: edit!.id, name: edit!.name, legal_name: edit!.legal_name, tfsc_entity_key: edit!.tfsc_entity_key || null }) }),
-    onSuccess: () => { toast.success('Saved'); setEdit(null); qc.invalidateQueries({ queryKey: ['domains'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Saved'); setEdit(null); void qc.invalidateQueries({ queryKey: ['domains'] }); }, onError: (e) => toast.error(e.message) });
   return <Spinnerless loading={q.isLoading}>
     <div className="mb-3"><button className="btn-primary" onClick={() => setEdit({ id: '', name: '', active: true })}><Plus size={16} />Add domain</button></div>
     <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label="Domains"><table className="w-full text-sm"><thead><tr className="table-head"><th className="p-3">Domain</th><th>TFSC contracting company</th><th>Status</th></tr></thead>
@@ -58,10 +59,10 @@ function Projects() {
   const save = useMutation({ mutationFn: () => {
     const body = { name: edit!.name || null, domain_id: edit!.domain_id || null, owner_user_id: edit!.owner_user_id || null, owner_name: edit!.owner_name || null, owner_email: edit!.owner_email || null, owner_phone: edit!.owner_phone || null, status: edit!.status, notes: edit!.notes || null };
     return edit!.version ? raw(`/api/settings/projects/${edit!.id}`, { method: 'PATCH', body: JSON.stringify({ version: edit!.version, ...body }) }) : raw('/api/settings/projects', { method: 'POST', body: JSON.stringify({ id: edit!.id, ...body }) });
-  }, onSuccess: () => { toast.success('Saved'); setEdit(null); qc.invalidateQueries({ queryKey: ['projects'] }); }, onError: (e) => toast.error((e as Error).message) });
+  }, onSuccess: () => { toast.success('Saved'); setEdit(null); void qc.invalidateQueries({ queryKey: ['projects'] }); }, onError: (e) => toast.error(e.message) });
   const open = async (p: Partial<P>) => { setEdit(p); setSummary(null); if (p.version) setSummary(await raw<Record<string, number>>(`/api/settings/projects/${p.id}/summary`)); };
   return <Spinnerless loading={q.isLoading}>
-    <div className="mb-3"><button className="btn-primary" onClick={async () => { const n = await raw<{ id: string }>('/api/settings/projects/next-id'); open({ id: n.id, status: 'pending_configuration' }); }}><Plus size={16} />Add project</button></div>
+    <div className="mb-3"><button className="btn-primary" onClick={async () => { const n = await raw<{ id: string }>('/api/settings/projects/next-id'); void open({ id: n.id, status: 'pending_configuration' }); }}><Plus size={16} />Add project</button></div>
     <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label="Projects"><table className="w-full min-w-[640px] text-sm"><thead><tr className="table-head"><th className="p-3">Project</th><th>Domain</th><th>Owner</th><th>Status</th><th>In use</th></tr></thead>
       <tbody>{q.data?.map((p) => <tr key={p.id} className="cursor-pointer border-t border-line hover:bg-bg" onClick={() => open(p)}><td className="p-3"><b>{p.id}</b>{p.name && p.name !== p.id && <span className="text-muted"> · {p.name}</span>}</td><td>{domains.data?.find((d) => d.id === p.domain_id)?.name ?? '—'}</td><td>{p.owner_name ?? <span className="text-warn">needs owner</span>}</td><td><span className={cn('chip', p.status === 'active' ? 'bg-success-bg text-success' : p.status === 'pending_configuration' ? 'bg-warn-bg text-warn' : 'bg-bg text-muted')}>{p.status.replace('_', ' ')}</span></td><td>{p.in_use ? 'Yes' : '—'}</td></tr>)}</tbody></table></div>
     {edit && <Dialog open onOpenChange={(o) => !o && setEdit(null)} title={edit.version ? `Project ${edit.id}` : 'Add project'} dismissOnOutside={false} footer={<button className="btn-primary" onClick={() => save.mutate()}>Save</button>} wide>
@@ -85,7 +86,7 @@ function Targets() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['targets'], queryFn: () => raw<{ effective_date: string; call_target: number; conn_target: number; bands: Record<string, number> }[]>('/api/settings/targets') });
   const [v, setV] = useState({ call_target: 170, conn_target: 60 });
-  const save = useMutation({ mutationFn: () => raw('/api/settings/targets', { method: 'POST', body: JSON.stringify({ call_target: v.call_target, conn_target: v.conn_target / 100 }) }), onSuccess: () => { toast.success('Saved — applies from the next Pacific date'); qc.invalidateQueries({ queryKey: ['targets'] }); } });
+  const save = useMutation({ mutationFn: () => raw('/api/settings/targets', { method: 'POST', body: JSON.stringify({ call_target: v.call_target, conn_target: v.conn_target / 100 }) }), onSuccess: () => { toast.success('Saved — applies from the next Pacific date'); void qc.invalidateQueries({ queryKey: ['targets'] }); } });
   return <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
     <div className="card p-5"><h3 className="mb-3 font-semibold">New targets</h3><div className="grid grid-cols-2 gap-3">
       <div><label className="block"><span className="label">Calls per day</span><input type="number" className="input" value={v.call_target} onChange={(e) => setV({ ...v, call_target: +e.target.value })} /></label></div>
@@ -98,13 +99,13 @@ function Targets() {
 function Policies() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['settings'], queryFn: () => raw<{ values: Record<string, unknown> }>('/api/settings') });
-  const save = useMutation({ mutationFn: (v: { key: string; value: unknown }) => raw('/api/settings', { method: 'PATCH', body: JSON.stringify(v) }), onSuccess: () => { toast.success('Saved'); qc.invalidateQueries({ queryKey: ['settings'] }); qc.invalidateQueries({ queryKey: ['config'] }); }, onError: (e) => toast.error((e as Error).message) });
+  const save = useMutation({ mutationFn: (v: { key: string; value: unknown }) => raw('/api/settings', { method: 'PATCH', body: JSON.stringify(v) }), onSuccess: () => { toast.success('Saved'); void qc.invalidateQueries({ queryKey: ['settings'] }); void qc.invalidateQueries({ queryKey: ['config'] }); }, onError: (e) => toast.error(e.message) });
   const s = q.data?.values as Record<string, Record<string, unknown>> | undefined;
   const [lw, setLw] = useState<number | null>(null); const [tpl, setTpl] = useState<string | null>(null); const [dial, setDial] = useState<{ mode: string; template: string; verified: boolean } | null>(null);
   if (!s) return <div className="skeleton h-40" />;
   const lock = s.lock_windows as { manual_minutes: number; import_minutes: number };
   const cel = s.celebration as { template: string; seconds: number };
-  const d = (dial ?? { mode: String((s.dialer as Record<string, unknown>).mode ?? 'tel'), template: String((s.dialer as Record<string, unknown>).template ?? ''), verified: !!(s.dialer as Record<string, unknown>).verified });
+  const d = (dial ?? { mode: asText((s.dialer as Record<string, unknown>).mode, 'tel'), template: asText((s.dialer as Record<string, unknown>).template), verified: !!(s.dialer as Record<string, unknown>).verified });
   return <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
     <div className="card p-5"><h3 className="font-semibold">Lock windows</h3><p className="text-xs text-muted">Manual entries: {lock.manual_minutes} min. Paste/import: 10–20 min.</p>
       <label className="label mt-3">Import lock window: {lw ?? lock.import_minutes} min</label><input type="range" min={10} max={20} value={lw ?? lock.import_minutes} onChange={(e) => setLw(+e.target.value)} className="w-full" />

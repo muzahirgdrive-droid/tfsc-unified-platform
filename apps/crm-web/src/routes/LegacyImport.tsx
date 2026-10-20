@@ -2,11 +2,12 @@
  * Sheet names are not identities: every sheet is mapped to a user explicitly (exact-name suggestions only). */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, FileSpreadsheet, TriangleAlert, Upload } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Empty, Hint } from '@/components/ui/bits';
 import { raw } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { asText } from '@/lib/text';
 
 type Sheet = { name: string; state: string; skipped?: string; entries?: number; formula_only?: number; no_name_or_phone?: number; no_name_or_phone_attempts?: number };
 type Figures = Record<string, number>;
@@ -31,8 +32,8 @@ export function LegacyImport() {
   const file = useRef<HTMLInputElement>(null);
   const upload = useMutation({
     mutationFn: (f: File) => { const fd = new FormData(); fd.append('file', f); return raw<Batch>('/api/admin/legacy-imports', { method: 'POST', body: fd }); },
-    onSuccess: (b) => { toast.success('Uploaded. Scanning the workbook…'); setSel(b.id); qc.invalidateQueries({ queryKey: ['legacy-imports'] }); },
-    onError: (e) => toast.error((e as Error).message),
+    onSuccess: (b) => { toast.success('Uploaded. Scanning the workbook…'); setSel(b.id); void qc.invalidateQueries({ queryKey: ['legacy-imports'] }); },
+    onError: (e) => toast.error(e.message),
   });
   const current = list.data?.find((b) => b.id === sel) ?? list.data?.[0];
   return (
@@ -51,7 +52,7 @@ export function LegacyImport() {
           <button key={b.id} onClick={() => setSel(b.id)} className={cn('chip h-8 px-3', current?.id === b.id ? 'bg-navy text-white' : 'border border-line bg-surface')}>
             {b.filename ?? 'workbook'} · {new Date(b.created_at).toLocaleDateString()} · {b.status}</button>))}</div>)}
       {!list.isLoading && !current && <Empty title="No imports yet">Upload the tracking workbook to scan it. Nothing is written until you map sheets and start.</Empty>}
-      {current && <BatchView b={current} />}
+      {current && <BatchView key={current.id} b={current} />}
     </div>
   );
 }
@@ -59,14 +60,14 @@ export function LegacyImport() {
 function BatchView({ b }: { b: Batch }) {
   const qc = useQueryClient();
   const agents = useQuery({ queryKey: ['users', 'sales_agent'], queryFn: () => raw<{ items: { id: string; display_name: string; email: string }[] }>('/api/users?role=sales_agent&limit=200') });
-  const [map, setMap] = useState<Record<string, string>>({});
+  // Keyed by batch id, so the mapping and period start fresh for each batch
+  const [map, setMap] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries({ ...b.suggested_mapping, ...b.mapping }).map(([k, v]) => [k, v ?? ''])));
   const [period, setPeriod] = useState<{ start: string; end: string } | null>(null);
-  useEffect(() => { setMap(Object.fromEntries(Object.entries({ ...b.suggested_mapping, ...b.mapping }).map(([k, v]) => [k, v ?? '']))); setPeriod(null); }, [b.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const start = useMutation({
     mutationFn: () => raw<Batch>(`/api/admin/legacy-imports/${b.id}/start`, { method: 'POST', body: JSON.stringify({ mapping: map,
       ...(period ? { period_start: period.start, period_end: period.end } : {}) }) }),
-    onSuccess: () => { toast.success('Import started'); qc.invalidateQueries({ queryKey: ['legacy-imports'] }); },
-    onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { toast.success('Import started'); void qc.invalidateQueries({ queryKey: ['legacy-imports'] }); },
+    onError: (e) => toast.error(e.message),
   });
   const sheets = b.scan?.sheets.filter((s) => !s.skipped) ?? [];
   const recon = b.result?.reconciliation ?? b.scan?.reconciliation;
@@ -156,7 +157,7 @@ function ReviewQueue({ id }: { id: string }) {
   const q = useQuery({ queryKey: ['legacy-review', id], queryFn: () => raw<{ items: ReviewItem[]; next_cursor: number | null; counts: Record<string, number> }>(`/api/admin/legacy-imports/${id}/review?limit=100`) });
   const act = useMutation({
     mutationFn: (v: { row: number; action: 'dismiss' | 'acknowledge' }) => raw(`/api/admin/legacy-imports/${id}/review/${v.row}`, { method: 'POST', body: JSON.stringify({ action: v.action }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['legacy-review', id] }), onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['legacy-review', id] }), onError: (e) => toast.error(e.message),
   });
   return (
     <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Review queue">
@@ -169,8 +170,8 @@ function ReviewQueue({ id }: { id: string }) {
             <tr key={it.row_no} className="border-t border-line align-top">
               <td className="py-2 whitespace-nowrap">{it.sheet} · {it.row}</td>
               <td className="py-2">{it.issues.map((i) => <div key={i.code}><b>{i.code.replace('_', ' ')}</b>{i.cells ? ` (${i.cells.join(', ')})` : ''}<div className="text-xs text-muted">{i.message}</div></div>)}</td>
-              <td className="py-2">{String(it.cells.name ?? '')}</td>
-              <td className="py-2 text-xs">{['called', 'connected', 'text_sent', 'email_sent', 'strong_followup', 'sign_up'].map((k) => String(it.cells[k] ?? '–')).join(' / ')}</td>
+              <td className="py-2">{asText(it.cells.name)}</td>
+              <td className="py-2 text-xs">{['called', 'connected', 'text_sent', 'email_sent', 'strong_followup', 'sign_up'].map((k) => asText(it.cells[k], '–')).join(' / ')}</td>
               <td className="py-2 text-right">{it.decision === 'review'
                 ? <button className="btn-secondary h-8 px-3" onClick={() => act.mutate({ row: it.row_no, action: 'dismiss' })}>Dismiss</button>
                 : <button className="btn-secondary h-8 px-3" onClick={() => act.mutate({ row: it.row_no, action: 'acknowledge' })}>Acknowledge</button>}</td>

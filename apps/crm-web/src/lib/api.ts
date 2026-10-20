@@ -37,7 +37,7 @@ export async function raw<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.method && init.method !== 'GET') headers.set('X-CSRF-Token', csrf);
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   const r = await fetch(path, { ...init, headers, credentials: 'same-origin' });
-  const body = await r.json().catch(() => ({}));
+  const body: unknown = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(r.status, (body as { error?: string }).error ?? `Request failed (${r.status})`, body);
   return body as T;
 }

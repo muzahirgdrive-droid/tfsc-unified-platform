@@ -2,6 +2,7 @@
 // (Agreement Lock), signs in to TFSC from the handoff link, submits for independent review; the TFSC Super Admin
 // approves; documents are issued by the worker and the CRM client profile appears via TFSC's signed webhook.
 // Needs the TFSC stack (LibreOffice renderer); skipped when the stack started without it.
+import AxeBuilder from '@axe-core/playwright';
 import { test, expect, makeLead, practice, stack, PW, TFSC_ROOT } from './helpers';
 
 test('proceed to Agreements, review, issue, client profile', async ({ as, api, browser }, testInfo) => {
@@ -55,9 +56,16 @@ test('proceed to Agreements, review, issue, client profile', async ({ as, api, b
   await r.waitForURL(`${tfsc}/`);
   await r.goto(`${tfsc}/reviews`);
   const item = r.locator('#reviews article').filter({ hasText: new RegExp(name, 'i') }).first();
-  r.once('dialog', (d) => d.accept('Client details checked by the E2E reviewer.'));
+  // The reason is required before a decision is recorded
+  await item.getByRole('button', { name: 'Approve exact revision' }).click();
+  await expect(r.getByRole('alert')).toHaveText('Enter a reason before recording a decision.');
+  await expect(item.locator('h3')).toContainText('· submitted');
+  await item.getByLabel('Reason for your decision').fill('Client details checked by the E2E reviewer.');
   await item.getByRole('button', { name: 'Approve exact revision' }).click();
   await expect(item.locator('h3')).toContainText('· approved');
+  await expect(item.getByText('Reviewer’s reason: Client details checked by the E2E reviewer.')).toBeVisible();
+  const a11y = await new AxeBuilder({ page: r }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  expect(a11y.violations.flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(' ')}: ${n.failureSummary}`))).toEqual([]);
   await rctx.close();
 
   // Submitter generates; the worker renders and issues

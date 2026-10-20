@@ -9,7 +9,7 @@ let source: EventSource | null = null;
 function connect() {
   if (source) return;
   source = new EventSource('/api/events', { withCredentials: true });
-  const dispatch = (ev: MessageEvent) => {
+  const dispatch = (ev: MessageEvent<string>) => {
     try { const data = JSON.parse(ev.data) as CrmEvent; handlers.forEach((h) => h(data)); } catch { /* ignore malformed */ }
   };
   for (const topic of ['sale.celebrated', 'dashboard.changed', 'flag.raised', 'meeting.changed', 'message']) source.addEventListener(topic, dispatch);

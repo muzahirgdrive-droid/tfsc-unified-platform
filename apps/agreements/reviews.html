@@ -1,1 +1,58 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agreement review | TFSC Compliance</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/tfsc.css"><link rel="stylesheet" href="/portal.css"></head><body><main class="container"><header><h1>Agreement review</h1><p>Approve the exact client details, services and fees before final release.</p><a href="/">Return to agreement builder</a></header><p id="error" role="alert"></p><section class="card"><h2>Receive a CRM handoff</h2><label>One-time handoff code<input id="code" autocomplete="off"></label><button id="redeem">Open draft</button><p id="redeemed"></p></section><section class="card"><h2>Submit a saved draft</h2><label>Client<select id="clients"></select></label><button id="submit">Submit for independent review</button><p>Save your final client details, selected services and fees in the builder before submitting.</p></section><section class="card" id="mapping" hidden><h2>Map an authorized CRM account</h2><label>CRM actor ID<input id="crm-actor"></label><label>Existing TFSC user ID<input id="tfsc-user"></label><button id="link">Link account</button></section><section class="card"><h2>Review queue</h2><button id="refresh">Refresh</button><div id="reviews"></div></section></main><script src="/reviews.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Agreement review | TFSC Compliance</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/tfsc.css">
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body class="review-page">
+  <header class="review-header">
+    <a href="/" class="review-brand" aria-label="TFSC Compliance home"><img src="/assets/tfsc-logo.png" alt="Twenty Four Seven Consultancy" width="3248" height="895"><span>TFSC <strong>Compliance</strong></span></a>
+    <a class="button button-quiet" href="/">Return to agreement builder</a>
+  </header>
+  <main class="review-main">
+    <div class="review-intro">
+      <p class="eyebrow">INDEPENDENT REVIEW</p>
+      <h1>Agreement review</h1>
+      <p>Approve the exact client details, services and fees before final release.</p>
+    </div>
+    <p id="error" class="review-alert" role="alert"></p>
+    <p id="status" class="review-status" role="status"></p>
+    <div class="review-actions">
+      <section class="panel" aria-labelledby="redeem-title">
+        <div class="panel-heading"><div><p class="eyebrow">FROM THE CRM</p><h2 id="redeem-title">Receive a CRM handoff</h2></div></div>
+        <div class="panel-body">
+          <div class="field"><label for="code">One-time handoff code</label><input id="code" autocomplete="off"></div>
+          <button class="button button-primary" id="redeem" type="button">Open draft</button>
+          <p id="redeemed" class="review-note"></p>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="submit-title">
+        <div class="panel-heading"><div><p class="eyebrow">YOUR DRAFTS</p><h2 id="submit-title">Submit a saved draft</h2></div></div>
+        <div class="panel-body">
+          <div class="field"><label for="clients">Client</label><select id="clients"></select></div>
+          <button class="button button-primary" id="submit" type="button">Submit for independent review</button>
+          <p class="field-note">Save your final client details, selected services and fees in the builder before submitting.</p>
+        </div>
+      </section>
+      <section class="panel" id="mapping" aria-labelledby="mapping-title" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">SUPER ADMIN</p><h2 id="mapping-title">Map an authorized CRM account</h2></div></div>
+        <div class="panel-body">
+          <div class="field"><label for="crm-actor">CRM actor ID</label><input id="crm-actor" autocomplete="off"></div>
+          <div class="field"><label for="tfsc-user">Existing TFSC user ID</label><input id="tfsc-user" autocomplete="off"></div>
+          <button class="button button-quiet" id="link" type="button">Link account</button>
+        </div>
+      </section>
+    </div>
+    <section class="panel review-queue" aria-labelledby="queue-title">
+      <div class="panel-heading"><div><p class="eyebrow">LATEST 100</p><h2 id="queue-title">Review queue</h2></div><button class="button button-quiet" id="refresh" type="button">Refresh</button></div>
+      <div class="panel-body"><div id="reviews" aria-live="polite"></div></div>
+    </section>
+  </main>
+  <script src="/reviews.js"></script>
+</body>
+</html>

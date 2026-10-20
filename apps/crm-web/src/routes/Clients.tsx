@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Dialog } from '@/components/ui/Dialog';
 import { Empty, PageHeader, Spinnerless } from '@/components/ui/bits';
 import { raw } from '@/lib/api';
+import { asText } from '@/lib/text';
 
 type C = { id: string; display_name: string; legal_name: string | null; account_owner: string | null; sale_date: string | null; agreement_status: string | null; primary_contact: Record<string, string | null> };
 type D = C & { domain_id?: string | null; project_id?: string | null; project_owner?: string | null; agreements?: { event: string; at: string; state: string | null; files: { id: string; name: string; download_url: string }[] }[]; meetings?: { title: string; starts_at: string; status: string }[]; timeline?: Record<string, unknown>[]; attribution?: { user: string; role: string; share: number }[]; files_tab?: string };
@@ -35,7 +36,7 @@ export default function Clients() {
             <p className="mt-1 text-xs text-muted">Documents download from TFSC Agreements after TFSC authorizes you; contract bytes stay in TFSC.</p></section>}
           {d.data.meetings && d.data.meetings.length > 0 && <section><h4 className="mb-2 font-semibold">Meetings</h4>{d.data.meetings.map((m, i) => <div key={i}>{m.title} · {new Date(m.starts_at).toLocaleString()} · {m.status}</div>)}</section>}
           {d.data.attribution && <section><h4 className="mb-2 font-semibold">Attribution</h4><div className="flex flex-wrap gap-2">{d.data.attribution.map((a, i) => <span key={i} className="chip bg-bg">{a.role}: {a.user}</span>)}</div></section>}
-          {d.data.timeline && <section><h4 className="mb-2 font-semibold">Timeline</h4><ol className="space-y-1 border-l-2 border-line pl-4">{d.data.timeline.map((e, i) => <li key={i}><span className="text-xs text-muted">{new Date(String(e.at)).toLocaleString()}</span> · {String(e.kind)} {e.by ? `· ${String(e.by)}` : ''}</li>)}</ol></section>}
+          {d.data.timeline && <section><h4 className="mb-2 font-semibold">Timeline</h4><ol className="space-y-1 border-l-2 border-line pl-4">{d.data.timeline.map((e, i) => <li key={i}><span className="text-xs text-muted">{new Date(String(e.at)).toLocaleString()}</span> · {asText(e.kind)} {e.by ? `· ${asText(e.by)}` : ''}</li>)}</ol></section>}
           {d.data.files_tab && <section className="rounded-xl bg-bg p-3 text-muted">Files: {d.data.files_tab}</section>}
         </div>}
       </Dialog>}

@@ -25,17 +25,17 @@ export function ExportsPanel() {
   const [pw, setPw] = useState<string | null>(null);
   const done = () => qc.invalidateQueries({ queryKey: ['exports'] });
   const req = useMutation({ mutationFn: () => raw('/api/exports', { method: 'POST', body: JSON.stringify(form) }),
-    onSuccess: () => { toast.success('Export requested. A Director must approve it.'); setForm({ ...form, reason: '' }); done(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Export requested. A Director must approve it.'); setForm({ ...form, reason: '' }); void done(); }, onError: (e) => toast.error(e.message) });
   const decide = useMutation({ mutationFn: (v: { id: string; approve: boolean }) => raw(`/api/exports/${v.id}/decision`, { method: 'POST', body: JSON.stringify({ approve: v.approve }) }),
-    onSuccess: () => { toast.success('Decision recorded'); done(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Decision recorded'); void done(); }, onError: (e) => toast.error(e.message) });
   const reveal = useMutation({ mutationFn: (id: string) => raw<{ password: string }>(`/api/exports/${id}/password`, { method: 'POST' }),
-    onSuccess: (r) => { setPw(r.password); done(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: (r) => { setPw(r.password); void done(); }, onError: (e) => toast.error(e.message) });
   const download = async (id: string) => {
     const r = await fetch(`/api/exports/${id}/download`, { credentials: 'same-origin' });
     if (!r.ok) return toast.error('This export is not available.');
     const url = URL.createObjectURL(await r.blob());
     const a = document.createElement('a'); a.href = url; a.download = `tfsc-crm-export-${id.slice(0, 8)}.zip`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000); done();
+    setTimeout(() => URL.revokeObjectURL(url), 2000); void done();
   };
   return (
     <section className="card p-5" aria-labelledby="exports-h">

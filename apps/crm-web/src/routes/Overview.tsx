@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutGrid, Plus, RotateCcw, Save } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Responsive, WidthProvider, type Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -50,12 +50,14 @@ export default function Overview() {
   const [widgets, setWidgets] = useState<W[]>([]);
   const [dirty, setDirty] = useState(false);
   const [gallery, setGallery] = useState(false);
-  useEffect(() => { if (layout.data) { setWidgets(layout.data.widgets.filter((w) => WIDGETS[w.id]).map((w) => ({ ...w, w: Math.max(w.w, WIDGETS[w.id]!.w === 3 ? 3 : 4), h: Math.max(w.h, WIDGETS[w.id]!.h) }))); setDirty(false); } }, [layout.data]);
+  // Take the saved layout whenever the server copy changes (state adjusted during render, not in an effect)
+  const [synced, setSynced] = useState<LayoutResp>();
+  if (layout.data && layout.data !== synced) { setSynced(layout.data); setWidgets(layout.data.widgets.filter((w) => WIDGETS[w.id]).map((w) => ({ ...w, w: Math.max(w.w, WIDGETS[w.id]!.w === 3 ? 3 : 4), h: Math.max(w.h, WIDGETS[w.id]!.h) }))); setDirty(false); }
   // live: SSE nudges refetch the (read-only) dashboard data
-  const onEvent = useCallback(() => { qc.invalidateQueries({ queryKey: ['summary'] }); qc.invalidateQueries({ queryKey: ['leaderboard'] }); }, [qc]);
+  const onEvent = useCallback(() => { void qc.invalidateQueries({ queryKey: ['summary'] }); void qc.invalidateQueries({ queryKey: ['leaderboard'] }); }, [qc]);
   useCrmEvents(onEvent);
   const save = useMutation({ mutationFn: () => raw('/api/dashboard/layout', { method: 'PUT', body: JSON.stringify({ widgets: widgets.map(({ id, x, y, w, h }) => ({ id, x, y, w, h, filters: {} })) }) }),
-    onSuccess: () => { toast.success('Dashboard layout saved'); setDirty(false); qc.invalidateQueries({ queryKey: ['layout'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Dashboard layout saved'); setDirty(false); void qc.invalidateQueries({ queryKey: ['layout'] }); }, onError: (e) => toast.error(e.message) });
   const reset = useMutation({ mutationFn: () => raw('/api/dashboard/layout', { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['layout'] }) });
   const customizable = !!layout.data?.customizable;
   const rgl: Layout[] = useMemo(() => widgets.map((w) => ({ i: w.id, x: w.x, y: w.y, w: w.w, h: w.h, minW: 3, minH: 3 })), [widgets]);

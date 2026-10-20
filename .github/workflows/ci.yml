@@ -65,6 +65,9 @@ jobs:
       - name: Typed client matches the API contract
         working-directory: apps/crm-web
         run: npx openapi-typescript ../crm-api/openapi.json -o src/lib/schema.d.ts && git diff --exit-code src/lib/schema.d.ts
+      - name: ESLint (CRM web)
+        working-directory: apps/crm-web
+        run: npm run lint
       - name: Unit tests (CRM web)
         working-directory: apps/crm-web
         run: npm test --if-present

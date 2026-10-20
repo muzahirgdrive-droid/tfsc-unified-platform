@@ -7,7 +7,7 @@ import { AuthProvider } from '@/lib/auth';
 import { router } from './router';
 import './styles/app.css';
 
-const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: (n, e) => n < 2 && !String((e as Error).message).includes('40'), refetchOnWindowFocus: true } } });
+const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: (n, e) => n < 2 && !String(e.message).includes('40'), refetchOnWindowFocus: true } } });
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

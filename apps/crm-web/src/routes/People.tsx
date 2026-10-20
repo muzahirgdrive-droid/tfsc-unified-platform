@@ -89,7 +89,7 @@ function UserForm({ user, users, teams, onClose }: { user: U | null; users: U[];
       if (rank >= 3 && agr) await raw(`/api/users/${saved.id}/agreements`, { method: 'PUT', body: JSON.stringify({ enabled: agr.enabled, role: agr.role, companies: agr.companies }) });
       return saved;
     },
-    onSuccess: () => { toast.success(user ? 'User updated' : 'User created'); qc.invalidateQueries({ queryKey: ['users'] }); onClose(); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { toast.success(user ? 'User updated' : 'User created'); void qc.invalidateQueries({ queryKey: ['users'] }); onClose(); }, onError: (e) => toast.error(e.message),
   });
   const f = (k: keyof typeof v, label: string, type = 'text') => <div><label className="block"><span className="label">{label}</span><input type={type} className="input" value={String(v[k])} onChange={(e) => setV({ ...v, [k]: e.target.value })} disabled={k === 'email' && !!user} /></label></div>;
   return (
@@ -136,7 +136,7 @@ function TeamForm({ team, users, onClose }: { team: T | null; users: U[]; onClos
       for (const id of team.member_ids.filter((m) => !v.members.includes(m))) await raw(`/api/teams/${team.id}/members/remove`, { method: 'POST', body: JSON.stringify({ user_id: id }) });
       return raw('/api/teams/' + team.id, { method: 'PATCH', body: JSON.stringify({ version: team.version, name: v.name, leader_id: v.leader_id || null, clear_leader: !v.leader_id }) });
     },
-    onSuccess: () => { toast.success('Saved'); qc.invalidateQueries({ queryKey: ['teams'] }); onClose(); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { toast.success('Saved'); void qc.invalidateQueries({ queryKey: ['teams'] }); onClose(); }, onError: (e) => toast.error(e.message),
   });
   const agents = users.filter((u) => u.crm_role === 'sales_agent');
   return (
@@ -159,8 +159,8 @@ function OffboardDialog({ user, onClose }: { user: U; onClose: (done: boolean) =
   const [reason, setReason] = useState('');
   const run = useMutation({
     mutationFn: () => raw<{ sessions_revoked: number; followups_moved: number; leads_moved: number; agreements_revoked: boolean }>(`/api/users/${user.id}/offboard`, { method: 'POST', body: JSON.stringify({ reason }) }),
-    onSuccess: (r) => { toast.success(`${user.display_name} offboarded: ${r.followups_moved} follow-up(s) and ${r.leads_moved} lead(s) moved, ${r.sessions_revoked} session(s) ended${r.agreements_revoked ? ', Agreements access revoked' : ''}.`); qc.invalidateQueries({ queryKey: ['users'] }); onClose(true); },
-    onError: (e) => toast.error((e as Error).message),
+    onSuccess: (r) => { toast.success(`${user.display_name} offboarded: ${r.followups_moved} follow-up(s) and ${r.leads_moved} lead(s) moved, ${r.sessions_revoked} session(s) ended${r.agreements_revoked ? ', Agreements access revoked' : ''}.`); void qc.invalidateQueries({ queryKey: ['users'] }); onClose(true); },
+    onError: (e) => toast.error(e.message),
   });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose(false)} title={`Offboard ${user.display_name}?`} dismissOnOutside={false}

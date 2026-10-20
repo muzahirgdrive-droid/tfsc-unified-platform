@@ -8,6 +8,7 @@ import { raw, type Schemas } from '@/lib/api';
 import { rankOf, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { businessDate, dual, ptToUtc } from '@/lib/time';
+import { asText } from '@/lib/text';
 
 type L = Schemas['LeadOut'] & Partial<Schemas['LeadOut']>;
 const STAGES: [string, string][] = [['', 'Active'], ['qualified_lead', 'Lead'], ['meeting', 'Meeting'], ['signed_up', 'Signed up'], ['agreement_in_progress', 'Agreement'], ['client', 'Client'], ['lost', 'Lost']];
@@ -48,9 +49,9 @@ function LeadDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['lead', id], queryFn: () => raw<L>(`/api/leads/${id}`) });
   const [dlg, setDlg] = useState<null | 'lost' | 'reverse' | 'reopen' | 'reassign' | 'meeting' | 'agreements'>(null);
-  const refresh = () => { qc.invalidateQueries({ queryKey: ['lead', id] }); qc.invalidateQueries({ queryKey: ['leads'] }); };
+  const refresh = () => { void qc.invalidateQueries({ queryKey: ['lead', id] }); void qc.invalidateQueries({ queryKey: ['leads'] }); };
   const tr = useMutation({ mutationFn: (v: { action: string; reason?: string }) => raw(`/api/leads/${id}/transition`, { method: 'POST', body: JSON.stringify({ version: q.data!.version, ...v }) }),
-    onSuccess: (_d, v) => { toast.success(v.action === 'sign_up' ? 'Sale confirmed — celebrating!' : 'Lead updated'); setDlg(null); refresh(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: (_d, v) => { toast.success(v.action === 'sign_up' ? 'Sale confirmed — celebrating!' : 'Lead updated'); setDlg(null); refresh(); }, onError: (e) => toast.error(e.message) });
   const l = q.data;
   const mgmt = rank >= 1 && l && 'owner_name' in l;
   return (
@@ -74,7 +75,7 @@ function LeadDetail({ id, onClose }: { id: string; onClose: () => void }) {
           {mgmt && l.meetings && l.meetings.length > 0 && <section><h4 className="mb-2 font-semibold">Meetings</h4><ul className="space-y-1 text-sm">{l.meetings.map((m) => <li key={String(m.id)}>{dual(String(m.starts_at))} — {String(m.title)} <span className="chip bg-bg">{String(m.status)}</span></li>)}</ul></section>}
           {mgmt && l.attribution && <section><h4 className="mb-2 font-semibold">Attribution ledger</h4><div className="flex flex-wrap gap-2">{l.attribution.map((a, i) => <span key={i} className="chip bg-bg">{String(a.role).replace('_', ' ')}: {String(a.user)}{Number(a.share) ? ` · ${(Number(a.share) * 100).toFixed(0)}%` : ''}</span>)}</div></section>}
           {mgmt && l.timeline && <section><h4 className="mb-2 font-semibold">Timeline</h4><ol className="space-y-2 border-l-2 border-line pl-4 text-sm">{l.timeline.map((e, i) => (
-            <li key={i}><span className="text-xs text-muted">{new Date(String(e.at)).toLocaleString()}</span> · <b>{String(e.kind)}</b> {e.by ? `by ${String(e.by)}` : ''} {e.stage ? `· ${String(e.stage)}` : ''} {e.action ? `· ${String(e.action)}` : ''} {e.remarks ? <span className="text-muted">— {String(e.remarks)}</span> : null}</li>))}</ol></section>}
+            <li key={i}><span className="text-xs text-muted">{new Date(String(e.at)).toLocaleString()}</span> · <b>{asText(e.kind)}</b> {e.by ? `by ${asText(e.by)}` : ''} {e.stage ? `· ${asText(e.stage)}` : ''} {e.action ? `· ${asText(e.action)}` : ''} {e.remarks ? <span className="text-muted">— {asText(e.remarks)}</span> : null}</li>))}</ol></section>}
         </div>)}
       {l && (dlg === 'lost' || dlg === 'reverse' || dlg === 'reopen') && <ReasonDialog title={dlg === 'lost' ? 'Mark lead lost' : dlg === 'reverse' ? 'Reverse sale' : 'Reopen lead'} onClose={() => setDlg(null)} onSubmit={(reason) => tr.mutate({ action: dlg === 'reverse' ? 'reverse_sale' : dlg, reason })} />}
       {l && dlg === 'reassign' && <Reassign lead={l} onClose={() => setDlg(null)} onDone={refresh} />}
@@ -95,7 +96,7 @@ function Reassign({ lead, onClose, onDone }: { lead: L; onClose: () => void; onD
   const people = useQuery({ queryKey: ['users-scope'], queryFn: () => raw<{ items: { id: string; display_name: string }[] }>('/api/users?role=sales_agent&limit=200') });
   const [to, setTo] = useState(''); const [reason, setReason] = useState(''); const [share, setShare] = useState(50);
   const m = useMutation({ mutationFn: () => raw(`/api/leads/${lead.id}/reassign`, { method: 'POST', body: JSON.stringify({ version: lead.version, to_user: to, reason, incentive_split: to === lead.owner_id ? { [to]: 1 } : { [lead.owner_id]: (100 - share) / 100, [to]: share / 100 } }) }),
-    onSuccess: () => { toast.success('Lead reassigned'); onDone(); onClose(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Lead reassigned'); onDone(); onClose(); }, onError: (e) => toast.error(e.message) });
   return <Dialog open onOpenChange={(o) => !o && onClose()} title="Reassign lead" description="Reassignment needs a reason and records the incentive attribution." dismissOnOutside={false}
     footer={<button className="btn-primary" disabled={!to || reason.length < 3 || m.isPending} onClick={() => m.mutate()}>Reassign</button>}>
     <label className="block"><span className="label">New owner</span><select className="input mb-3" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose…</option>{people.data?.items.filter((p) => p.id !== lead.owner_id).map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label>
@@ -108,7 +109,7 @@ function Schedule({ lead, onClose, onDone }: { lead: L; onClose: () => void; onD
   const g = useQuery({ queryKey: ['google'], queryFn: () => raw<{ configured: boolean; connected: boolean; message: string | null }>('/api/integrations/google/status') });
   const [v, setV] = useState({ title: `Demo · ${lead.provider_name ?? ''}`, date: businessDate(), time: '10:00', duration: 30, attendees: '', invite: false });
   const m = useMutation({ mutationFn: () => raw<{ meet_url: string | null }>(`/api/leads/${lead.id}/meetings`, { method: 'POST', body: JSON.stringify({ title: v.title, starts_at: ptToUtc(v.date, v.time).toISOString(), duration_minutes: v.duration, attendees: v.attendees.split(/[,;\s]+/).filter(Boolean), send_invites: v.invite }) }),
-    onSuccess: (r) => { toast.success(r.meet_url ? 'Meeting created with Google Meet' : 'Meeting recorded (Google not connected)'); onDone(); onClose(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: (r) => { toast.success(r.meet_url ? 'Meeting created with Google Meet' : 'Meeting recorded (Google not connected)'); onDone(); onClose(); }, onError: (e) => toast.error(e.message) });
   return <Dialog open onOpenChange={(o) => !o && onClose()} title="Schedule meeting" description={g.data?.message ?? 'Creates a Google Calendar event with a Meet link.'} dismissOnOutside={false}
     footer={<button className="btn-primary" disabled={m.isPending} onClick={() => m.mutate()}>Create meeting</button>}>
     <div className="space-y-3">
@@ -132,7 +133,7 @@ function Preflight({ lead, onClose, onDone }: { lead: L; onClose: () => void; on
     mutationFn: () => raw<{ status: string; agreements_url: string | null; message: string }>(`/api/leads/${lead.id}/agreements/handoff`, { method: 'POST', body: JSON.stringify({
       legal_name: val('legal_name'), providers: p?.providers ?? [], address: val('address'), email: val('email') || null, phone: val('phone') || null, signatory: val('signatory'), title: val('title'),
       effective_date: val('effective_date'), entity: (v.entity as string) || p?.suggested_entity, document_types: v.document_types ?? ['baa', 'services'] }) }),
-    onSuccess: (r) => { const url = r.agreements_url; toast.success(r.message, url ? { duration: 20000, action: { label: 'Open Agreements', onClick: () => window.open(url, '_blank', 'noopener') } } : undefined); onDone(); onClose(); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: (r) => { const url = r.agreements_url; toast.success(r.message, url ? { duration: 20000, action: { label: 'Open Agreements', onClick: () => window.open(url, '_blank', 'noopener') } } : undefined); onDone(); onClose(); }, onError: (e) => toast.error(e.message),
   });
   const f = (k: keyof Pre, label: string, type = 'text') => <div><label className="block"><span className="label">{label}</span><input type={type} className="input" value={val(k)} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></label></div>;
   const docs = (v.document_types as string[] | undefined) ?? ['baa', 'services'];
@@ -140,7 +141,7 @@ function Preflight({ lead, onClose, onDone }: { lead: L; onClose: () => void; on
     footer={<button className="btn-primary" disabled={!p || m.isPending || !((v.entity as string) || p.suggested_entity)} onClick={() => m.mutate()}><Lock size={16} />Lock & open in TFSC Agreements</button>}>
     {!p ? <div className="skeleton h-48" /> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {f('legal_name', 'Practice legal name')}{f('address', 'Address')}{f('email', 'Notice email', 'email')}{f('phone', 'Phone')}{f('signatory', 'Signatory')}{f('title', 'Title')}{f('effective_date', 'Effective date', 'date')}
-      <div><label className="block"><span className="label">TFSC contracting company</span><select className="input" value={(v.entity as string) ?? p.suggested_entity ?? ''} onChange={(e) => setV({ ...v, entity: e.target.value })}><option value="">Choose…</option>{p.entity_options.map((o) => <option key={o}>{o}</option>)}</select></label>
+      <div><label className="block"><span className="label">TFSC contracting company</span><select className="input" value={(v.entity) ?? p.suggested_entity ?? ''} onChange={(e) => setV({ ...v, entity: e.target.value })}><option value="">Choose…</option>{p.entity_options.map((o) => <option key={o}>{o}</option>)}</select></label>
         {p.must_pick_reason && <p className="mt-1 text-xs text-warn">{p.must_pick_reason}</p>}</div>
       <div className="sm:col-span-2 flex flex-wrap gap-4 text-sm"><span className="label">Documents</span>{[['baa', 'Business Associate Agreement'], ['services', 'Services Agreement']].map(([k, l]) => (
         <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={docs.includes(k!)} onChange={(e) => setV({ ...v, document_types: e.target.checked ? [...docs, k!] : docs.filter((d) => d !== k) })} />{l}</label>))}</div>

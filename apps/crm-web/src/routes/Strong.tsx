@@ -18,10 +18,10 @@ export default function Strong() {
   const [reason, setReason] = useState(''); const [owner, setOwner] = useState(''); const [comment, setComment] = useState<Record<string, string>>({});
   const refresh = () => qc.invalidateQueries({ queryKey: ['strong'] });
   const decide = useMutation({ mutationFn: (v: { s: S; decision: 'confirmed' | 'rejected' }) => raw(`/api/strong/${v.s.id}/decide`, { method: 'POST', body: JSON.stringify({ version: v.s.version, decision: v.decision, reason: reason || null }) }),
-    onSuccess: () => { toast.success('Decision recorded'); setReject(null); setReason(''); refresh(); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Decision recorded'); setReject(null); setReason(''); void refresh(); }, onError: (e) => toast.error(e.message) });
   const conv = useMutation({ mutationFn: (s: S) => raw<{ owner_id: string; owner_rule: string }>(`/api/strong/${s.id}/convert`, { method: 'POST', body: JSON.stringify({ owner_id: owner || null, reason: reason || null }) }),
-    onSuccess: (r) => { toast.success(`Converted to lead (${r.owner_rule.replace('_', ' ')})`); setConvert(null); setOwner(''); setReason(''); refresh(); qc.invalidateQueries({ queryKey: ['leads'] }); }, onError: (e) => toast.error((e as Error).message) });
-  const post = useMutation({ mutationFn: (s: S) => raw(`/api/strong/${s.id}/comments`, { method: 'POST', body: JSON.stringify({ body: comment[s.id] }) }), onSuccess: () => { refresh(); setComment({}); } });
+    onSuccess: (r) => { toast.success(`Converted to lead (${r.owner_rule.replace('_', ' ')})`); setConvert(null); setOwner(''); setReason(''); void refresh(); void qc.invalidateQueries({ queryKey: ['leads'] }); }, onError: (e) => toast.error(e.message) });
+  const post = useMutation({ mutationFn: (s: S) => raw(`/api/strong/${s.id}/comments`, { method: 'POST', body: JSON.stringify({ body: comment[s.id] }) }), onSuccess: () => { void refresh(); setComment({}); } });
   const name = (id: string | null | undefined) => people.data?.items.find((p) => p.id === id)?.display_name ?? 'automatic rule';
   return (
     <div>

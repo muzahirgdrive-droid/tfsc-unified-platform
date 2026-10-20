@@ -33,7 +33,7 @@ const Loading = () => <div className="space-y-2"><Skeleton className="h-8 w-1/2"
 function Kpi({ f, metric, label, kind = 'number', icon }: { f: Filters; metric: string; label: string; kind?: 'number' | 'pct'; icon?: ReactNode }) {
   const q = useSummary(f);
   if (!q.data) return <div className="card h-full p-5"><Loading /></div>;
-  return <Stat label={label} value={q.data.current[metric] as number} previous={q.data.previous[metric] as number} kind={kind} definition={q.data.definitions[metric]} icon={icon} foot={q.data.period.label} />;
+  return <Stat label={label} value={q.data.current[metric]} previous={q.data.previous[metric]} kind={kind} definition={q.data.definitions[metric]} icon={icon} foot={q.data.period.label} />;
 }
 
 function Composite({ f }: { f: Filters }) {

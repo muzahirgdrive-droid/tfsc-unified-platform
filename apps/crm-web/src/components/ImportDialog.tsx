@@ -21,7 +21,7 @@ export function ImportDialog({ file, onClose }: { file: File; onClose: () => voi
   const upload = useMutation({
     mutationFn: () => { const fd = new FormData(); fd.append('file', file); return raw<Job>('/api/imports', { method: 'POST', body: fd }); },
     onSuccess: (j) => { setJobId(j.id); const s = j.sheets.find((x) => x.rows > 0) ?? j.sheets[0]; if (s) pick(s); },
-    onError: (e) => { toast.error((e as Error).message); onClose(); },
+    onError: (e) => { toast.error(e.message); onClose(); },
   });
   useEffect(() => { upload.mutate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const job = useQuery({ queryKey: ['import', jobId], enabled: !!jobId, queryFn: () => raw<Job>(`/api/imports/${jobId}`),
@@ -30,8 +30,8 @@ export function ImportDialog({ file, onClose }: { file: File; onClose: () => voi
   const pick = (s: SheetInfo) => { setSheet(s.name); setCols(s.mapping); setHeader(s.header_detected); };
   const start = useMutation({
     mutationFn: () => raw<Job>(`/api/imports/${jobId}/start`, { method: 'POST', body: JSON.stringify({ sheet, columns: cols, header }) }),
-    onSuccess: (d) => { qc.setQueryData(['import', jobId], d); qc.invalidateQueries({ queryKey: ['activities'] }); },
-    onError: (e) => toast.error((e as Error).message),
+    onSuccess: (d) => { qc.setQueryData(['import', jobId], d); void qc.invalidateQueries({ queryKey: ['activities'] }); },
+    onError: (e) => toast.error(e.message),
   });
   const done = j?.status === 'done';
   const rejected = useQuery({ queryKey: ['import-rows', jobId, done], enabled: done, queryFn: () => raw<{ items: RowResult[] }>(`/api/imports/${jobId}/rows?decision=rejected&limit=200`) });

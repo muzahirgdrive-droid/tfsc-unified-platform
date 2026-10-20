@@ -16,8 +16,8 @@ export default function Meetings() {
   const q = useQuery({ queryKey: ['meetings', from], queryFn: () => raw<M[]>(`/api/meetings?date_from=${from}&date_to=${to}`) });
   const g = useQuery({ queryKey: ['google'], queryFn: () => raw<{ mode: string; configured: boolean; connected: boolean; message: string | null }>('/api/integrations/google/status') });
   const upd = useMutation({ mutationFn: (v: { m: M; status: string }) => raw(`/api/meetings/${v.m.id}`, { method: 'PATCH', body: JSON.stringify({ version: v.m.version, status: v.status }) }),
-    onSuccess: () => { toast.success('Meeting updated'); qc.invalidateQueries({ queryKey: ['meetings'] }); }, onError: (e) => toast.error((e as Error).message) });
-  const sync = useMutation({ mutationFn: () => raw<{ changed: number }>('/api/meetings/sync', { method: 'POST' }), onSuccess: (r) => { toast.success(`Synced: ${r.changed} changes`); qc.invalidateQueries({ queryKey: ['meetings'] }); }, onError: (e) => toast.error((e as Error).message) });
+    onSuccess: () => { toast.success('Meeting updated'); void qc.invalidateQueries({ queryKey: ['meetings'] }); }, onError: (e) => toast.error(e.message) });
+  const sync = useMutation({ mutationFn: () => raw<{ changed: number }>('/api/meetings/sync', { method: 'POST' }), onSuccess: (r) => { toast.success(`Synced: ${r.changed} changes`); void qc.invalidateQueries({ queryKey: ['meetings'] }); }, onError: (e) => toast.error(e.message) });
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   return (
     <div>

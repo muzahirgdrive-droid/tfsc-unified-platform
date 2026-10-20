@@ -24,7 +24,7 @@ export function CommandPalette({ items }: { items: { to: string; label: string; 
           <Command.List>
             <Command.Empty className="p-3 text-muted">No match.</Command.Empty>
             {items.map((i) => (
-              <Command.Item key={i.to} value={i.label} onSelect={() => { setOpen(false); nav({ to: i.to }); }}
+              <Command.Item key={i.to} value={i.label} onSelect={() => { setOpen(false); void nav({ to: i.to }); }}
                 className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 data-[selected=true]:bg-bg">{i.icon}{i.label}</Command.Item>
             ))}
           </Command.List>

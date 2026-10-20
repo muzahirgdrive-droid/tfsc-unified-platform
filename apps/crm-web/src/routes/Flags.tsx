@@ -18,11 +18,11 @@ export default function Flags() {
   const [res, setRes] = useState<F | null>(null);
   const [form, setForm] = useState({ resolution: 'keep_existing_owner', note: '', share: 50 });
   const q = useQuery({ queryKey: ['flags', filt], queryFn: () => raw<{ items: F[]; counts: Record<string, number> }>(`/api/flags?status=${filt.status}${filt.severity ? `&severity=${filt.severity}` : ''}`), refetchInterval: 30_000 });
-  const ack = useMutation({ mutationFn: () => raw('/api/flags/ack', { method: 'POST', body: JSON.stringify({ ids: sel }) }), onSuccess: () => { setSel([]); qc.invalidateQueries({ queryKey: ['flags'] }); toast.success('Acknowledged'); } });
+  const ack = useMutation({ mutationFn: () => raw('/api/flags/ack', { method: 'POST', body: JSON.stringify({ ids: sel }) }), onSuccess: () => { setSel([]); void qc.invalidateQueries({ queryKey: ['flags'] }); toast.success('Acknowledged'); } });
   const resolve = useMutation({
     mutationFn: () => raw(`/api/flags/${res!.id}/resolve`, { method: 'POST', body: JSON.stringify({ version: res!.version, resolution: form.resolution, note: form.note,
       incentive_split: form.resolution === 'transfer' && res!.other_user && res!.raised_for_user ? { [res!.other_user]: (100 - form.share) / 100, [res!.raised_for_user]: form.share / 100 } : null }) }),
-    onSuccess: () => { setRes(null); qc.invalidateQueries({ queryKey: ['flags'] }); toast.success('Resolved and audited'); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { setRes(null); void qc.invalidateQueries({ queryKey: ['flags'] }); toast.success('Resolved and audited'); }, onError: (e) => toast.error(e.message),
   });
   const red = q.data?.items.filter((f) => f.severity === 'red' && f.status === 'open') ?? [];
   return (

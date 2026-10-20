@@ -15,6 +15,7 @@ import { CelebrationOverlay } from './Celebration';
 import { RedAlert } from './RedAlert';
 import { CommandPalette } from './CommandPalette';
 import { WorldClockChip } from './WorldClock';
+import { asText } from '@/lib/text';
 
 type NavItem = { to: string; label: string; icon: ReactNode; minRank?: number; cap?: string };
 const NAV: NavItem[] = [
@@ -55,7 +56,7 @@ function Notifications() {
   const q = useQuery({ queryKey: ['notifications'], queryFn: () => call(client.GET('/api/notifications')), refetchInterval: 30_000 });
   const unread = q.data?.unread ?? 0;
   return (
-    <DM.Root onOpenChange={(o) => { if (!o && unread) call(client.POST('/api/notifications/read', { body: { ids: [] } })).then(() => q.refetch()); }}>
+    <DM.Root onOpenChange={(o) => { if (!o && unread) void call(client.POST('/api/notifications/read', { body: { ids: [] } })).then(() => q.refetch()); }}>
       <DM.Trigger className="btn-ghost relative h-9 w-9 px-0" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
         <Bell size={18} />{unread > 0 && <span className="absolute right-1 top-1 h-4 min-w-4 rounded-full bg-danger px-1 text-[10px] font-bold text-white">{unread}</span>}
       </DM.Trigger>
@@ -65,7 +66,7 @@ function Notifications() {
           {(q.data?.items ?? []).map((n) => (
             <div key={n.id} className={cn('rounded-lg p-3 text-sm', !n.read_at && 'bg-cyan/5')}>
               <div className="font-semibold">{n.kind.replace(/[._]/g, ' ')}</div>
-              <div className="text-muted">{String((n.payload as Record<string, unknown>).message ?? '')}</div>
+              <div className="text-muted">{asText((n.payload as Record<string, unknown>).message)}</div>
               <div className="mt-1 text-[11px] text-subtle">{new Date(n.created_at).toLocaleString()}</div>
             </div>
           ))}
@@ -81,7 +82,9 @@ export function AppShell() {
   const [open, setOpen] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const rank = rankOf(me);
-  useEffect(() => setOpen(false), [path]);
+  // Close the mobile menu on navigation (state adjusted during render, not in an effect)
+  const [navPath, setNavPath] = useState(path);
+  if (navPath !== path) { setNavPath(path); setOpen(false); }
   if (!me) return null;
   const items = NAV.filter((n) => rank >= (n.minRank ?? 0));
   const isActive = (to: string) => (to === '/' ? path === '/' : path.startsWith(to));
