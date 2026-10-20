@@ -43,12 +43,12 @@ jobs:
         run: python -m pytest -q tests
       - name: CRM v2 tests (PostgreSQL, RLS)
         working-directory: apps/crm-api
-        run: python -m pytest -q tests_v2
+        run: python -m pytest -q tests_v2 --cov=tfsc_crm.domain --cov=tfsc_crm.security --cov-report=term --cov-fail-under=85
       - name: Refine engine vectors (Python)
-        run: python -m pytest -q packages/refine/python
+        run: python -m pytest -q packages/refine/python --cov=tfsc_refine --cov-fail-under=85
       - name: Bridge contract (Python)
         if: hashFiles('packages/bridge-contract/python/**') != ''
-        run: python -m pytest -q packages/bridge-contract/python
+        run: python -m pytest -q packages/bridge-contract/python --cov=tfsc_bridge --cov-fail-under=85
       - name: Agreements tests
         working-directory: apps/agreements
         run: python -m pytest -q
@@ -115,6 +115,35 @@ jobs:
             apps/crm-web/playwright-report
             apps/crm-web/test-results
           retention-days: 7
+
+  security:
+    # Dependency and secret scanning, SBOMs (§26).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22", cache: npm, cache-dependency-path: apps/crm-web/package-lock.json}
+      - name: Tools
+        run: pip install pip-audit==2.10.1 cyclonedx-bom==7.5.0
+      - name: Python dependencies (known vulnerabilities)
+        run: pip-audit -r apps/crm-api/requirements.txt -r apps/agreements/requirements.txt
+      - name: npm production dependencies (high and critical)
+        run: for d in apps/crm-web packages/refine/ts packages/bridge-contract/ts; do (cd $d && npm audit --omit=dev --audit-level=high) || exit 1; done
+      - name: Secrets in the whole history (gitleaks)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar xz gitleaks
+          ./gitleaks git . --redact --no-banner -c .gitleaks.toml
+      - name: SBOMs (CycloneDX)
+        run: |
+          mkdir -p sbom
+          cyclonedx-py requirements apps/crm-api/requirements.txt -o sbom/crm-api.cdx.json
+          cyclonedx-py requirements apps/agreements/requirements.txt -o sbom/agreements.cdx.json
+          cd apps/crm-web && npm ci --ignore-scripts && npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --ignore-npm-errors --output-file ../../sbom/crm-web.cdx.json
+      - uses: actions/upload-artifact@v4
+        with: {name: sbom, path: sbom, retention-days: 30}
 
   infra:
     runs-on: ubuntu-latest

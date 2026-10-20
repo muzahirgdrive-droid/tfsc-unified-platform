@@ -1,0 +1,10 @@
+# Secret scanning (CI job `security`): gitleaks default rules, plus an allowlist for synthetic test fixtures only.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic test fixtures; no real credentials"
+paths = [
+  '''^packages/bridge-contract/signature-vectors\.json$''',  # published HMAC test vectors shared by both apps
+  '''^apps/crm-api/tests_v2/test_api_capture\.py$''',          # idempotency request keys in tests
+]

@@ -48,3 +48,34 @@ def test_schemas():
                                                'display_name': 'A', 'role': 'super_admin', 'companies': [], 'action': 'grant'})
     with pytest.raises(BridgeError):
         validate('event_envelope', {'event_id': 'abcdefgh', 'topic': 'evil.topic', 'schema_version': 1, 'occurred_at': 'x', 'source': 'tfsc', 'data': {}})
+
+
+def test_signing_refuses_weak_secret_and_sets_event_headers():
+    with pytest.raises(BridgeError) as e:
+        headers('short', 'POST', '/x', b'{}')
+    assert e.value.status == 503
+    h = headers(SECRET, 'POST', '/x', b'{}', event_id='evt-1234567890', schema='agreement.issued@1', now=1000, nonce='n' * 20)
+    assert (h['X-TFSC-Event-Id'], h['X-TFSC-Schema'], h['X-TFSC-Nonce']) == ('evt-1234567890', 'agreement.issued@1', 'n' * 20)
+    verify(SECRET, 'POST', '/x', b'{}', {k.lower(): v for k, v in h.items()}, now=1000)  # header names are case-insensitive
+
+
+@pytest.mark.parametrize('bad', [{'X-TFSC-Timestamp': 'yesterday'}, {'X-TFSC-Nonce': 'short'}, {'X-TFSC-Nonce': 'has spaces in it!!!!'},
+                                 {'X-TFSC-Signature': '0' * 64}])
+def test_malformed_authentication_is_refused(bad):
+    h = {**headers(SECRET, 'POST', '/x', b'{}', now=1000), **bad}
+    with pytest.raises(BridgeError) as e:
+        verify(SECRET, 'POST', '/x', b'{}', h, now=1000)
+    assert e.value.status == 401
+
+
+def test_validator_rules():
+    import tfsc_bridge as tb
+    schema = {'type': 'object', 'required': ['n'], 'additionalProperties': False, 'properties': {
+        'n': {'type': 'integer'}, 'k': {'const': 'v1'}, 's': {'type': 'string', 'minLength': 2, 'maxLength': 4, 'pattern': '^[a-z]+$'},
+        'xs': {'type': 'array', 'maxItems': 2, 'items': {'type': 'string'}}}}
+    tb._check(schema, {'n': 1, 'k': 'v1', 's': 'abc', 'xs': ['a']}, 't')
+    for bad in [{'n': True}, {'n': '1'}, {}, {'n': 1, 'k': 'v2'}, {'n': 1, 's': 'a'}, {'n': 1, 's': 'abcde'}, {'n': 1, 's': 'AB1'},
+                {'n': 1, 'xs': ['a', 'b', 'c']}, {'n': 1, 'xs': [1]}, {'n': 1, 'extra': 1}]:
+        with pytest.raises(BridgeError) as e:
+            tb._check(schema, bad, 't')
+        assert e.value.status == 400, bad
