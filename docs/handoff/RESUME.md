@@ -96,11 +96,29 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
        snapshots; CI job `e2e`), CI `security` job (pip-audit, npm audit, gitleaks, SBOMs) and coverage gates (85%),
        property tests (scoring ladder, ledger, lock timing), lifecycle tests; both §29 handoff ZIPs regenerated with
        `tools/make_app_handoffs.py` (docs in `docs/handoff/apps/`). Fixes found on the way are in SESSION-LOG.md.
-9. [x] ALL PHASES DONE. The auto-resume scheduled task was disabled. What remains is owner input
+9. [x] ALL PHASES DONE (P0-P7). The auto-resume scheduled task was disabled. What remains is owner input
        (`docs/handoff/apps/crm/08-OWNER-CHECKLIST.txt`) and the open items in `docs/handoff/apps/*/04-KNOWN-ISSUES.csv`.
        If asked to continue without new instructions, good next items: ESLint for crm-web (V2-D08), TFSC /reviews
        styling + inline approval reason (TFSC-V2-01), concurrent same-lead handoff test (legacy CRM-11), TFSC OIDC
        on the compose trial stack (TFSC-12).
+
+### P8 — "complete everything" (owner asked 2026-10-20: "complete everything. make the complete product.")
+Work through these in order; each: implement, test, commit + push, tick here, note in SESSION-LOG.md.
+1. [ ] Quick fixes: TFSC /reviews styling + inline approval reason (TFSC-V2-01); ESLint for crm-web in CI (V2-D08);
+       concurrent same-lead Agreements handoff test (legacy CRM-11)
+2. [ ] Round-robin auto-assignment per team, weighted by open-lead capacity, off by default (§14.4, V2-D06);
+       90-day lead protection: supervisor prompted to release/renew, never auto-release with a meeting (§27)
+3. [ ] Keycloak email invitations (set password + MFA enrollment) and password recovery via SMTP (§4.2, §6),
+       verified on the compose stack with a local mail sink; TFSC OIDC sign-in verified (TFSC-12)
+4. [ ] Files: S3-compatible object storage (MinIO) with presigned short-lived URLs + AV scan on upload (§4.2);
+       audit anchors shipped to an object-lock bucket (V2-D04). Client file storage stays deferred (§13).
+5. [ ] Observability: structured JSON logs, OpenTelemetry traces (OTLP), Sentry (API + web) when configured,
+       Prometheus + Grafana dashboards in compose (§4.2)
+6. [ ] Backups: pgBackRest (encrypted, PITR) in compose + automated restore test into an isolated database (§4.2)
+7. [ ] Performance: batch activity INSERTs per paste; re-measure; larger dataset and more concurrent users than
+       before, within this VM's limits (PERFORMANCE.md stays measured-only)
+8. [ ] Kubernetes: deploy the Helm chart to a local cluster (kind/k3d) and smoke-test it
+9. [ ] Regenerate both §29 handoff ZIPs + the continuation ZIP; update known issues / owner checklist; final report
 
 ## How to run the v2 web app locally
 ```
