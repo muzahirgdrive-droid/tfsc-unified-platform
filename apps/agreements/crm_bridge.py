@@ -1,7 +1,7 @@
 """Additive authenticated CRM handoff and exact-revision release approval."""
 import os, time, json, hashlib, hmac, secrets, re
 from pathlib import Path
-from sqlalchemy import Table,Column,String,Text,Float,Integer,JSON,ForeignKey,UniqueConstraint,select,delete
+from sqlalchemy import Table,Column,String,Text,Float,Integer,JSON,ForeignKey,UniqueConstraint,select,delete,text
 from fastapi import Request,HTTPException
 from fastapi.responses import FileResponse,RedirectResponse
 import database as db
@@ -107,6 +107,9 @@ def install(app):
   import portal
   with db.engine.begin() as c:
    body,a=await signed(request,c);sec.ensure_company(a,body.get('entity'));key=legacy.clean(body.get('idempotency_key'),'Request key',True,80);crm_id=legacy.clean(body.get('crm_client_id'),'CRM client ID',True,64)
+   # One handoff at a time per CRM client: parallel requests (double-click, two tabs, API workers) must see each
+   # other's draft, link and request key instead of racing on the unique constraints. SQLite already serializes writers.
+   if c.dialect.name=='postgresql':c.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:k,0))'),{'k':'crm-handoff:'+crm_id})
    old=c.execute(select(handoffs).where(handoffs.c.owner_id==a['id'],handoffs.c.request_key==key)).mappings().first();token=secrets.token_urlsafe(32)
    if old:
     if old['body_hash']!=digest(body):raise HTTPException(409,'Request key belongs to a different handoff.')
