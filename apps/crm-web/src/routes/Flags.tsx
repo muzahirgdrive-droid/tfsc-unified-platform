@@ -40,9 +40,12 @@ export default function Flags() {
               <tr key={f.id} className="border-t border-line">
                 <td className="p-3">{f.severity !== 'red' && f.status === 'open' && <input type="checkbox" aria-label="Select" checked={sel.includes(f.id)} onChange={(e) => setSel(e.target.checked ? [...sel, f.id] : sel.filter((x) => x !== f.id))} />}</td>
                 <td><span className={cn('chip', SEV[f.severity])}>{f.severity === 'red' && <AlertTriangle size={12} />}{f.severity}</span></td>
-                <td><b>{f.kind.replace(/_/g, ' ')}</b><div className="text-xs text-muted">{f.provider_name}</div></td>
+                <td><b>{f.kind.replace(/_/g, ' ')}</b><div className="text-xs text-muted">{f.provider_name}</div>{f.message && <div className="text-xs">{f.message}</div>}</td>
                 <td>{f.raised_for_name}</td><td>{f.other_user_name ?? '—'}</td><td className="tabular-nums">{f.age_hours} h</td>
-                <td className="pr-3 text-right">{f.status !== 'resolved' && <button className="btn-secondary h-8" onClick={() => { setRes(f); setForm({ resolution: 'keep_existing_owner', note: '', share: 50 }); }}>Resolve</button>}{f.status === 'resolved' && <span className="text-xs text-muted">{f.resolution}</span>}</td>
+                <td className="pr-3 text-right">{f.status !== 'resolved' && f.kind === 'lead_protection_review' && f.lead_id
+                  // answered on the lead itself (renew / release), not by closing the flag
+                  ? <a className="btn-secondary h-8" href={`/leads?lead=${f.lead_id}`}>Open lead</a>
+                  : f.status !== 'resolved' && <button className="btn-secondary h-8" onClick={() => { setRes(f); setForm({ resolution: 'keep_existing_owner', note: '', share: 50 }); }}>Resolve</button>}{f.status === 'resolved' && <span className="text-xs text-muted">{f.resolution}</span>}</td>
               </tr>))}</tbody></table></div>)}
       </Spinnerless>
       {res && <Dialog open onOpenChange={(o) => !o && setRes(null)} title="Resolve flag" description={`${res.kind.replace(/_/g, ' ')} · ${res.provider_name ?? ''}`} dismissOnOutside={false}

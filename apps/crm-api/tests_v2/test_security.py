@@ -72,6 +72,7 @@ MATRIX = {
     ('GET', '/api/leads/{lead_id}'): ('any', None),
     ('POST', '/api/leads/{lead_id}/transition'): ('sup', {'version': 1, 'action': 'sign_up'}),
     ('POST', '/api/leads/{lead_id}/reassign'): ('sup', {'version': 1, 'to_user': X, 'reason': 'matrix', 'incentive_split': {X: 1.0}}),
+    ('POST', '/api/leads/{lead_id}/protection'): ('sup', {'version': 1, 'action': 'renew'}),
     ('GET', '/api/flags'): ('sup', None),
     ('POST', '/api/flags/{flag_id}/resolve'): ('sup', {'version': 1, 'resolution': 'data_error', 'note': 'matrix'}),
     ('POST', '/api/flags/ack'): ('sup', {'ids': [X]}),

@@ -15,7 +15,6 @@ DEFAULTS: dict[str, Any] = {
     'names': {'suffix_comma': True},
     'dialer': {'mode': 'tel', 'template': None},
     'lead_protection_days': 90,
-    'auto_assignment': {'round_robin': False},
     'agent_meeting_label': 'With management',
     'anti_scraping': {'prospects_per_hour': 500},
 }

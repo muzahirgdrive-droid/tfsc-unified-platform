@@ -91,6 +91,7 @@ class OffboardOut(Out):
     sessions_revoked: int
     followups_moved: int
     leads_moved: int
+    leads_round_robin: int = 0
     agreements_revoked: bool
     queue_owner: str
 

@@ -247,7 +247,8 @@ def photo(user_id: str, a: ActorDep) -> Response:
 def _team_out(c: Connection, t: dict) -> TeamOut:
     ids = [r[0] for r in c.execute(select(m.team_memberships.c.user_id).where(m.team_memberships.c.team_id == t['id'], m.team_memberships.c.effective_to.is_(None)))]
     return TeamOut(id=t['id'], name=t['name'], kind=t['kind'], supervisor_id=t['supervisor_id'], leader_id=t['leader_id'],
-                   parent_team_id=t['parent_team_id'], active=t['active'], member_ids=ids, version=t['version'])
+                   parent_team_id=t['parent_team_id'], active=t['active'], member_ids=ids, auto_assign=t['auto_assign'],
+                   lead_capacity=t['lead_capacity'], version=t['version'])
 
 
 def _team_for_update(c: Connection, a: Actor, team_id: uuid.UUID) -> dict:
@@ -325,6 +326,13 @@ def update_team(team_id: str, body: TeamUpdate, a: ActorDep) -> TeamOut:
             vals['name'] = body.name
         if body.active is not None:
             vals['active'] = body.active
+        if body.auto_assign is not None or body.lead_capacity is not None:
+            if t['kind'] != 'team':
+                raise HTTPException(400, 'Round-robin assignment is set on teams, not groups.')
+            if body.auto_assign is not None:
+                vals['auto_assign'] = body.auto_assign
+            if body.lead_capacity is not None:
+                vals['lead_capacity'] = body.lead_capacity
         if body.clear_leader:
             vals['leader_id'] = None
         elif body.leader_id:
@@ -334,7 +342,8 @@ def update_team(team_id: str, body: TeamUpdate, a: ActorDep) -> TeamOut:
                 raise HTTPException(400, 'The group leader must be a member of the group.')
             vals['leader_id'] = body.leader_id
         c.execute(update(m.teams).where(m.teams.c.id == t['id']).values(**vals))
-        audit.record(c, a.org_id, a.id, 'team.updated', 'team', t['id'], {'leader_id': str(t['leader_id'])}, {k: str(v) for k, v in vals.items()})
+        audit.record(c, a.org_id, a.id, 'team.updated', 'team', t['id'], {'leader_id': str(t['leader_id']), 'auto_assign': t['auto_assign'],
+                                                                         'lead_capacity': t['lead_capacity']}, {k: str(v) for k, v in vals.items()})
         return _team_out(c, dict(c.execute(select(m.teams).where(m.teams.c.id == t['id'])).mappings().one()))
 
 

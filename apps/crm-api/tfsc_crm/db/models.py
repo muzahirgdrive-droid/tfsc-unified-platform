@@ -185,8 +185,12 @@ teams = Table(
     Column('parent_team_id', UUID(as_uuid=True), ForeignKey('teams.id')),
     Column('active', Boolean, nullable=False, server_default=text('true')),
     Column('legacy_id', String(32), unique=True),
+    # §14.4 rule 3: round-robin among the team's agents, weighted by open leads against this capacity (off by default)
+    Column('auto_assign', Boolean, nullable=False, server_default=text('false')),
+    Column('lead_capacity', Integer, nullable=False, server_default=text('25')),
     *_stamps(),
     _enum_check('kind', ('team', 'group'), 'kind'),
+    CheckConstraint('lead_capacity BETWEEN 1 AND 500', name='lead_capacity'),
 )
 
 team_memberships = Table(
@@ -401,6 +405,9 @@ leads = Table(
     Column('agreement_locked_at', TS),
     Column('agreement_status', String(30)),
     Column('legacy_id', String(32), unique=True),
+    # §27 lead protection: a supervisor renewed the protection / was prompted to release or renew
+    Column('protection_renewed_at', TS),
+    Column('protection_review_at', TS),
     *_stamps(),
     _enum_check('stage', LEAD_STAGES, 'stage'),
     Index('ix_leads_owner_stage', 'org_id', 'owner_id', 'stage'),

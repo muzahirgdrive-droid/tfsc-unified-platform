@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CalendarPlus, ExternalLink, Lock, PartyPopper, Undo2, UserCog, XCircle } from 'lucide-react';
+import { ArrowRight, CalendarPlus, ExternalLink, Lock, PartyPopper, ShieldCheck, Undo2, UserCog, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Dialog } from '@/components/ui/Dialog';
@@ -11,6 +11,7 @@ import { businessDate, dual, ptToUtc } from '@/lib/time';
 import { asText } from '@/lib/text';
 
 type L = Schemas['LeadOut'] & Partial<Schemas['LeadOut']>;
+type Protection = { window_days: number; last_activity_at: string; days_inactive: number; review_pending: boolean };
 const STAGES: [string, string][] = [['', 'Active'], ['qualified_lead', 'Lead'], ['meeting', 'Meeting'], ['signed_up', 'Signed up'], ['agreement_in_progress', 'Agreement'], ['client', 'Client'], ['lost', 'Lost']];
 const STAGE_STYLE: Record<string, string> = { qualified_lead: 'bg-info-bg text-info', meeting: 'bg-royal/10 text-royal', with_management: 'bg-royal/10 text-royal', signed_up: 'bg-success-bg text-success', agreement_in_progress: 'bg-warn-bg text-warn', client: 'bg-success text-white', lost: 'bg-bg text-muted' };
 
@@ -18,7 +19,7 @@ export default function Leads() {
   const { me } = useAuth();
   const rank = rankOf(me);
   const [stage, setStage] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() => new URLSearchParams(window.location.search).get('lead')); // deep link from the Flags Center
   const q = useQuery({ queryKey: ['leads', stage], queryFn: () => raw<{ items: L[] }>(`/api/leads${stage ? `?stage=${stage}` : ''}`), refetchInterval: 60_000 });
   return (
     <div>
@@ -48,11 +49,16 @@ function LeadDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const rank = rankOf(me);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['lead', id], queryFn: () => raw<L>(`/api/leads/${id}`) });
-  const [dlg, setDlg] = useState<null | 'lost' | 'reverse' | 'reopen' | 'reassign' | 'meeting' | 'agreements'>(null);
+  const [dlg, setDlg] = useState<null | 'lost' | 'reverse' | 'reopen' | 'reassign' | 'meeting' | 'agreements' | 'release'>(null);
   const refresh = () => { void qc.invalidateQueries({ queryKey: ['lead', id] }); void qc.invalidateQueries({ queryKey: ['leads'] }); };
   const tr = useMutation({ mutationFn: (v: { action: string; reason?: string }) => raw(`/api/leads/${id}/transition`, { method: 'POST', body: JSON.stringify({ version: q.data!.version, ...v }) }),
     onSuccess: (_d, v) => { toast.success(v.action === 'sign_up' ? 'Sale confirmed — celebrating!' : 'Lead updated'); setDlg(null); refresh(); }, onError: (e) => toast.error(e.message) });
+  // §27: answer a protection review — renew keeps the owner, release closes the lead and frees the number
+  const prot = useMutation({ mutationFn: (v: { action: 'renew' | 'release'; reason?: string }) => raw(`/api/leads/${id}/protection`, { method: 'POST', body: JSON.stringify({ version: q.data!.version, ...v }) }),
+    onSuccess: (_d, v) => { toast.success(v.action === 'renew' ? 'Protection renewed' : 'Lead released to the pool'); setDlg(null); refresh(); void qc.invalidateQueries({ queryKey: ['flags'] }); },
+    onError: (e) => toast.error(e.message) });
   const l = q.data;
+  const p = l?.protection as Protection | null | undefined;
   const mgmt = rank >= 1 && l && 'owner_name' in l;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={l?.provider_name ?? 'Lead'} description={l ? `${l.stage_label}${mgmt ? ` · owner ${l.owner_name}` : ''}` : ''} wide>
@@ -72,12 +78,24 @@ function LeadDetail({ id, onClose }: { id: string; onClose: () => void }) {
               {l.stage === 'lost' && <button className="btn-secondary" onClick={() => setDlg('reopen')}>Reopen</button>}
               {!l.agreement_locked && l.stage !== 'lost' && <button className="btn-secondary" onClick={() => setDlg('reassign')}><UserCog size={16} />Reassign</button>}
             </div>)}
+          {mgmt && p && (
+            <section className={cn('rounded-xl border p-3 text-sm', p.review_pending ? 'border-warn/40 bg-warn-bg' : 'border-line')} aria-label="Lead protection">
+              <div className="flex flex-wrap items-center gap-2"><ShieldCheck size={16} aria-hidden />
+                <span>Last activity {new Date(p.last_activity_at).toLocaleDateString()} ({p.days_inactive} day{p.days_inactive === 1 ? '' : 's'} ago) · protection window {p.window_days} days</span></div>
+              {p.review_pending && <>
+                <p className="mt-2 font-semibold">No activity for {p.days_inactive} days. Release this lead to the pool or renew its protection.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button className="btn-primary" disabled={prot.isPending} onClick={() => prot.mutate({ action: 'renew' })}>Renew protection</button>
+                  <button className="btn-secondary" disabled={prot.isPending} onClick={() => setDlg('release')}>Release to pool</button>
+                </div></>}
+            </section>)}
           {mgmt && l.meetings && l.meetings.length > 0 && <section><h4 className="mb-2 font-semibold">Meetings</h4><ul className="space-y-1 text-sm">{l.meetings.map((m) => <li key={String(m.id)}>{dual(String(m.starts_at))} — {String(m.title)} <span className="chip bg-bg">{String(m.status)}</span></li>)}</ul></section>}
           {mgmt && l.attribution && <section><h4 className="mb-2 font-semibold">Attribution ledger</h4><div className="flex flex-wrap gap-2">{l.attribution.map((a, i) => <span key={i} className="chip bg-bg">{String(a.role).replace('_', ' ')}: {String(a.user)}{Number(a.share) ? ` · ${(Number(a.share) * 100).toFixed(0)}%` : ''}</span>)}</div></section>}
           {mgmt && l.timeline && <section><h4 className="mb-2 font-semibold">Timeline</h4><ol className="space-y-2 border-l-2 border-line pl-4 text-sm">{l.timeline.map((e, i) => (
             <li key={i}><span className="text-xs text-muted">{new Date(String(e.at)).toLocaleString()}</span> · <b>{asText(e.kind)}</b> {e.by ? `by ${asText(e.by)}` : ''} {e.stage ? `· ${asText(e.stage)}` : ''} {e.action ? `· ${asText(e.action)}` : ''} {e.remarks ? <span className="text-muted">— {asText(e.remarks)}</span> : null}</li>))}</ol></section>}
         </div>)}
       {l && (dlg === 'lost' || dlg === 'reverse' || dlg === 'reopen') && <ReasonDialog title={dlg === 'lost' ? 'Mark lead lost' : dlg === 'reverse' ? 'Reverse sale' : 'Reopen lead'} onClose={() => setDlg(null)} onSubmit={(reason) => tr.mutate({ action: dlg === 'reverse' ? 'reverse_sale' : dlg, reason })} />}
+      {l && dlg === 'release' && <ReasonDialog title="Release lead to the pool" onClose={() => setDlg(null)} onSubmit={(reason) => prot.mutate({ action: 'release', reason })} />}
       {l && dlg === 'reassign' && <Reassign lead={l} onClose={() => setDlg(null)} onDone={refresh} />}
       {l && dlg === 'meeting' && <Schedule lead={l} onClose={() => setDlg(null)} onDone={refresh} />}
       {/* After the handoff the lead detail closes too: a modal underneath would block the toast's "Open Agreements" link. */}

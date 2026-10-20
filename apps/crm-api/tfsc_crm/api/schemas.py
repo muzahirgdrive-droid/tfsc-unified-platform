@@ -183,6 +183,8 @@ class TeamUpdate(Model):
     leader_id: uuid.UUID | None = None
     clear_leader: bool = False
     active: bool | None = None
+    auto_assign: bool | None = None  # §14.4 round-robin for this team (Manager+)
+    lead_capacity: int | None = Field(default=None, ge=1, le=500)
 
 
 class MembershipChange(Model):
@@ -199,6 +201,8 @@ class TeamOut(Out):
     parent_team_id: uuid.UUID | None
     active: bool
     member_ids: list[uuid.UUID]
+    auto_assign: bool = False
+    lead_capacity: int = 25
     version: int
 
 
@@ -274,7 +278,7 @@ class SettingsOut(Out):
 
 
 class SettingsPatch(Model):
-    key: Literal['lock_windows', 'celebration', 'names', 'dialer', 'lead_protection_days', 'auto_assignment', 'agent_meeting_label', 'anti_scraping']
+    key: Literal['lock_windows', 'celebration', 'names', 'dialer', 'lead_protection_days', 'agent_meeting_label', 'anti_scraping']
     value: Any
 
 
@@ -547,6 +551,13 @@ class LeadOut(LeadAgentOut):
     attribution: list[dict[str, Any]] = Field(default_factory=list)
     meetings: list[dict[str, Any]] = Field(default_factory=list)
     timeline: list[dict[str, Any]] = Field(default_factory=list)
+    protection: dict[str, Any] | None = None
+
+
+class ProtectionIn(Model):
+    action: Literal['renew', 'release']
+    reason: str | None = Field(default=None, max_length=500)
+    version: int
 
 
 class LeadPage(Out):
@@ -571,6 +582,7 @@ class FlagOut(Out):
     resolution: str | None
     resolution_note: str | None
     age_hours: float
+    message: str | None = None  # protection reviews only; other kinds keep their detail server-side
     version: int
 
 

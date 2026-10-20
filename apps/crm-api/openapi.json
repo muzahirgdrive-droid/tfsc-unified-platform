@@ -2202,6 +2202,17 @@
       ],
       "title": "Lead Id"
      },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     },
      "other_activity_id": {
       "anyOf": [
        {
@@ -3326,6 +3337,18 @@
       ],
       "title": "Project Owner"
      },
+     "protection": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Protection"
+     },
      "provider_name": {
       "anyOf": [
        {
@@ -4041,6 +4064,11 @@
       "title": "Leads Moved",
       "type": "integer"
      },
+     "leads_round_robin": {
+      "default": 0,
+      "title": "Leads Round Robin",
+      "type": "integer"
+     },
      "queue_owner": {
       "title": "Queue Owner",
       "type": "string"
@@ -4637,6 +4665,41 @@
     "title": "ProjectUpdate",
     "type": "object"
    },
+   "ProtectionIn": {
+    "additionalProperties": false,
+    "properties": {
+     "action": {
+      "enum": [
+       "renew",
+       "release"
+      ],
+      "title": "Action",
+      "type": "string"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "maxLength": 500,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "action",
+     "version"
+    ],
+    "title": "ProtectionIn",
+    "type": "object"
+   },
    "ReasonIn": {
     "additionalProperties": false,
     "properties": {
@@ -5206,7 +5269,6 @@
        "names",
        "dialer",
        "lead_protection_days",
-       "auto_assignment",
        "agent_meeting_label",
        "anti_scraping"
       ],
@@ -5774,6 +5836,11 @@
       "title": "Active",
       "type": "boolean"
      },
+     "auto_assign": {
+      "default": false,
+      "title": "Auto Assign",
+      "type": "boolean"
+     },
      "id": {
       "format": "uuid",
       "title": "Id",
@@ -5782,6 +5849,11 @@
      "kind": {
       "title": "Kind",
       "type": "string"
+     },
+     "lead_capacity": {
+      "default": 25,
+      "title": "Lead Capacity",
+      "type": "integer"
      },
      "leader_id": {
       "anyOf": [
@@ -5857,10 +5929,34 @@
       ],
       "title": "Active"
      },
+     "auto_assign": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auto Assign"
+     },
      "clear_leader": {
       "default": false,
       "title": "Clear Leader",
       "type": "boolean"
+     },
+     "lead_capacity": {
+      "anyOf": [
+       {
+        "maximum": 500.0,
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lead Capacity"
      },
      "leader_id": {
       "anyOf": [
@@ -10387,6 +10483,67 @@
     "summary": "Create Meeting",
     "tags": [
      "meetings"
+    ]
+   }
+  },
+  "/api/leads/{lead_id}/protection": {
+   "post": {
+    "description": "\u00a727: the supervisor's answer to a protection review \u2014 renew (keep the owner) or release (back to the pool).",
+    "operationId": "lead_protection_api_leads__lead_id__protection_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "lead_id",
+      "required": true,
+      "schema": {
+       "title": "Lead Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProtectionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/LeadOut"
+          },
+          {
+           "$ref": "#/components/schemas/LeadAgentOut"
+          }
+         ],
+         "title": "Response Lead Protection Api Leads  Lead Id  Protection Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Lead Protection",
+    "tags": [
+     "pipeline"
     ]
    }
   },

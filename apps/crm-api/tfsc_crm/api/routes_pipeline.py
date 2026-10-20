@@ -10,7 +10,7 @@ from sqlalchemy import Connection, and_, func, or_, select, update
 from .. import crypto
 from ..db import models as m
 from ..db.session import read, tx
-from ..domain import audit, duplicates, pipeline, scoring
+from ..domain import audit, duplicates, pipeline, protection, scoring
 from ..domain import settings as cfg
 from ..ids import uuid7
 from ..pacific import PACIFIC, business_date, utcnow
@@ -33,6 +33,7 @@ from .schemas import (
     NotificationOut,
     NotificationPage,
     OkOut,
+    ProtectionIn,
     ReassignIn,
     StrongComment,
     StrongDecision,
@@ -200,6 +201,8 @@ def lead_out(c: Connection, a: Actor, r: dict, detail: bool = False) -> LeadOut 
         out.meetings = [{'id': str(x['id']), 'title': x['title'], 'starts_at': x['starts_at'].isoformat(), 'status': x['status']}
                         for x in c.execute(select(m.meetings).where(m.meetings.c.lead_id == r['id']).order_by(m.meetings.c.starts_at)).mappings()]
         out.timeline = timeline(c, a, r)
+        if r['stage'] in protection.OPEN_STAGES:
+            out.protection = protection.status(c, a.org_id, r['id'])
     return out
 
 
@@ -253,6 +256,15 @@ def lead_transition(lead_id: str, body: LeadTransitionIn, a: ActorDep):
         return lead_out(c, a, _lead_rows(c, a, m.leads.c.id == lid)[0])
 
 
+@router.post('/leads/{lead_id}/protection', response_model=LeadOut | LeadAgentOut)
+def lead_protection(lead_id: str, body: ProtectionIn, a: ActorDep):
+    """§27: the supervisor's answer to a protection review — renew (keep the owner) or release (back to the pool)."""
+    lid = parse_uuid(lead_id)
+    with tx(a.org_id, a.id) as c:
+        protection.decide(c, a, lid, body.action, body.reason, body.version)
+        return lead_out(c, a, _lead_rows(c, a, m.leads.c.id == lid)[0], detail=True)
+
+
 @router.post('/leads/{lead_id}/reassign', response_model=LeadOut | LeadAgentOut)
 def lead_reassign(lead_id: str, body: ReassignIn, a: ActorDep):
     lid = parse_uuid(lead_id)
@@ -293,7 +305,8 @@ def list_flags(a: ActorDep, status: str = 'open', severity: str | None = None, k
     return FlagPage(items=[FlagOut(id=r['id'], severity=r['severity'], kind=r['kind'], status=r['status'], created_at=r['created_at'], activity_id=r['activity_id'],
                                    other_activity_id=r['other_activity_id'], lead_id=r['lead_id'], raised_for_user=r['raised_for_user'], raised_for_name=r['raised_name'],
                                    other_user=r['other_user'], other_user_name=r['other_name'], provider_name=r['provider_name'], resolution=r['resolution'],
-                                   resolution_note=r['resolution_note'], age_hours=round((now - r['created_at']).total_seconds() / 3600, 1), version=r['version'])
+                                   resolution_note=r['resolution_note'], age_hours=round((now - r['created_at']).total_seconds() / 3600, 1),
+                                   message=r['detail'].get('message') if r['kind'] == protection.FLAG_KIND else None, version=r['version'])
                            for r in rows], counts={k: int(v) for k, v in counts.items()})
 
 
@@ -308,6 +321,8 @@ def resolve_flag(flag_id: str, body: FlagResolve, a: ActorDep) -> OkOut:
             raise HTTPException(409, 'This flag changed. Refresh first.')
         if f['status'] == 'resolved':
             raise HTTPException(409, 'Already resolved.')
+        if f['kind'] == protection.FLAG_KIND and body.resolution != 'acknowledged':
+            raise HTTPException(409, 'Answer a protection review from the lead: renew its protection or release it.')
         act = None
         if f['activity_id']:
             act = c.execute(select(m.activities).where(m.activities.c.id == f['activity_id']).with_for_update()).mappings().first()

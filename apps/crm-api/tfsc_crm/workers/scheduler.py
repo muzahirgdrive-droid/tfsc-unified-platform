@@ -1,4 +1,4 @@
-"""Periodic jobs (§12 SLA, §13 escalation, §20.4 nightly reconciliation, §21 audit anchor, partitions, sessions).
+"""Periodic jobs (§12 SLA, §13 escalation, §20.4 nightly reconciliation, §21 audit anchor, §27 lead protection, partitions, sessions).
 
 Each job runs at most once per period across all nodes: a run is claimed by inserting (job, period_key) into
 `job_runs` (ON CONFLICT DO NOTHING). Jobs are idempotent anyway, so a crashed run is simply retried next period.
@@ -98,6 +98,16 @@ def job_reconcile(now: datetime) -> dict:
     return {'drift_rows': drift, 'day': day.isoformat()}
 
 
+def job_lead_protection(now: datetime) -> dict:
+    from ..domain import protection
+    n = 0
+    with system_tx() as c:
+        for org in _orgs(c):
+            _with_org(c, org)
+            n += protection.prompt_due(c, org, now)
+    return {'prompted': n}
+
+
 def job_partitions(now: datetime) -> dict:
     with system_tx() as c:
         c.execute(text('SELECT crm_ensure_partitions(1, 3)'))
@@ -117,6 +127,7 @@ JOBS: tuple[Job, ...] = (
     Job('rollup_reconcile', _daily_pt(1), job_reconcile),
     Job('partitions', _daily_pt(2), job_partitions),
     Job('session_cleanup', _daily_pt(3), job_sessions),
+    Job('lead_protection', _daily_pt(5), job_lead_protection),
 )
 
 

@@ -9,7 +9,7 @@ import { rankOf, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 
 type U = { id: string; display_name: string; first_name: string | null; last_name: string | null; email: string; phone: string | null; employee_code: string | null; status: string; crm_role: string; role_label: string; manager_id: string | null; has_photo: boolean; vonage_extension: string | null; version: number; domain_id?: string | null; project_id?: string | null; routing_view?: boolean; agreements_access?: boolean };
-type T = { id: string; name: string; kind: string; supervisor_id: string; leader_id: string | null; member_ids: string[]; version: number; active: boolean };
+type T = { id: string; name: string; kind: string; supervisor_id: string; leader_id: string | null; member_ids: string[]; version: number; active: boolean; auto_assign: boolean; lead_capacity: number };
 const ROLES: [string, string, number][] = [['sales_agent', 'Sales Agent', 2], ['supervisor', 'Supervisor', 3], ['manager', 'Manager', 3], ['director_admin', 'Director (Admin)', 4], ['super_admin', 'Super Admin', 4], ['none', 'No sales access (agreements only)', 3]];
 const TFSC = ['SCRIBE ALIGN LLC', 'EXTENDED HEALTH SERVICES INC.', '24-7 CONSULTANCY LLC'];
 
@@ -48,6 +48,7 @@ export default function People() {
         <button key={t.id} className="card p-5 text-left" onClick={() => setTeam(t)}>
           <div className="flex items-center justify-between"><b>{t.name}</b><span className="chip bg-bg">{t.kind}</span></div>
           <div className="mt-1 text-sm text-muted">Supervisor: {byId.get(t.supervisor_id)?.display_name ?? '—'}</div>
+          {t.auto_assign && <div className="mt-2"><span className="chip bg-info-bg text-info">Round-robin · up to {t.lead_capacity} open leads each</span></div>}
           <div className="mt-3 flex flex-wrap gap-1">{t.member_ids.map((id) => <span key={id} className={cn('chip', id === t.leader_id ? 'bg-cyan/15 text-royal' : 'bg-bg')}>{byId.get(id)?.display_name ?? 'member'}{id === t.leader_id ? ' · leader' : ''}</span>)}</div>
         </button>))}</div>}</Spinnerless>}
       {tab === 'tree' && <div className="card p-5"><Tree nodes={tree.data ?? []} parent={null} depth={0} /></div>}
@@ -128,13 +129,16 @@ function TeamForm({ team, users, onClose }: { team: T | null; users: U[]; onClos
   const { me } = useAuth();
   const rank = rankOf(me);
   const qc = useQueryClient();
-  const [v, setV] = useState({ name: team?.name ?? '', kind: team?.kind ?? (rank >= 2 ? 'team' : 'group'), supervisor_id: team?.supervisor_id ?? (rank === 1 ? me!.id : ''), members: team?.member_ids ?? [], leader_id: team?.leader_id ?? '' });
+  const [v, setV] = useState({ name: team?.name ?? '', kind: team?.kind ?? (rank >= 2 ? 'team' : 'group'), supervisor_id: team?.supervisor_id ?? (rank === 1 ? me!.id : ''), members: team?.member_ids ?? [], leader_id: team?.leader_id ?? '',
+    auto_assign: team?.auto_assign ?? false, lead_capacity: team?.lead_capacity ?? 25 });
+  const policy = !!team && team.kind === 'team' && rank >= 2; // §14.4 round-robin is a Manager+ decision per team
   const save = useMutation({
     mutationFn: async () => {
       if (!team) return raw('/api/teams', { method: 'POST', body: JSON.stringify({ name: v.name, kind: v.kind, supervisor_id: v.supervisor_id, member_ids: v.members, leader_id: v.leader_id || null }) });
       for (const id of v.members.filter((m) => !team.member_ids.includes(m))) await raw(`/api/teams/${team.id}/members`, { method: 'POST', body: JSON.stringify({ user_id: id }) });
       for (const id of team.member_ids.filter((m) => !v.members.includes(m))) await raw(`/api/teams/${team.id}/members/remove`, { method: 'POST', body: JSON.stringify({ user_id: id }) });
-      return raw('/api/teams/' + team.id, { method: 'PATCH', body: JSON.stringify({ version: team.version, name: v.name, leader_id: v.leader_id || null, clear_leader: !v.leader_id }) });
+      return raw('/api/teams/' + team.id, { method: 'PATCH', body: JSON.stringify({ version: team.version, name: v.name, leader_id: v.leader_id || null, clear_leader: !v.leader_id,
+        ...(policy ? { auto_assign: v.auto_assign, lead_capacity: v.lead_capacity } : {}) }) });
     },
     onSuccess: () => { toast.success('Saved'); void qc.invalidateQueries({ queryKey: ['teams'] }); onClose(); }, onError: (e) => toast.error(e.message),
   });
@@ -147,6 +151,12 @@ function TeamForm({ team, users, onClose }: { team: T | null; users: U[]; onClos
         {!team && rank >= 2 && <div><label className="block"><span className="label">Kind</span><select className="input" value={v.kind} onChange={(e) => setV({ ...v, kind: e.target.value })}><option value="team">Team</option><option value="group">Group (3–4 agents)</option></select></label></div>}
         {!team && <div><label className="block"><span className="label">Supervisor</span><select className="input" value={v.supervisor_id} onChange={(e) => setV({ ...v, supervisor_id: e.target.value })}><option value="">Choose…</option>{[...users.filter((u) => u.crm_role === 'supervisor'), ...(rank === 1 && me ? [{ id: me.id, display_name: me.display_name }] : [])].map((u) => <option key={u.id} value={u.id}>{u.display_name}</option>)}</select></label></div>}
         <div><span className="label">Members</span><div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto">{agents.map((u) => <label key={u.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.members.includes(u.id)} onChange={(e) => setV({ ...v, members: e.target.checked ? [...v.members, u.id] : v.members.filter((x) => x !== u.id) })} />{u.display_name}</label>)}</div></div>
+        {policy && <div className="rounded-xl border border-line p-3">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.auto_assign} onChange={(e) => setV({ ...v, auto_assign: e.target.checked })} />
+            Round-robin new leads to this team's agents when no first connector or active requester owns them</label>
+          <label className="mt-2 block"><span className="label">Open-lead capacity per agent (agents at capacity are skipped)</span>
+            <input className="input" type="number" min={1} max={500} value={v.lead_capacity} disabled={!v.auto_assign} onChange={(e) => setV({ ...v, lead_capacity: Math.max(1, Math.min(500, +e.target.value || 1)) })} /></label>
+        </div>}
         {v.kind === 'group' && <div><label className="block"><span className="label">Group leader (coordinates follow-ups; no extra power)</span><select className="input" value={v.leader_id} onChange={(e) => setV({ ...v, leader_id: e.target.value })}><option value="">None</option>{v.members.map((id) => <option key={id} value={id}>{users.find((u) => u.id === id)?.display_name}</option>)}</select></label></div>}
       </div>
     </Dialog>
@@ -158,8 +168,8 @@ function OffboardDialog({ user, onClose }: { user: U; onClose: (done: boolean) =
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
   const run = useMutation({
-    mutationFn: () => raw<{ sessions_revoked: number; followups_moved: number; leads_moved: number; agreements_revoked: boolean }>(`/api/users/${user.id}/offboard`, { method: 'POST', body: JSON.stringify({ reason }) }),
-    onSuccess: (r) => { toast.success(`${user.display_name} offboarded: ${r.followups_moved} follow-up(s) and ${r.leads_moved} lead(s) moved, ${r.sessions_revoked} session(s) ended${r.agreements_revoked ? ', Agreements access revoked' : ''}.`); void qc.invalidateQueries({ queryKey: ['users'] }); onClose(true); },
+    mutationFn: () => raw<{ sessions_revoked: number; followups_moved: number; leads_moved: number; leads_round_robin: number; agreements_revoked: boolean }>(`/api/users/${user.id}/offboard`, { method: 'POST', body: JSON.stringify({ reason }) }),
+    onSuccess: (r) => { toast.success(`${user.display_name} offboarded: ${r.followups_moved} follow-up(s) and ${r.leads_moved} lead(s) moved${r.leads_round_robin ? ` (${r.leads_round_robin} by round-robin)` : ''}, ${r.sessions_revoked} session(s) ended${r.agreements_revoked ? ', Agreements access revoked' : ''}.`); void qc.invalidateQueries({ queryKey: ['users'] }); onClose(true); },
     onError: (e) => toast.error(e.message),
   });
   return (

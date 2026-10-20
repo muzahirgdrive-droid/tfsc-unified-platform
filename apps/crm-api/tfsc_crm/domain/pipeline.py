@@ -18,7 +18,7 @@ from ..db import models as m
 from ..ids import uuid7
 from ..pacific import utcnow
 from ..security.roles import SUPERVISOR, Actor, in_scope
-from . import audit, duplicates, notify, outbox, rollups, scoring
+from . import assignment, audit, duplicates, notify, outbox, rollups, scoring
 from . import settings as cfg
 
 LEAD_TRANSITIONS: dict[str, tuple[set[str], str]] = {
@@ -140,16 +140,23 @@ def decide_strong(c: Connection, actor: Actor, sid: uuid.UUID, decision: str, re
 
 
 # ------------------------------------------------------------------ leads
-def default_owner(c: Connection, actor: Actor, s: dict) -> tuple[uuid.UUID, str]:
-    """§14.4: first connector within the protection window -> strong-FU requester -> round-robin (off)."""
+def _active(c: Connection, user_id: uuid.UUID | None) -> bool:
+    return bool(user_id) and c.execute(select(m.users.c.id).where(m.users.c.id == user_id, m.users.c.status == 'active')).first() is not None
+
+
+def default_owner(c: Connection, actor: Actor, s: dict, *, lock: bool = False) -> tuple[uuid.UUID | None, str]:
+    """§14.4: first connector within the protection window -> strong-FU requester -> round-robin in the requester's
+    (else the converting supervisor's) team when that team has it on. (None, 'none') = nobody qualifies: choose."""
     days = int(cfg.get(c, actor.org_id, 'lead_protection_days') or 90)
     if s['phone_key']:
         reg = c.execute(select(m.phone_registry).where(m.phone_registry.c.org_id == actor.org_id, m.phone_registry.c.phone_key == s['phone_key'])).mappings().first()
-        if reg and reg['first_connect_by'] and reg['first_connect_at'] and reg['first_connect_at'] >= utcnow() - timedelta(days=days):
-            active = c.execute(select(m.users.c.id).where(m.users.c.id == reg['first_connect_by'], m.users.c.status == 'active')).first()
-            if active:
-                return reg['first_connect_by'], 'first_connector'
-    return s['requested_by'], 'strong_requester'
+        if reg and reg['first_connect_by'] and reg['first_connect_at'] and reg['first_connect_at'] >= utcnow() - timedelta(days=days) \
+                and _active(c, reg['first_connect_by']):
+            return reg['first_connect_by'], 'first_connector'
+    if _active(c, s['requested_by']):
+        return s['requested_by'], 'strong_requester'
+    picked = assignment.pick(c, assignment.team_of(c, s['requested_by']) or assignment.supervised_team(c, actor.id), lock=lock)
+    return (picked, 'round_robin') if picked else (None, 'none')
 
 
 def convert_to_lead(c: Connection, actor: Actor, sid: uuid.UUID, owner_id: uuid.UUID | None, reason: str | None) -> dict:
@@ -161,10 +168,13 @@ def convert_to_lead(c: Connection, actor: Actor, sid: uuid.UUID, owner_id: uuid.
         raise HTTPException(409, 'Confirm the strong follow-up before converting it to a lead.')
     if not s['phone_key']:
         raise HTTPException(409, 'Refine the phone number before converting to a lead.')
-    auto_owner, rule = default_owner(c, actor, dict(s))
+    auto_owner, rule = default_owner(c, actor, dict(s), lock=True)
     chosen = owner_id or auto_owner
-    if chosen != auto_owner and not (reason or '').strip():
+    if chosen is None:
+        raise HTTPException(409, 'No automatic owner: the requester is no longer active and round-robin is off or full for the team. Choose an owner.')
+    if auto_owner is not None and chosen != auto_owner and not (reason or '').strip():
         raise HTTPException(400, 'A reason is required to override the automatic owner.')
+    owner_rule = rule if chosen == auto_owner else 'chosen' if auto_owner is None else 'override'
     if not in_scope(c, actor, chosen):
         raise HTTPException(403, 'The chosen owner is outside your scope.')
     a = c.execute(select(m.activities).where(m.activities.c.id == s['activity_id'], m.activities.c.business_date == s['activity_date'])).mappings().one()
@@ -192,12 +202,13 @@ def convert_to_lead(c: Connection, actor: Actor, sid: uuid.UUID, owner_id: uuid.
     c.execute(m.attribution_ledger.insert(), [{'id': uuid7(), 'org_id': actor.org_id, 'lead_id': lead_id, 'user_id': u, 'role': role,
                                                'source_activity_id': src} for role, u, src in facts if u])
     c.execute(m.lead_assignments.insert().values(id=uuid7(), org_id=actor.org_id, lead_id=lead_id, from_user=None, to_user=chosen,
-                                                 reason=reason or f'Automatic owner: {rule}', incentive_split={}, by_user=actor.id))
+                                                 reason=reason or ('Chosen by supervisor: no automatic owner' if owner_rule == 'chosen' else f'Automatic owner: {owner_rule}'),
+                                                 incentive_split={}, by_user=actor.id))
     scoring.rescore(c, actor.org_id, a['id'], a['business_date'], now)
     rollups.bump(c, actor.org_id, chosen, now, leads=1)
-    audit.record(c, actor.org_id, actor.id, 'lead.converted', 'lead', lead_id, None, {'owner_id': str(chosen), 'rule': rule if chosen == auto_owner else 'override', 'reason': reason})
+    audit.record(c, actor.org_id, actor.id, 'lead.converted', 'lead', lead_id, None, {'owner_id': str(chosen), 'rule': owner_rule, 'reason': reason})
     notify.notify(c, actor.org_id, [chosen], 'lead.assigned', {'lead_id': str(lead_id)})
-    return {'id': lead_id, 'owner_id': chosen, 'owner_rule': rule if chosen == auto_owner else 'override', 'stage': 'qualified_lead'}
+    return {'id': lead_id, 'owner_id': chosen, 'owner_rule': owner_rule, 'stage': 'qualified_lead'}
 
 
 def transition(c: Connection, actor: Actor, lead_id: uuid.UUID, action: str, reason: str | None, version: int) -> dict:

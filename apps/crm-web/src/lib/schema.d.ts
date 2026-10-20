@@ -1081,6 +1081,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/leads/{lead_id}/protection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lead Protection
+         * @description §27: the supervisor's answer to a protection review — renew (keep the owner) or release (back to the pool).
+         */
+        post: operations["lead_protection_api_leads__lead_id__protection_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/leads/{lead_id}/reassign": {
         parameters: {
             query?: never;
@@ -2443,6 +2463,8 @@ export interface components {
             kind: string;
             /** Lead Id */
             lead_id: string | null;
+            /** Message */
+            message?: string | null;
             /** Other Activity Id */
             other_activity_id: string | null;
             /** Other User */
@@ -2795,6 +2817,10 @@ export interface components {
             project_id: string | null;
             /** Project Owner */
             project_owner: string | null;
+            /** Protection */
+            protection?: {
+                [key: string]: unknown;
+            } | null;
             /** Provider Name */
             provider_name: string | null;
             /** Qualified At */
@@ -3028,6 +3054,11 @@ export interface components {
             followups_moved: number;
             /** Leads Moved */
             leads_moved: number;
+            /**
+             * Leads Round Robin
+             * @default 0
+             */
+            leads_round_robin: number;
             /** Queue Owner */
             queue_owner: string;
             /** Sessions Revoked */
@@ -3176,6 +3207,18 @@ export interface components {
             owner_user_id?: string | null;
             /** Status */
             status?: ("active" | "paused" | "closed" | "pending_configuration") | null;
+            /** Version */
+            version: number;
+        };
+        /** ProtectionIn */
+        ProtectionIn: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "renew" | "release";
+            /** Reason */
+            reason?: string | null;
             /** Version */
             version: number;
         };
@@ -3397,7 +3440,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "lock_windows" | "celebration" | "names" | "dialer" | "lead_protection_days" | "auto_assignment" | "agent_meeting_label" | "anti_scraping";
+            key: "lock_windows" | "celebration" | "names" | "dialer" | "lead_protection_days" | "agent_meeting_label" | "anti_scraping";
             /** Value */
             value: unknown;
         };
@@ -3584,12 +3627,22 @@ export interface components {
             /** Active */
             active: boolean;
             /**
+             * Auto Assign
+             * @default false
+             */
+            auto_assign: boolean;
+            /**
              * Id
              * Format: uuid
              */
             id: string;
             /** Kind */
             kind: string;
+            /**
+             * Lead Capacity
+             * @default 25
+             */
+            lead_capacity: number;
             /** Leader Id */
             leader_id: string | null;
             /** Member Ids */
@@ -3610,11 +3663,15 @@ export interface components {
         TeamUpdate: {
             /** Active */
             active?: boolean | null;
+            /** Auto Assign */
+            auto_assign?: boolean | null;
             /**
              * Clear Leader
              * @default false
              */
             clear_leader: boolean;
+            /** Lead Capacity */
+            lead_capacity?: number | null;
             /** Leader Id */
             leader_id?: string | null;
             /** Name */
@@ -5918,6 +5975,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lead_protection_api_leads__lead_id__protection_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lead_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadOut"] | components["schemas"]["LeadAgentOut"];
                 };
             };
             /** @description Validation Error */
