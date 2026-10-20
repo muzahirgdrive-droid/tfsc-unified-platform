@@ -16,6 +16,13 @@ crm:
     workers: 2
     resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
     autoscaling: { enabled: true, minReplicas: 3, maxReplicas: 20, targetCPUUtilizationPercentage: 65 }
+  # Refine & Save (1,000-row pastes) and file/legacy imports, routed by the ingress to their own pods so bulk CPU never
+  # slows interactive requests (measured in docs/PERFORMANCE.md). disabled -> the api pods serve those paths.
+  bulk:
+    enabled: true
+    replicas: 2
+    workers: 2
+    resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
   dispatcher: { replicas: 2, resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } } }
   scheduler: { replicas: 1, resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: 500m, memory: 512Mi } } }
   dataVolume: { size: 5Gi, storageClass: "" }   # setup key + audit-anchor sink (ship anchors to object-lock storage)

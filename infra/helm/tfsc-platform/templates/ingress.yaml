@@ -12,7 +12,14 @@ spec:
   tls: {{- toYaml .Values.ingress.tls | nindent 4 }}
   rules:
     - host: {{ .Values.ingress.crmHost }}
-      http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-crm, port: { name: http } } } }] }
+      http:
+        paths:
+          {{- if .Values.crm.bulk.enabled }}
+          {{- range list "/api/activities/batch" "/api/imports" "/api/admin/legacy-imports" }}
+          - { path: {{ . }}, pathType: Prefix, backend: { service: { name: {{ $.Release.Name }}-crm-bulk, port: { name: http } } } }
+          {{- end }}
+          {{- end }}
+          - { path: /, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-crm, port: { name: http } } } }
     - host: {{ .Values.ingress.agreementsHost }}
       http: { paths: [{ path: /, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-agreements, port: { name: http } } } }] }
 {{- end }}
@@ -23,7 +30,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: { name: {{ .Release.Name }}-apis }
 spec:
-  podSelector: { matchExpressions: [{ key: app.kubernetes.io/component, operator: In, values: [crm-api, agreements-api] }] }
+  podSelector: { matchExpressions: [{ key: app.kubernetes.io/component, operator: In, values: [crm-api, crm-bulk, agreements-api] }] }
   policyTypes: [Ingress]
   ingress:
     - from:

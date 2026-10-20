@@ -2,11 +2,11 @@
 
 | Path | What |
 |---|---|
-| `compose/` | Single-server stack (pilot, §27): PostgreSQL 16, Redis 7, Keycloak 26, CRM (migrate, api, dispatcher, scheduler), Agreements (api, worker), optional Caddy TLS edge (`--profile edge`) |
+| `compose/` | Single-server stack (pilot, §27): PostgreSQL 16, Redis 7, Keycloak 26, CRM (migrate, api, bulk, dispatcher, scheduler), Agreements (api, worker), optional Caddy TLS edge (`--profile edge`, which routes pastes and imports to `crm-bulk`) |
 | `keycloak/realm-tfsc.json` | Realm import: CRM + Agreements clients (PKCE S256), brute-force protection, password policy, TOTP required for the `mfa-required` role (group `supervisors-and-above`), `amr` claim |
 | `keycloak/dev_seed.py` | Local trials only: creates test users (optionally with a known TOTP secret for automated tests) |
-| `helm/tfsc-platform/` | Kubernetes chart (PostgreSQL, Redis, Keycloak external): CRM api/dispatcher/scheduler + migrate Job, Agreements api/worker, Ingress, HPA, PDB, NetworkPolicies |
-| `load/` | k6 load tests (see docs/PERFORMANCE.md) |
+| `helm/tfsc-platform/` | Kubernetes chart (PostgreSQL, Redis, Keycloak external): CRM api + bulk (pastes and imports, routed by the Ingress)/dispatcher/scheduler + migrate Job, Agreements api/worker, Ingress, HPA, PDB, NetworkPolicies |
+| `load/` | k6 load profiles (`crm.js`, `run.sh`), SSE fan-out harness (`sse_fanout.py`), synthetic data generator (`gen_data.py`); results and method in docs/PERFORMANCE.md |
 
 ## Compose: production on one VPS
 ```

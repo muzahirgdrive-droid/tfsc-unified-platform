@@ -7,6 +7,8 @@ decided by server commit order, never by row order or typed dates (§11.3).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -57,7 +59,11 @@ def precheck_state(reg: dict | None, owner_id: uuid.UUID) -> str:
 
 def lock_registry(c: Connection, org_id: uuid.UUID, phone_key: str) -> dict:
     """Create-or-lock the registry row in one round trip: ON CONFLICT DO UPDATE takes the row lock (like FOR UPDATE)
-    and RETURNING gives the current row."""
+    and RETURNING gives the current row. Inside a batch whose rows were locked up front (lock_registries) the row comes
+    from that batch's cache: the same dict every time, so facts recorded by earlier rows of the batch are visible."""
+    cache = c.info.get('registry_cache')
+    if cache is not None and phone_key in cache:
+        return cache[phone_key]
     return dict(c.execute(_LOCK, {'org_id': org_id, 'phone_key': phone_key}).mappings().one())
 
 
@@ -66,17 +72,32 @@ _LOCK = (insert(m.phone_registry).values(org_id=bindparam('org_id'), phone_key=b
          .returning(*m.phone_registry.c))
 
 
-def lock_registries(c: Connection, org_id: uuid.UUID, phones: list) -> None:
+def lock_registries(c: Connection, org_id: uuid.UUID, phones: list) -> dict[str, dict]:
     """Take the registry row locks for a whole batch up front, in phone-key order, in one statement. Two batches that
     share numbers would otherwise lock them in their own row orders and deadlock (seen under load with concurrent pastes).
-    Rows created here for a number whose row is then rejected stay as state 'none' with no facts, which reads as new."""
+    Returns the locked rows by key (see cached_registry). Rows created here for a number whose row is then rejected stay
+    as state 'none' with no facts, which reads as new."""
     from tfsc_refine import refine_phone
 
     from .. import crypto
     keys = sorted({k for p in phones if p and (k := crypto.phone_key(refine_phone(p).e164))})
-    if keys:
-        c.execute(insert(m.phone_registry).values([{'org_id': org_id, 'phone_key': k, 'state': 'none'} for k in keys])
-                  .on_conflict_do_update(index_elements=['org_id', 'phone_key'], set_={'updated_at': m.phone_registry.c.updated_at}))
+    if not keys:
+        return {}
+    rows = c.execute(insert(m.phone_registry).values([{'org_id': org_id, 'phone_key': k, 'state': 'none'} for k in keys])
+                     .on_conflict_do_update(index_elements=['org_id', 'phone_key'], set_={'updated_at': m.phone_registry.c.updated_at})
+                     .returning(*m.phone_registry.c)).mappings().all()
+    return {r['phone_key']: dict(r) for r in rows}
+
+
+@contextmanager
+def cached_registry(c: Connection, rows: dict[str, dict]) -> Iterator[None]:
+    """Serve lock_registry from rows this transaction already holds locked. Only for an all-or-nothing block: if a
+    savepoint inside it rolled back, the cached facts could name a row that no longer exists."""
+    c.info['registry_cache'] = rows
+    try:
+        yield
+    finally:
+        c.info.pop('registry_cache', None)
 
 
 def record_contact(c: Connection, org_id: uuid.UUID, reg: dict, activity: dict, at: datetime) -> None:
@@ -156,6 +177,7 @@ def set_state(c: Connection, org_id: uuid.UUID, phone_key: str | None, state: st
         return
     order = ['none', 'followup', 'strong_pending', 'strong_confirmed', 'lead', 'meeting', 'signed', 'client']
     reg = lock_registry(c, org_id, phone_key)
+    (c.info.get('registry_cache') or {}).pop(phone_key, None)  # the state changes in SQL below: re-read next time
     if only_upgrade and order.index(state) < order.index(reg['state']):
         return
     vals: dict = {'state': state, 'state_owner_id': owner_id}

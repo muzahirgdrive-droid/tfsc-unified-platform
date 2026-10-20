@@ -32,7 +32,9 @@ spec:
           envFrom: [{ secretRef: { name: {{ .Values.crm.existingSecret }} } }]
           env: {{- include "tfsc.crmEnv" . | nindent 12 }}
           securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-{{- range $name, $cfg := dict "api" .Values.crm.api "dispatcher" .Values.crm.dispatcher "scheduler" .Values.crm.scheduler }}
+{{- $deployments := dict "api" .Values.crm.api "dispatcher" .Values.crm.dispatcher "scheduler" .Values.crm.scheduler }}
+{{- if .Values.crm.bulk.enabled }}{{- $_ := set $deployments "bulk" .Values.crm.bulk }}{{- end }}
+{{- range $name, $cfg := $deployments }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -58,7 +60,7 @@ spec:
         - name: crm-{{ $name }}
           image: {{ include "tfsc.crmImage" $ }}
           imagePullPolicy: {{ $.Values.image.crm.pullPolicy }}
-          {{- if eq $name "api" }}
+          {{- if or (eq $name "api") (eq $name "bulk") }}
           command: [uvicorn, tfsc_crm.main:app, --host, 0.0.0.0, --port, "8000", --workers, {{ $cfg.workers | quote }}, --no-access-log, --proxy-headers, --forwarded-allow-ips=*]
           ports: [{ name: http, containerPort: 8000 }]
           readinessProbe: { httpGet: { path: /api/health, port: http, httpHeaders: [{ name: Host, value: {{ trimPrefix "https://" $.Values.crm.origin | quote }} }] }, periodSeconds: 10 }
@@ -82,6 +84,17 @@ metadata:
 spec:
   selector: { app.kubernetes.io/component: crm-api }
   ports: [{ name: http, port: 8000, targetPort: http }]
+{{- if .Values.crm.bulk.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-crm-bulk
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/component: crm-bulk }
+  ports: [{ name: http, port: 8000, targetPort: http }]
+{{- end }}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

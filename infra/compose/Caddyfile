@@ -1,8 +1,15 @@
 # TLS edge (profile `edge`). Set CRM_DOMAIN, TFSC_DOMAIN, SSO_DOMAIN in .env; Caddy obtains certificates.
 {$CRM_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy crm-api:8000 {
-		flush_interval -1
+	# Bulk saves and imports go to their own processes so a 1,000-row paste never slows interactive requests.
+	@bulk path /api/activities/batch /api/imports /api/imports/* /api/admin/legacy-imports /api/admin/legacy-imports/*
+	handle @bulk {
+		reverse_proxy crm-bulk:8000
+	}
+	handle {
+		reverse_proxy crm-api:8000 {
+			flush_interval -1
+		}
 	}
 }
 {$TFSC_DOMAIN} {

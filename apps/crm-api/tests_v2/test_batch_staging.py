@@ -56,3 +56,38 @@ def test_concurrent_batches_sharing_numbers_in_opposite_order_do_not_deadlock(ws
     assert [out[k].status_code for k in ('overlap-forward-01', 'overlap-reverse-01')] == [200, 200]
     assert all(r.json()['saved'] == 150 for r in out.values())
     assert 'saving row by row' not in caplog.text  # a deadlock would abort the fast path
+
+
+def test_duplicate_rules_inside_one_batch_match_row_by_row_saves(ws):
+    """The batch fast path reads registry rows it locked up front; earlier rows' facts must still count for later rows."""
+    from tfsc_crm.db.session import system_tx
+    from tfsc_crm.domain import rollups
+    from tfsc_crm.pacific import business_date
+    theirs, twice, follow = new_phone(), new_phone(), new_phone()
+    r = ws['b'].post('/api/activities', json={'name': 'Their Clinic', 'phone': theirs, 'called': True, 'followup_needed': True,
+                                             'next_followup': '2026-12-01'})
+    assert r.status_code == 200, r.text
+    rows = [{'name': 'their clinic', 'phone': theirs, 'called': 'Yes'},
+            {'name': 'twice clinic', 'phone': twice, 'called': 'Yes', 'connected': 'Yes'},
+            {'name': 'twice clinic', 'phone': twice, 'called': 'Yes'},
+            {'name': 'follow clinic', 'phone': follow, 'called': 'Yes', 'followup_needed': 'Yes', 'next_followup': '2026-12-02'},
+            {'name': 'follow clinic', 'phone': follow, 'called': 'Yes'}]
+    out = ws['c'].post('/api/activities/batch', json={'request_key': 'in-batch-dups-01', 'rows': rows, 'source': 'grid'}).json()
+    assert out['saved'] == 5
+    notices = [r['duplicate_notice'] for r in out['rows']]
+    assert notices[0].startswith('Already in follow-up') and notices[1:] == [None] * 4  # own repeats are not duplicates
+    ids = [r['activity_id'] for r in out['rows']]
+    with system_tx() as c:
+        q = text('SELECT p.state, p.state_owner_id, p.first_seen_activity_id, p.first_attempt_activity_id, p.first_connect_activity_id '
+                 'FROM phone_registry p JOIN activities a ON a.phone_key = p.phone_key AND a.org_id = p.org_id WHERE a.id = :a')
+        tw = c.execute(q, {'a': ids[1]}).one()
+        fo = c.execute(q, {'a': ids[3]}).one()
+        th = c.execute(q, {'a': ids[0]}).one()
+        flags = c.execute(text("SELECT activity_id FROM flags WHERE kind = 'duplicate_followup' AND activity_id = ANY(:ids)"),
+                          {'ids': ids}).scalars().all()
+        org = c.execute(text("SELECT org_id FROM users WHERE email = 'c@crm.test'")).scalar_one()
+        assert rollups.reconcile(c, org, business_date(), fix=False) == []
+    assert [str(x) for x in tw[2:]] == [ids[1]] * 3  # first seen / attempt / connect stay with the first row
+    assert fo[0] == 'followup' and str(fo[1]) == str(ws['c'].id) and str(fo[2]) == ids[3]
+    assert th[0] == 'followup' and str(th[1]) == str(ws['b'].id)  # someone else's follow-up is not taken over
+    assert [str(f) for f in flags] == [ids[0]]

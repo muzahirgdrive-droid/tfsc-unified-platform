@@ -101,6 +101,14 @@ services:
       crm-migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
 
+  # Refine & Save (1,000-row pastes) and file imports run here, off the interactive API (docs/PERFORMANCE.md).
+  # The edge routes those paths to this service; without the edge profile, crm-api serves everything.
+  crm-bulk:
+    <<: *crm
+    depends_on:
+      crm-migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
   crm-dispatcher:
     <<: *crm
     command: ["python", "-m", "tfsc_crm.workers.dispatcher"]
@@ -131,7 +139,7 @@ services:
     environment: { CRM_DOMAIN: "${CRM_DOMAIN:-}", TFSC_DOMAIN: "${TFSC_DOMAIN:-}", SSO_DOMAIN: "${SSO_DOMAIN:-}" }
     ports: ["80:80", "443:443"]
     volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy-data:/data, caddy-config:/config]
-    depends_on: [crm-api, agreements, keycloak]
+    depends_on: [crm-api, crm-bulk, agreements, keycloak]
 
 volumes:
   postgres-data:

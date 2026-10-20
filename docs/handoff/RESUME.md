@@ -149,3 +149,11 @@ default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
   while sending the public Host header, so both apps keep strict Host allow-lists.
 - `/metrics` exists only when CRM_METRICS_TOKEN is set; bearer-protected; exempt from the Host check (scraped by pod IP).
 - Agreements now migrates with Alembic at start-up (`migrate.py`); pre-Alembic installs are stamped after create_all.
+- Sign-in limits: per IP 1,000 attempts and 100 failures per 15 min (one office NAT = one address), per account 10 per
+  15 min; SSO start/callback 1,000 per IP per 15 min. Load tests must clear the limiter between runs (they sign in ~600×).
+- SSE: each API worker holds one Redis subscription per org and fans out in memory (not one Redis connection per
+  browser); a stalled browser's queue (1,000 events) drops new events instead of growing; auth/backlog run off the loop.
+- Batch saves (paste, file import) lock all their phone-registry rows up front in key order (no deadlocks between
+  concurrent pastes sharing numbers) and the fast path reads those rows from a per-batch cache (1 round trip per row).
+- Bulk pool: `/api/activities/batch`, `/api/imports*`, `/api/admin/legacy-imports*` are routed to separate `crm-bulk`
+  processes (compose edge + Helm Ingress) so 1,000-row pastes do not slow interactive requests (see PERFORMANCE.md).

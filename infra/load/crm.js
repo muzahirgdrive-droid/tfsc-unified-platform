@@ -1,6 +1,6 @@
 // k6 load test for the CRM API (§24). Profiles: AGENTS / SUPS / PASTERS / HOLD set the load; THINK sets agent pacing.
 //   docker run --rm --network host -v $PWD/infra/load:/load grafana/k6 run -e BASE=http://127.0.0.1:8766 \
-//     -e AGENTS=550 -e SUPS=50 -e PASTERS=5 -e HOLD=5m /load/crm.js
+//     -e AGENTS=550 -e SUPS=50 -e PASTERS=5 -e HOLD=5m [-e BULK=http://127.0.0.1:8767] /load/crm.js
 // Agents: pre-dial check -> save an entry -> sometimes list their day / open their dashboard; then think THINK seconds.
 // Supervisors: team dashboards every ~15 s. Pasters: Refine & Save of 1,000 rows every ~20 s each.
 // Thresholds are the §24 targets; k6 exits non-zero when one is missed.
@@ -9,6 +9,8 @@ import { check, sleep } from 'k6';
 import exec from 'k6/execution';
 
 const BASE = __ENV.BASE || 'http://127.0.0.1:8766';
+// BULK: optional separate API pool for Refine & Save / imports (the ingress routes /api/activities/batch there).
+const BULK = __ENV.BULK || BASE;
 const USERS = JSON.parse(open('./users.json'));
 const N_AGENTS = Number(__ENV.AGENTS || 550);
 const N_SUPS = Number(__ENV.SUPS || 50);
@@ -80,8 +82,9 @@ export function paste() {
   if (!csrf) { sleep(5); return; }
   const rows = Array.from({ length: 1000 }, (_, k) => ({ name: `paste clinic ${k} llc`, phone: phone(), called: 'Yes', connected: k % 6 === 0 ? 'Yes' : 'No' }));
   const key = `load-${exec.vu.idInTest}-${exec.vu.iterationInScenario}-${Date.now()}`;
-  const r = http.post(`${BASE}/api/activities/batch`, JSON.stringify({ request_key: key, rows, source: 'grid' }),
-    { headers: json(), tags: { kind: 'paste', name: 'refine & save 1000' }, timeout: '60s' });
+  const headers = BULK === BASE ? json() : { ...json(), Host: BASE.replace(/^https?:\/\//, '') }; // same public host as the ingress
+  const r = http.post(`${BULK}/api/activities/batch`, JSON.stringify({ request_key: key, rows, source: 'grid' }),
+    { headers, tags: { kind: 'paste', name: 'refine & save 1000' }, timeout: '60s' });
   check(r, { 'paste saved': (x) => x.status === 200 && x.json('saved') + x.json('rejected') + x.json('review') === 1000 });
   sleep(20 * (0.5 + Math.random()));
 }
