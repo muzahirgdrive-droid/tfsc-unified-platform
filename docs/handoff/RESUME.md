@@ -108,8 +108,10 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        concurrent same-lead Agreements handoff test (legacy CRM-11). Commits 22ae3b5, ff107e4. The CRM-11 test found a
        real race (two TFSC workers -> 500s/timeouts on parallel handoffs); fixed with a per-CRM-client advisory lock.
        (Known-issues CSVs are updated in item 9.)
-2. [ ] Round-robin auto-assignment per team, weighted by open-lead capacity, off by default (§14.4, V2-D06);
-       90-day lead protection: supervisor prompted to release/renew, never auto-release with a meeting (§27)
+2. [x] Round-robin auto-assignment per team, weighted by open-lead capacity, off by default (§14.4, V2-D06);
+       90-day lead protection: supervisor prompted to release/renew, never auto-release with a meeting (§27).
+       Commit 136d9cf: domain/assignment.py, domain/protection.py, migration 0005, scheduler job lead_protection
+       (daily 05:00 PT), POST /api/leads/{id}/protection, team settings in People -> Teams, tests_v2/test_assignment_protection.py
 3. [ ] Keycloak email invitations (set password + MFA enrollment) and password recovery via SMTP (§4.2, §6),
        verified on the compose stack with a local mail sink; TFSC OIDC sign-in verified (TFSC-12)
 4. [ ] Files: S3-compatible object storage (MinIO) with presigned short-lived URLs + AV scan on upload (§4.2);

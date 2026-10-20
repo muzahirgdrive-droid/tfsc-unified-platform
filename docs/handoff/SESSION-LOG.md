@@ -103,3 +103,8 @@ start doing all the work from where you stop with all the chat history as well."
   the CRM as "TFSC unreachable"); fixed with a per-CRM-client advisory lock in TFSC.
 - A usage-limit pause and two worker restarts happened mid-item; the dev PostgreSQL/Redis must be restarted after a
   restart (`tools/dev_services.sh start`).
+- P8.2 done (136d9cf). Round-robin is rule 3 of §14.4: it applies only when the first connector and the strong-FU
+  requester cannot own the lead (for example, the requester left); per team, off by default, capacity = max open
+  leads per agent. Offboarding uses it too when the team has it on. Protection review: daily job, amber flag +
+  notification to the supervisor, renew or release (release = lost with reason, number freed); never for a lead
+  with a scheduled meeting. Tests: v2 158 (+4), E2E 49 green; UI checked in a real browser (axe clean).
