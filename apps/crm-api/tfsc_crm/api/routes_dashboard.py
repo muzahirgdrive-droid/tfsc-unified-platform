@@ -198,7 +198,7 @@ def funnel(a: ActorDep, preset: str = 'mtd', start: date | None = None, end: dat
         raise HTTPException(403, 'You do not have permission for this action.')
     p = metrics.period(preset, start, end)
     with read(a.org_id, a.id) as c:
-        users, roster = _scope(c, a, scope, team_id, None)
+        users, _roster = _scope(c, a, scope, team_id, None)
         s = metrics.aggregate(c, a.org_id, users, p)
         ld = m.leads
         lcond = [ld.c.org_id == a.org_id] + ([ld.c.owner_id.in_(users)] if users is not None else [])
@@ -277,7 +277,7 @@ def system_health(a: ActorDep) -> dict:
         raise HTTPException(403, 'You do not have permission for this action.')
     from ..realtime import broker
     with system_tx() as c:
-        q = dict(c.execute(select(m.outbox.c.state, func.count()).group_by(m.outbox.c.state)).all())
+        q: dict[str, int] = dict(c.execute(select(m.outbox.c.state, func.count()).group_by(m.outbox.c.state)).all())
         inbox_err = c.execute(select(func.count()).select_from(m.inbox).where(m.inbox.c.error.is_not(None))).scalar_one()
         size = c.execute(text('SELECT pg_database_size(current_database())')).scalar_one()
         oldest = c.execute(select(func.min(m.outbox.c.created_at)).where(m.outbox.c.state == 'pending')).scalar_one()
