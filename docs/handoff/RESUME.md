@@ -41,9 +41,9 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 | Phase | Status | Notes |
 |---|---|---|
 | P0 Baseline | done | pilot 47 tests + 42 subtests green; baseline migration = pilot schema (diff 0); CI; ADRs |
-| P1 Foundation | done except Keycloak | design system + app shell + world clock + OpenAPI TS client shipped in `apps/crm-web` (v2); Keycloak realm remains (P7) |
+| P1 Foundation | done | design system, app shell, world clock, OpenAPI TS client; Keycloak realm + SSO delivered in P7b |
 | P2 Capture | done | My Work, Sheet View, and the XLSX/CSV server import job (`/api/imports`, resumable, per-row results, 50k rows, SHA-256 stored) |
-| P3 Integrity | done except SLA job | follow-ups, strong FU, leads, flags, people/teams UI shipped; SLA escalation job pending (P7) |
+| P3 Integrity | done | follow-ups, strong FU, leads, flags, people/teams; SLA escalation job delivered in P7a |
 | P4 Meetings & Celebration | done | meetings UI, celebration overlay (SSE, confetti without worker for CSP), Wall of Fame |
 | P5 Dashboards | done | dashboards + legacy workbook import with §20.5 reconciliation (acceptance 18; see runbook) |
 | P6 Agreements v2 | done | backend both apps + CRM pre-flight/client profile UI; E2E acceptance 12-13 green with real LibreOffice |
@@ -92,7 +92,15 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
        harness (`sse_fanout.py`, 15,000 streams), fixes found by measuring (SSE disconnect bug + per-worker Redis
        subscription, paste deadlock, batch registry cache, one-query auth, bulk pool in compose/Helm);
        results + what was NOT measured (10k/50k profiles, 100 M rows) in `docs/PERFORMANCE.md`
-8. [ ] Playwright E2E acceptance flows (beyond screenshots); regenerate both _HANDOFF zips (§29)
+8. [x] Playwright acceptance E2E (`apps/crm-web/e2e`, desktop + mobile, CRM + TFSC, axe on 11 screens, dashboard
+       snapshots; CI job `e2e`), CI `security` job (pip-audit, npm audit, gitleaks, SBOMs) and coverage gates (85%),
+       property tests (scoring ladder, ledger, lock timing), lifecycle tests; both §29 handoff ZIPs regenerated with
+       `tools/make_app_handoffs.py` (docs in `docs/handoff/apps/`). Fixes found on the way are in SESSION-LOG.md.
+9. [x] ALL PHASES DONE. The auto-resume scheduled task was disabled. What remains is owner input
+       (`docs/handoff/apps/crm/08-OWNER-CHECKLIST.txt`) and the open items in `docs/handoff/apps/*/04-KNOWN-ISSUES.csv`.
+       If asked to continue without new instructions, good next items: ESLint for crm-web (V2-D08), TFSC /reviews
+       styling + inline approval reason (TFSC-V2-01), concurrent same-lead handoff test (legacy CRM-11), TFSC OIDC
+       on the compose trial stack (TFSC-12).
 
 ## How to run the v2 web app locally
 ```
@@ -160,3 +168,16 @@ default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
   concurrent pastes sharing numbers) and the fast path reads those rows from a per-batch cache (1 round trip per row).
 - Bulk pool: `/api/activities/batch`, `/api/imports*`, `/api/admin/legacy-imports*` are routed to separate `crm-bulk`
   processes (compose edge + Helm Ingress) so 1,000-row pastes do not slow interactive requests (see PERFORMANCE.md).
+- Browser E2E runs against `apps/crm-api/tools/e2e_stack.py`: a fresh `crm_e2e` database, synthetic users
+  (`*@e2e.test`), TFSC with LibreOffice when installed, CRM on :8799. Tests arrange state through the API and act in
+  the UI; past celebrations are pre-marked as seen so replays do not cover pages.
+- Dashboard visual snapshots cover only users whose data no other test touches (sup2, agent4) and leave org-wide
+  widgets out; regenerate with `npx playwright test --update-snapshots` after an intended UI change.
+- Red duplicates send a live `flag.raised` event per responsible supervisor/manager/Super Admin (no client details);
+  supervisors get a blocking alert (Escape/outside clicks do not close it).
+- Form controls are wrapped in their labels (axe `label`); scrollable regions are focusable labelled regions;
+  success colour #0b7a45 (AA contrast).
+- CI gates: coverage >= 85% for CRM domain + security, refine and bridge; pip-audit + npm audit (production, high+);
+  gitleaks over history (`.gitleaks.toml` allowlists two synthetic fixtures); CycloneDX SBOMs as artifacts.
+- The TS packages use `legacy-peer-deps` like crm-web (npm 10 cannot resolve vitest 4 peer sets otherwise).
+- TFSC: a failed or abandoned generation returns the review to `approved` for an explicit retry.

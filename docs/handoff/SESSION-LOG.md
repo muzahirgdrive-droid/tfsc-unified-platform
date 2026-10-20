@@ -75,3 +75,22 @@ start doing all the work from where you stop with all the chat history as well."
   caused the paste and tail-latency failures (now a separate bulk pool in compose and Helm); auth took 3–4 queries per request.
 - Not measured, stated in docs/PERFORMANCE.md: 10k/50k user profiles, 100 M-row dataset, multi-host, soak, failover.
 - Tests: v2 143, pilot 17, refine+bridge 306, agreements 40 (+42 subtests).
+- After a worker restart (auto-resume fired at 12:49Z and 15:48Z): the work continued in the same session.
+- Browser acceptance E2E (§26): Playwright suite for paste -> refine -> save (200 rows, 197 saved, 3 kept with
+  reasons), data hunting + lock countdown, amber/red duplicates (supervisor's live blocking alert), strong FU ->
+  lead -> meeting -> sale -> celebration in a second browser < 3 s, Proceed to Agreements -> TFSC review -> issued ->
+  CRM client profile; axe on 11 screens; dashboard snapshots. 49 tests (desktop + mobile), green locally and in CI.
+- Bugs found by those tests and fixed: no supervisor red alert existed (acceptance 7); mobile Sheet hid unsaved-row
+  reasons; TFSC /reviews returned raw JSON 401 to a signed-out user and lost the handoff code at login; the lead
+  dialog's overlay blocked the "Open Agreements" toast; My Work header counters stayed stale after an edit and the
+  Edit button stayed after lock; 49 unlabelled form fields, low-contrast green, unreachable scroll regions, nested
+  controls in the Leads list; TFSC reviews stuck in "queued" after a failed generation.
+- Quality gates added: coverage (domain + security 89.6%, lifecycle 64% -> 92%, refine 98%, bridge 100%),
+  property tests, 100-way conversion race, CI security job. Vulnerable runtime deps fixed (cryptography 50.0.2,
+  pyzipper 0.4.0) and dev toolchain (vite 7.3.7, vitest 4.1.11): pip-audit and npm audit report 0 known issues.
+- §29: both per-app handoff ZIPs regenerated (`tools/make_app_handoffs.py`): docs, API inventory (CRM 122 routes,
+  TFSC 44), schema (CRM 72 tables incl. 41 with RLS; TFSC 19), environment names, service catalog, 34 previews,
+  SHA-256 manifests; no workbook, signature image or .env inside (checked).
+- Tests at the end: v2 153, pilot 17, refine 300 + bridge 12 (Python), agreements 43 (+42 subtests), web 21,
+  refine TS 285, bridge TS 6, E2E 49.
+
