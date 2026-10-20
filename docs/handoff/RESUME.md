@@ -40,8 +40,8 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 
 | Phase | Status | Notes |
 |---|---|---|
-| P0 Baseline | in progress | see checklist below |
-| P1 Foundation | not started | |
+| P0 Baseline | done | pilot 47 tests + 42 subtests green; baseline migration = pilot schema (diff 0); CI; ADRs |
+| P1 Foundation | in progress | see P1 checklist |
 | P2 Capture | not started | |
 | P3 Integrity | not started | |
 | P4 Meetings & Celebration | not started | |
@@ -53,14 +53,39 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 - [x] Unpack both handoffs into monorepo (`apps/crm-api`, `apps/crm-web`, `apps/agreements`)
 - [x] Reproduce pilot tests: CRM 17 passed; Agreements 30 passed + 42 subtests (= 47 + 42 ✔)
 - [x] Pilot frontend builds (tsc + vite)
-- [ ] Alembic baseline matching pilot schema
-- [ ] CI pipeline (.github/workflows)
-- [ ] ADRs for §4 stack decisions
+- [x] Alembic baseline matching pilot schema (`migrations/versions/0001_pilot_baseline.py`)
+- [x] CI pipeline (`.github/workflows/ci.yml`)
+- [x] ADRs for §4 stack decisions (`docs/adr/`)
+
+## P1 checklist
+- [x] Refine engine Python + TS, 283 shared vectors (`packages/refine`) — done early (P2 item)
+- [x] v2 data model `tfsc_crm/db/models.py` + migration 0002 (partitions, RLS, crm_app role)
+- [x] Migration 0003: §9 seeds + pilot data copy (tested in `tests_v2/test_migrations.py`)
+- [x] Core: ids (UUIDv7), config, crypto (blind index + AES-GCM), pacific clock, db session (SET LOCAL ROLE + app.org_id)
+- [x] Domain: roles/scope/capabilities, auth sessions, audit chain, outbox, notify, scoring ledger, duplicates engine,
+      activities lifecycle, rollups, pipeline (strong FU → lead → sign-up, attribution, reassignment)
+- [ ] API layer (`tfsc_crm/api/*`, Pydantic models) + `tfsc_crm/main.py` app factory
+- [ ] Authz matrix tests + agent leak tests + RLS tests (tests_v2)
+- [ ] Bridge contract package (`packages/bridge-contract`, Py + TS)
+- [ ] Keycloak realm export + OIDC (`infra/keycloak`), design system + app shell + world clock (crm-web v2)
+- [ ] OpenAPI → TS client generation
 
 ## Next actions (do the first unchecked one)
-See the P0 checklist above, then P1 in §28 of the master command.
+Continue the P1 checklist above, then P2..P7 per §28 of the master command.
+
+## How to run v2 tests
+`tools/dev_services.sh start` then `cd apps/crm-api && python -m pytest -q tests_v2` (uses CRM_TEST_DATABASE_URL,
+default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
 
 ## Decisions log (things decided without asking; §27 defaults apply)
 - Private signature images are excluded from git (privacy rule §3); installs use `manage.py install-signatures`.
 - Docker build context for CRM is `apps/` (Dockerfile at `apps/crm-api/Dockerfile`).
 - `CRM_WEB_DIST` env var (or `../crm-web/dist`) locates the compiled SPA.
+- business_date of live entries (manual/grid/import) = server Pacific date at commit; the typed Date cell is kept in `raw`.
+  Only the Super Admin legacy workbook import uses the typed date (historical, no locks/notifications).
+- Red refine issues block saving that row (acceptance 1); a red phone is not saved as research automatically.
+- Duplicate-conflict entries (amber and red) are capped at 10 points until resolved (§12 wording applies to both).
+- Audit chain writes are serialized per org with an advisory lock; activity creates are evidenced by the
+  activity row + revisions (not audit_log) to avoid write contention at scale.
+- Rollups are maintained synchronously in the save transaction (O(1) upsert per agent/day) + nightly reconcile,
+  rather than via the outbox consumer — simpler and always consistent; outbox still drives SSE/TFSC delivery.

@@ -26,8 +26,9 @@ jobs:
       - name: Install
         run: |
           pip install -r apps/crm-api/requirements-dev.txt -r apps/agreements/requirements.txt
+          pip install -e packages/refine/python
       - name: Lint (v2 code)
-        run: pip install ruff mypy alembic hypothesis && ruff check .
+        run: ruff check .
       - name: Typecheck (v2 code)
         if: hashFiles('apps/crm-api/mypy.ini') != ''
         run: mypy --config-file apps/crm-api/mypy.ini apps/crm-api/tfsc_crm
@@ -35,9 +36,12 @@ jobs:
         working-directory: apps/crm-api
         env: {CRM_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/crm_test}
         run: alembic upgrade head && alembic downgrade base && alembic upgrade head && alembic downgrade base
-      - name: CRM tests (pilot + v2)
+      - name: CRM pilot tests (v1.0.1 behaviour preserved)
         working-directory: apps/crm-api
-        run: python -m pytest -q
+        run: python -m pytest -q tests
+      - name: CRM v2 tests (PostgreSQL, RLS)
+        working-directory: apps/crm-api
+        run: python -m pytest -q tests_v2
       - name: Refine engine vectors (Python)
         run: python -m pytest -q packages/refine/python
       - name: Bridge contract (Python)

@@ -5,7 +5,9 @@ so a later model change cannot silently rewrite history. `target_metadata` is on
 used by `alembic check` / autogenerate when authoring a new revision.
 """
 from __future__ import annotations
+
 import os
+
 from alembic import context
 from sqlalchemy import create_engine, pool
 

@@ -1,0 +1,10 @@
+pyproject.toml
+tests/test_properties.py
+tests/test_required_vectors.py
+tests/test_shared_vectors.py
+tfsc_refine/__init__.py
+tfsc_refine.egg-info/PKG-INFO
+tfsc_refine.egg-info/SOURCES.txt
+tfsc_refine.egg-info/dependency_links.txt
+tfsc_refine.egg-info/requires.txt
+tfsc_refine.egg-info/top_level.txt

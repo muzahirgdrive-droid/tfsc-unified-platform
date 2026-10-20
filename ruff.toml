@@ -11,3 +11,5 @@ ignore = ["E701", "E702", "E501", "S101", "S311", "RUF001", "RUF002", "RUF003", 
 [lint.per-file-ignores]
 "**/tests/**" = ["S", "B"]
 "**/test_*.py" = ["S", "B"]
+"**/tests_v2/**" = ["S", "B"]
+"**/migrations/versions/**" = ["S608"]

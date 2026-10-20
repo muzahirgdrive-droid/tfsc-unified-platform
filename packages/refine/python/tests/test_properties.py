@@ -3,7 +3,6 @@ import string
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
-
 from tfsc_refine import refine_email, refine_name, refine_phone
 
 WORD = st.text(alphabet=string.ascii_letters + "'-", min_size=1, max_size=12).filter(lambda w: w[0].isalpha())
