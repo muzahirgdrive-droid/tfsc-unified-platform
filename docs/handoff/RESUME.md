@@ -47,7 +47,7 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 | P4 Meetings & Celebration | done | meetings UI, celebration overlay (SSE, confetti without worker for CSP), Wall of Fame |
 | P5 Dashboards | done | dashboards + legacy workbook import with §20.5 reconciliation (acceptance 18; see runbook) |
 | P6 Agreements v2 | done | backend both apps + CRM pre-flight/client profile UI; E2E acceptance 12-13 green with real LibreOffice |
-| P7 Hardening & Scale | in progress | P7a + P7b done; P7c (k6 + PERFORMANCE.md) pending |
+| P7 Hardening & Scale | done | P7a + P7b + P7c (k6, SSE fan-out, bulk pool, docs/PERFORMANCE.md) |
 
 ## P0 checklist
 - [x] Unpack both handoffs into monorepo (`apps/crm-api`, `apps/crm-web`, `apps/agreements`)
@@ -88,7 +88,10 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
        images from repo root (CRM runs `tfsc_crm.main:app`), `infra/compose` (verified up locally), Helm chart (lint +
        kubeconform clean; not run on a live cluster), Agreements Alembic baseline, restore drill (`tools/restore_drill.py`),
        THREAT-MODEL.md, runbooks (backups/PITR, cutover, legacy import), token-protected `/metrics`
-7. [ ] P7c: k6 load tests + docs/PERFORMANCE.md (measured numbers only)
+7. [x] P7c: k6 profiles (`infra/load/crm.js`, `run.sh`), synthetic data (`gen_data.py`, 2.68 M activities), SSE fan-out
+       harness (`sse_fanout.py`, 15,000 streams), fixes found by measuring (SSE disconnect bug + per-worker Redis
+       subscription, paste deadlock, batch registry cache, one-query auth, bulk pool in compose/Helm);
+       results + what was NOT measured (10k/50k profiles, 100 M rows) in `docs/PERFORMANCE.md`
 8. [ ] Playwright E2E acceptance flows (beyond screenshots); regenerate both _HANDOFF zips (§29)
 
 ## How to run the v2 web app locally

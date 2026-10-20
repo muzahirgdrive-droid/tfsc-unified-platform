@@ -66,3 +66,12 @@ start doing all the work from where you stop with all the chat history as well."
   supervisor (password + TOTP), unknown accounts refused, signed CRM ↔ TFSC call through internal URLs.
 - Found and fixed while running the real stack: alembic and redis were dev-only dependencies of the CRM (the image
   could not migrate or use Redis); the bridge package could not find its schemas when installed (env override added).
+- P7c: k6 load tests on one 4-vCPU VM with 2.68 M synthetic activities (550 agents, 50 supervisors, 3 pasters).
+  With the bulk pool at 20 s think (~7x go-live save rate) every §24 threshold passed (paste p95 2.91 s, pre-dial 30 ms,
+  reads 88 ms, writes 77 ms, 0 errors). At 6 s think (~23x) the API p95s still passed but paste p95 was 3.78 s.
+  SSE: 15,000 concurrent streams all got the celebration, p95 2.80 s.
+- Bugs found by measuring and fixed: SSE cleanup raised on every disconnect and used one Redis connection per browser
+  (broke above ~1,000 clients); concurrent pastes sharing numbers deadlocked; pastes in the interactive processes
+  caused the paste and tail-latency failures (now a separate bulk pool in compose and Helm); auth took 3–4 queries per request.
+- Not measured, stated in docs/PERFORMANCE.md: 10k/50k user profiles, 100 M-row dataset, multi-host, soak, failover.
+- Tests: v2 143, pilot 17, refine+bridge 306, agreements 40 (+42 subtests).
