@@ -208,14 +208,15 @@ export default function Sheet() {
       {mobile ? (
         <div className="space-y-3">
           {rows.slice(0, Math.max(filled.length + 1, 3)).map((r, i) => (
-            <div key={i} className={cn('card space-y-2 p-4', state[i]?.refined?.severity === 'red' && 'border-danger')}>
+            <div key={i} className={cn('card space-y-2 p-4', (state[i]?.refined?.severity === 'red' || state[i]?.result) && 'border-danger')}>
               {(['name', 'phone', 'email', 'remarks'] as ColKey[]).map((k) => (
                 <input key={k} className="input" placeholder={COLUMNS.find((c) => c.key === k)!.title} value={r[k]} onChange={(e) => { const n = rows.map((x) => ({ ...x })); n[i]![k] = e.target.value; commit(n); }} />
               ))}
               <div className="flex flex-wrap gap-1.5">{(['called', 'connected', 'text_sent', 'email_sent'] as ColKey[]).map((k) => (
                 <button key={k} className={cn('chip h-8', r[k] === 'Yes' ? 'bg-success-bg text-success' : r[k] === 'No' ? 'bg-danger-bg text-danger' : 'bg-bg text-muted')}
                   onClick={() => { const n = rows.map((x) => ({ ...x })); n[i]![k] = r[k] === '' ? 'Yes' : r[k] === 'Yes' ? 'No' : ''; commit(n); }}>{COLUMNS.find((c) => c.key === k)!.title}: {r[k] || 'Unset'}</button>))}</div>
-              {state[i]?.refined?.issues.length ? <p className="text-xs text-muted">{state[i]!.refined!.issues.map((x) => x.message).join(' · ')}</p> : null}
+              {state[i]?.result ? <p className="text-xs font-medium text-danger">{[state[i]!.result!.status, ...state[i]!.result!.issues.map((x) => x.message)].join(' · ')}</p>
+                : state[i]?.refined?.issues.length ? <p className="text-xs text-muted">{state[i]!.refined!.issues.map((x) => x.message).join(' · ')}</p> : null}
             </div>
           ))}
         </div>

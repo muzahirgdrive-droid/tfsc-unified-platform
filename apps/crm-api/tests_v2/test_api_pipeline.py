@@ -53,6 +53,15 @@ def test_red_protected_lead_and_points_capped(ws):
     assert body['activity']['conflict'] == 'review'
     red = [f for f in _flags(ws, 'sup2') if f['kind'] == 'duplicate_lead' and f['raised_for_user'] == ws['c'].id]
     assert red and red[0]['severity'] == 'red'
+    # live blocking alert: one event per supervisor / manager / Super Admin in either reporting line, none to agents
+    from sqlalchemy import text
+
+    from tfsc_crm.db.session import system_tx
+    with system_tx() as c:
+        events = c.execute(text("SELECT payload FROM outbox WHERE topic = 'flag.raised' AND payload->>'flag_id' = :f"),
+                           {'f': red[0]['id']}).scalars().all()
+    assert {e['audience'] for e in events} == {f'user:{ws[k].id}' for k in ('sup', 'sup2', 'manager', 'super')}
+    assert phone not in str(events) and 'Lead Practice' not in str(events)
     pre = ws['b'].get('/api/precheck', params={'phone': phone}).json()
     assert pre['state'] == 'protected' and 'A' not in pre['label'].split()  # no identity leak
     # resolve as data error -> credit restored

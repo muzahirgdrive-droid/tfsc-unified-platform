@@ -3,7 +3,7 @@ import os, time, json, hashlib, hmac, secrets, re
 from pathlib import Path
 from sqlalchemy import Table,Column,String,Text,Float,Integer,JSON,ForeignKey,UniqueConstraint,select,delete
 from fastapi import Request,HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse,RedirectResponse
 import database as db
 import security as sec
 import server as legacy
@@ -162,5 +162,9 @@ def install(app):
   return portal.generate(payload,request)
  @app.get('/reviews')
  def review_page(request:Request):
-  with db.engine.connect() as c:sec.get_actor(request,c)
+  # Signed out (or temporary password): sign in first, then come back. The browser keeps the #redeem= fragment across
+  # the redirect and login.js returns to `next` with it, so a CRM handoff link works for a first-time visitor too.
+  with db.engine.connect() as c:
+   try:sec.get_actor(request,c)
+   except HTTPException:return RedirectResponse('/login?next=/reviews',303)
   return FileResponse(db.APP/'reviews.html')

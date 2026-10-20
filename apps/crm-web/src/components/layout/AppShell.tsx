@@ -12,6 +12,7 @@ import { cn } from '@/lib/cn';
 import { useConfig } from '@/lib/config';
 import { Avatar } from '@/components/ui/bits';
 import { CelebrationOverlay } from './Celebration';
+import { RedAlert } from './RedAlert';
 import { CommandPalette } from './CommandPalette';
 import { WorldClockChip } from './WorldClock';
 
@@ -137,6 +138,7 @@ export function AppShell() {
       </nav>
       <Watermark name={me.display_name} code={me.employee_code} />
       <CelebrationOverlay enabled />
+      <RedAlert enabled={rankOf(me) >= 1} />
     </div>
   );
 }

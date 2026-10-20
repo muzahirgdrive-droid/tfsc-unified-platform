@@ -85,7 +85,7 @@ function LeadDetail({ id, onClose }: { id: string; onClose: () => void }) {
 function ReasonDialog({ title, onClose, onSubmit }: { title: string; onClose: () => void; onSubmit: (r: string) => void }) {
   const [r, setR] = useState('');
   return <Dialog open onOpenChange={(o) => !o && onClose()} title={title} footer={<button className="btn-primary" disabled={r.trim().length < 3} onClick={() => onSubmit(r)}>Confirm</button>}>
-    <label className="label">Reason (audited)</label><textarea className="input h-24 py-2" value={r} onChange={(e) => setR(e.target.value)} /></Dialog>;
+    <label className="block"><span className="label">Reason (audited)</span><textarea className="input h-24 py-2" value={r} onChange={(e) => setR(e.target.value)} /></label></Dialog>;
 }
 
 function Reassign({ lead, onClose, onDone }: { lead: L; onClose: () => void; onDone: () => void }) {
@@ -95,9 +95,9 @@ function Reassign({ lead, onClose, onDone }: { lead: L; onClose: () => void; onD
     onSuccess: () => { toast.success('Lead reassigned'); onDone(); onClose(); }, onError: (e) => toast.error((e as Error).message) });
   return <Dialog open onOpenChange={(o) => !o && onClose()} title="Reassign lead" description="Reassignment needs a reason and records the incentive attribution." dismissOnOutside={false}
     footer={<button className="btn-primary" disabled={!to || reason.length < 3 || m.isPending} onClick={() => m.mutate()}>Reassign</button>}>
-    <label className="label">New owner</label><select className="input mb-3" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose…</option>{people.data?.items.filter((p) => p.id !== lead.owner_id).map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
-    <label className="label">Incentive share for the new owner: {share}% (previous owner {100 - share}%)</label><input type="range" min={0} max={100} step={5} value={share} onChange={(e) => setShare(+e.target.value)} className="mb-3 w-full" />
-    <label className="label">Reason</label><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+    <label className="block"><span className="label">New owner</span><select className="input mb-3" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Choose…</option>{people.data?.items.filter((p) => p.id !== lead.owner_id).map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label>
+    <label className="block"><span className="label">Incentive share for the new owner: {share}% (previous owner {100 - share}%)</span><input type="range" min={0} max={100} step={5} value={share} onChange={(e) => setShare(+e.target.value)} className="mb-3 w-full" /></label>
+    <label className="block"><span className="label">Reason</span><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
   </Dialog>;
 }
 
@@ -109,11 +109,11 @@ function Schedule({ lead, onClose, onDone }: { lead: L; onClose: () => void; onD
   return <Dialog open onOpenChange={(o) => !o && onClose()} title="Schedule meeting" description={g.data?.message ?? 'Creates a Google Calendar event with a Meet link.'} dismissOnOutside={false}
     footer={<button className="btn-primary" disabled={m.isPending} onClick={() => m.mutate()}>Create meeting</button>}>
     <div className="space-y-3">
-      <div><label className="label">Title</label><input className="input" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></div>
+      <div><label className="block"><span className="label">Title</span><input className="input" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></label></div>
       <div className="grid grid-cols-3 gap-2"><input type="date" className="input" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /><input type="time" className="input" value={v.time} onChange={(e) => setV({ ...v, time: e.target.value })} />
         <select className="input" value={v.duration} onChange={(e) => setV({ ...v, duration: +e.target.value })}>{[15, 30, 45, 60, 90].map((d) => <option key={d} value={d}>{d} min</option>)}</select></div>
       <p className="text-xs text-muted">{dual(ptToUtc(v.date, v.time))}</p>
-      <div><label className="label">Attendees (optional, client email)</label><input className="input" value={v.attendees} onChange={(e) => setV({ ...v, attendees: e.target.value })} /></div>
+      <div><label className="block"><span className="label">Attendees (optional, client email)</span><input className="input" value={v.attendees} onChange={(e) => setV({ ...v, attendees: e.target.value })} /></label></div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.invite} onChange={(e) => setV({ ...v, invite: e.target.checked })} />Send Google invitations</label>
     </div>
   </Dialog>;
@@ -131,14 +131,13 @@ function Preflight({ lead, onClose, onDone }: { lead: L; onClose: () => void; on
       effective_date: val('effective_date'), entity: (v.entity as string) || p?.suggested_entity, document_types: v.document_types ?? ['baa', 'services'] }) }),
     onSuccess: (r) => { const url = r.agreements_url; toast.success(r.message, url ? { duration: 20000, action: { label: 'Open Agreements', onClick: () => window.open(url, '_blank', 'noopener') } } : undefined); onDone(); onClose(); }, onError: (e) => toast.error((e as Error).message),
   });
-  const f = (k: keyof Pre, label: string, type = 'text') => <div><label className="label">{label}</label><input type={type} className="input" value={val(k)} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></div>;
+  const f = (k: keyof Pre, label: string, type = 'text') => <div><label className="block"><span className="label">{label}</span><input type={type} className="input" value={val(k)} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></label></div>;
   const docs = (v.document_types as string[] | undefined) ?? ['baa', 'services'];
   return <Dialog open onOpenChange={(o) => !o && onClose()} title="Proceed to Agreements" description="Review the client details. Confirming engages the Agreement Lock: ownership, attribution and identity freeze (Super Admin + reason to change)." wide dismissOnOutside={false}
     footer={<button className="btn-primary" disabled={!p || m.isPending || !((v.entity as string) || p.suggested_entity)} onClick={() => m.mutate()}><Lock size={16} />Lock & open in TFSC Agreements</button>}>
     {!p ? <div className="skeleton h-48" /> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {f('legal_name', 'Practice legal name')}{f('address', 'Address')}{f('email', 'Notice email', 'email')}{f('phone', 'Phone')}{f('signatory', 'Signatory')}{f('title', 'Title')}{f('effective_date', 'Effective date', 'date')}
-      <div><label className="label">TFSC contracting company</label>
-        <select className="input" value={(v.entity as string) ?? p.suggested_entity ?? ''} onChange={(e) => setV({ ...v, entity: e.target.value })}><option value="">Choose…</option>{p.entity_options.map((o) => <option key={o}>{o}</option>)}</select>
+      <div><label className="block"><span className="label">TFSC contracting company</span><select className="input" value={(v.entity as string) ?? p.suggested_entity ?? ''} onChange={(e) => setV({ ...v, entity: e.target.value })}><option value="">Choose…</option>{p.entity_options.map((o) => <option key={o}>{o}</option>)}</select></label>
         {p.must_pick_reason && <p className="mt-1 text-xs text-warn">{p.must_pick_reason}</p>}</div>
       <div className="sm:col-span-2 flex flex-wrap gap-4 text-sm"><span className="label">Documents</span>{[['baa', 'Business Associate Agreement'], ['services', 'Services Agreement']].map(([k, l]) => (
         <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={docs.includes(k!)} onChange={(e) => setV({ ...v, document_types: e.target.checked ? [...docs, k!] : docs.filter((d) => d !== k) })} />{l}</label>))}</div>

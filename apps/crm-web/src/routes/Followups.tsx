@@ -57,7 +57,7 @@ export default function Followups() {
           footer={<><button className="btn-secondary" onClick={() => setAct(null)}>Cancel</button><button className="btn-primary" disabled={m.isPending || (act.kind === 'note' && !note) || (act.kind === 'reschedule' && !date)} onClick={() => m.mutate()}>Save</button></>}>
           {act.kind === 'reschedule' && <div className="mb-3 grid grid-cols-2 gap-2"><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /><input type="time" className="input" value={time} onChange={(e) => setTime(e.target.value)} />
             {date && <p className="col-span-2 text-xs text-muted">{dual(ptToUtc(date, time))}</p>}</div>}
-          <label className="label">Note {act.kind === 'note' ? '' : '(optional)'}</label><textarea className="input h-24 py-2" value={note} onChange={(e) => setNote(e.target.value)} />
+          <label className="block"><span className="label">Note {act.kind === 'note' ? '' : '(optional)'}</span><textarea className="input h-24 py-2" value={note} onChange={(e) => setNote(e.target.value)} /></label>
         </Dialog>)}
     </div>
   );

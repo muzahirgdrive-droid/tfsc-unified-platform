@@ -167,6 +167,11 @@ def evaluate(c: Connection, org_id: uuid.UUID, reg: dict, activity: dict, *, his
                                                                'message': 'This number belongs to an active lead. Clarify to protect incentives.' if sev == 'red'
                                                                else 'A number already in follow-up was contacted by another agent.'})
         notify.notify(c, org_id, [owner], 'flag.neutral', {'message': notice})
+        if sev == 'red':  # live blocking alert for the same people (§12, acceptance 7); no client details in the event
+            from . import outbox
+            for uid in sorted(recipients, key=str):
+                outbox.emit(c, org_id, 'flag.raised', {'flag_id': str(flag_id), 'severity': sev, 'kind': kind, 'audience': f'user:{uid}',
+                                                       'message': 'This number belongs to an active lead and was contacted by another agent.'})
     return DupResult(sev, notice, flag_id)
 
 

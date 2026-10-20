@@ -47,12 +47,11 @@ export default function Strong() {
           </div>)}
       </Spinnerless>
       {reject && <Dialog open onOpenChange={(o) => !o && setReject(null)} title="Reject strong follow-up" footer={<button className="btn-danger" disabled={reason.length < 3} onClick={() => decide.mutate({ s: reject, decision: 'rejected' })}>Reject</button>}>
-        <label className="label">Reason (shared with the agent)</label><textarea className="input h-24 py-2" value={reason} onChange={(e) => setReason(e.target.value)} /></Dialog>}
+        <label className="block"><span className="label">Reason (shared with the agent)</span><textarea className="input h-24 py-2" value={reason} onChange={(e) => setReason(e.target.value)} /></label></Dialog>}
       {convert && <Dialog open onOpenChange={(o) => !o && setConvert(null)} title="Convert to lead" description={`Automatic owner: ${name(convert.suggested_owner_id)} (${convert.suggested_owner_rule?.replace('_', ' ')}).`}
         footer={<button className="btn-primary" disabled={conv.isPending || (!!owner && owner !== convert.suggested_owner_id && reason.length < 3)} onClick={() => conv.mutate(convert)}>Convert & lock</button>}>
-        <label className="label">Owner</label>
-        <select className="input mb-3" value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Automatic ({name(convert.suggested_owner_id)})</option>{people.data?.items.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select>
-        {owner && owner !== convert.suggested_owner_id && <><label className="label">Override reason (audited)</label><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></>}
+        <label className="block"><span className="label">Owner</span><select className="input mb-3" value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">Automatic ({name(convert.suggested_owner_id)})</option>{people.data?.items.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></label>
+        {owner && owner !== convert.suggested_owner_id && <><label className="block"><span className="label">Override reason (audited)</span><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></label></>}
       </Dialog>}
     </div>
   );

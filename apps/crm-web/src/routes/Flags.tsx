@@ -48,7 +48,7 @@ export default function Flags() {
       {res && <Dialog open onOpenChange={(o) => !o && setRes(null)} title="Resolve flag" description={`${res.kind.replace(/_/g, ' ')} · ${res.provider_name ?? ''}`} dismissOnOutside={false}
         footer={<button className="btn-primary" disabled={form.note.length < 3 || resolve.isPending} onClick={() => resolve.mutate()}>Resolve</button>}>
         <div className="space-y-2">{RES.map(([v, l]) => <label key={v} className="flex items-center gap-2 text-sm"><input type="radio" name="res" checked={form.resolution === v} onChange={() => setForm({ ...form, resolution: v })} />{l}</label>)}</div>
-        {form.resolution === 'transfer' && <div className="mt-3"><label className="label">Share for {res.raised_for_name}: {form.share}% · {res.other_user_name}: {100 - form.share}%</label><input type="range" min={0} max={100} step={5} value={form.share} onChange={(e) => setForm({ ...form, share: +e.target.value })} className="w-full" /></div>}
+        {form.resolution === 'transfer' && <div className="mt-3"><label className="block"><span className="label">Share for {res.raised_for_name}: {form.share}% · {res.other_user_name}: {100 - form.share}%</span><input type="range" min={0} max={100} step={5} value={form.share} onChange={(e) => setForm({ ...form, share: +e.target.value })} className="w-full" /></label></div>}
         <label className="label mt-3">Note (audited)</label><textarea className="input h-20 py-2" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
       </Dialog>}
     </div>

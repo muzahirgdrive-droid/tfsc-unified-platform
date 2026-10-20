@@ -16,6 +16,11 @@ class BridgeTests(unittest.TestCase):
   baseline.PortalTests.setUp(self);self.env=patch.dict(os.environ,{'TFSC_REQUIRE_APPROVAL':'1','TFSC_CRM_SHARED_SECRET':'synthetic-secret-'+('a'*48)});self.env.start()
  def tearDown(self):
   self.env.stop();baseline.PortalTests.tearDown(self)
+ def test_review_page_sends_signed_out_visitors_to_login_and_back(self):
+  self.api.cookies.clear();r=self.api.get('/reviews',follow_redirects=False)
+  self.assertEqual((r.status_code,r.headers['location']),(303,'/login?next=/reviews'))
+  self.login(self.u1);self.assertEqual(self.api.get('/reviews',follow_redirects=False).status_code,200)
+  js=(Path(db.APP)/'login.js').read_text(encoding='utf-8');self.assertIn('location.href=target()',js);self.assertIn("!n.startsWith('//')",js)
  def submitted(self):
   self.login(self.u1);cid=self.save();r=self.post('/api/reviews/submit',{'client_id':cid});self.assertEqual(r.status_code,200,r.text);return cid,r.json()
  def approve(self,r):

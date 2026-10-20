@@ -93,13 +93,13 @@ function EditDialog({ a, onClose }: { a: Act; onClose: () => void }) {
     <Dialog open onOpenChange={(o) => !o && onClose()} title="Edit entry" description={needsReason ? 'This entry is locked or belongs to someone else: a reason is required and a revision is stored.' : 'The edit window never extends; un-setting outcomes does not reset it.'} dismissOnOutside={false}
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={save.isPending || (needsReason && reason.trim().length < 3)} onClick={() => save.mutate()}>Save changes</button></>}>
       <div className="space-y-3">
-        <div><label className="label">Provider / practice</label><input className="input" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} /></div>
-        <div className="grid grid-cols-2 gap-3"><div><label className="label">Phone</label><input className="input" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} /></div>
-          <div><label className="label">Email</label><input className="input" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} /></div></div>
+        <div><label className="block"><span className="label">Provider / practice</span><input className="input" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} /></label></div>
+        <div className="grid grid-cols-2 gap-3"><div><label className="block"><span className="label">Phone</span><input className="input" value={d.phone} onChange={(e) => setD({ ...d, phone: e.target.value })} /></label></div>
+          <div><label className="block"><span className="label">Email</span><input className="input" value={d.email} onChange={(e) => setD({ ...d, email: e.target.value })} /></label></div></div>
         <div className="flex flex-wrap gap-2">{t('called', 'Called')}{t('connected', 'Connected')}{t('text_sent', 'Text')}{t('email_sent', 'Email')}{t('followup_needed', 'Follow-up')}</div>
         <FollowupPicker value={d.next_followup} onChange={(v) => setD({ ...d, next_followup: v })} />
-        <div><label className="label">Remarks</label><textarea className="input h-20 py-2" value={d.remarks} onChange={(e) => setD({ ...d, remarks: e.target.value })} /></div>
-        {needsReason && <div><label className="label">Reason (required)</label><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></div>}
+        <div><label className="block"><span className="label">Remarks</span><textarea className="input h-20 py-2" value={d.remarks} onChange={(e) => setD({ ...d, remarks: e.target.value })} /></label></div>
+        {needsReason && <div><label className="block"><span className="label">Reason (required)</span><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></label></div>}
       </div>
     </Dialog>
   );
@@ -133,8 +133,8 @@ export function StrongDialog({ a, onClose }: { a: Act; onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title="Request strong follow-up" description={`${a.provider_name} — a provisional lead. Only a supervisor can confirm it.`}
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => m.mutate()} disabled={m.isPending}>Send to supervisor</button></>}>
-      <label className="label">Target window</label><input className="input mb-3" value={win} onChange={(e) => setWin(e.target.value)} />
-      <label className="label">What did they say?</label><textarea className="input h-24 py-2" value={note} onChange={(e) => setNote(e.target.value)} />
+      <label className="block"><span className="label">Target window</span><input className="input mb-3" value={win} onChange={(e) => setWin(e.target.value)} /></label>
+      <label className="block"><span className="label">What did they say?</span><textarea className="input h-24 py-2" value={note} onChange={(e) => setNote(e.target.value)} /></label>
     </Dialog>
   );
 }
