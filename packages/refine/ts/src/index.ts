@@ -125,9 +125,6 @@ export function refineName(rawIn: unknown, commaSuffix = true, splitOk = true): 
     const f = first as NameResult | null;
     return { value: out.join(''), kind: f ? f.kind : 'unknown', credentials: f ? f.credentials : [], entity_suffix: f ? f.entity_suffix : null, issues: [...issues, ...(f ? f.issues : [])] };
   }
-  const letters = [...text].filter(isAlpha);
-  const mixed = letters.length > 0 && !(letters.every(isUpper) || letters.every(isLower));
-
   const firstComma = text.indexOf(',');
   let tokens: Array<[string, boolean]> = [...text.matchAll(/[^\s,]+/g)].map((m) => [m[0], firstComma !== -1 && m.index! > firstComma]);
   let hasDr = false;
@@ -161,6 +158,11 @@ export function refineName(rawIn: unknown, commaSuffix = true, splitOk = true): 
   const commaAtIdx = tokens.findIndex(([, ac]) => ac);
   const commaAt = commaAtIdx === -1 ? null : commaAtIdx;
   const body = tokens.map(([t]) => t);
+  // Case style is judged on the name body only, ignoring known acronyms (peeled credentials,
+  // suffixes and acronym promotion would otherwise skew it and break idempotence).
+  const segments = body.flatMap((t) => t.split('-'));
+  const letters = segments.filter((t) => !(rstrip(t.toLowerCase(), '.') in ACRONYMS) && [...rstrip(t, '.')].length > 1).flatMap((t) => [...t]).filter(isAlpha);
+  const mixed = letters.length > 0 && !(letters.every(isUpper) || letters.every(isLower));
   const practice = suffix !== null || body.some((t) => PRACTICE_KEYWORDS.has(key(t)));
   if (ambiguousPa) {
     if (practice) suffix = suffix ?? ENTITY_SUFFIXES.pa!;

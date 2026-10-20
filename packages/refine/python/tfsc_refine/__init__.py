@@ -192,9 +192,6 @@ def refine_name(raw: Any, comma_suffix: bool = True, _split_ok: bool = True) -> 
                 out.append(r.value)
         issues.append(Issue('name', 'amber', 'split', 'This cell may contain two providers/practices. Split it?'))
         return NameResult(''.join(out), first.kind if first else 'unknown', first.credentials if first else [], first.entity_suffix if first else None, issues + (first.issues if first else []))
-    letters = [ch for ch in text if ch.isalpha()]
-    mixed_input = bool(letters) and not (all(ch.isupper() for ch in letters) or all(ch.islower() for ch in letters))
-
     first_comma = text.find(',')
     tokens: list[tuple[str, bool]] = []  # (token, after_comma)
     for m in re.finditer(r'[^\s,]+', text):
@@ -237,6 +234,11 @@ def refine_name(raw: Any, comma_suffix: bool = True, _split_ok: bool = True) -> 
 
     comma_at = next((i for i, (_t, ac) in enumerate(tokens) if ac), None)
     body = [t for t, _ in tokens]
+    # Case style is judged on the name body only, ignoring known acronyms (peeled credentials,
+    # suffixes and acronym promotion would otherwise skew it and break idempotence).
+    segments = [seg for t in body for seg in t.split('-')]
+    letters = [ch for seg in segments if seg.lower().rstrip('.') not in ACRONYMS and len(seg.rstrip('.')) > 1 for ch in seg if ch.isalpha()]
+    mixed_input = bool(letters) and not (all(ch.isupper() for ch in letters) or all(ch.islower() for ch in letters))
     body_keys = {_key(t) for t in body}
     practice = bool(suffix) or bool(body_keys & PRACTICE_KEYWORDS)
     if ambiguous_pa:
