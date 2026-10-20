@@ -1,0 +1,77 @@
+@import 'tailwindcss';
+@import '@fontsource/outfit/400.css';
+@import '@fontsource/outfit/500.css';
+@import '@fontsource/outfit/600.css';
+@import '@fontsource/outfit/700.css';
+
+/* 24-7 Consultancy design tokens (master command §22). Contrast checked for WCAG AA on the
+   surfaces they are used on; color is never the only signal (icons/labels accompany states). */
+@theme {
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --color-navy: #141956;
+  --color-navy-2: #1c2470;
+  --color-royal: #2d409d;
+  --color-cyan: #00afe7;
+  --color-tfsc-navy: #111b5d;
+  --color-tfsc-cyan: #00aeef;
+  --color-bg: #f4f7fc;
+  --color-surface: #ffffff;
+  --color-ink: #14214c;
+  --color-muted: #5e6c8f; /* darker than spec #7383A5 for AA text contrast on white */
+  --color-subtle: #7383a5;
+  --color-line: #e5eaf4;
+  --color-success: #0f8a4f;
+  --color-success-bg: #e5f6ec;
+  --color-warn: #a65a00;
+  --color-warn-bg: #fff3dc;
+  --color-danger: #c4262e;
+  --color-danger-bg: #fde8e8;
+  --color-info: #1f5fbf;
+  --color-info-bg: #e6f0ff;
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --shadow-soft: 0 1px 2px rgb(20 33 76 / 0.04), 0 8px 24px -12px rgb(20 33 76 / 0.16);
+  --shadow-lift: 0 2px 6px rgb(20 33 76 / 0.06), 0 18px 40px -18px rgb(20 33 76 / 0.32);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    font-synthesis: none;
+  }
+  .dark body, body.dark { background: #0b1033; color: #e6ebff; }
+  :focus-visible { outline: 3px solid rgb(0 175 231 / 0.55); outline-offset: 2px; border-radius: 8px; }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: 0.55; }
+  h1, h2, h3 { letter-spacing: -0.02em; }
+}
+
+@utility card { @apply bg-surface rounded-[var(--radius-card)] border border-line shadow-[var(--shadow-soft)]; }
+@utility eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-royal; }
+@utility btn { @apply inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] px-4 h-10 text-sm font-semibold transition-colors duration-150 select-none; }
+@utility btn-primary { @apply btn bg-navy text-white hover:bg-navy-2 shadow-[var(--shadow-soft)]; }
+@utility btn-secondary { @apply btn bg-surface text-ink border border-line hover:border-royal/40 hover:bg-bg; }
+@utility btn-ghost { @apply btn text-ink hover:bg-bg; }
+@utility btn-danger { @apply btn bg-danger text-white hover:opacity-90; }
+@utility input { @apply w-full h-10 rounded-[var(--radius-control)] border border-line bg-surface px-3 text-sm text-ink placeholder:text-subtle focus:border-royal focus:outline-none focus:ring-3 focus:ring-cyan/25; }
+@utility label { @apply block text-xs font-semibold text-muted mb-1; }
+@utility chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 h-6 text-xs font-semibold; }
+@utility skeleton { @apply animate-pulse rounded-lg bg-line/70; }
+@utility table-head { @apply text-left text-[11px] uppercase tracking-wider text-muted font-semibold; }
+
+.dark .card { background: #121845; border-color: #232c66; }
+.dark .input { background: #0f1440; border-color: #2a3470; color: #e6ebff; }
+
+/* Tiled, subtle watermark that deters and traces screenshots (§21). It does not prevent them. */
+.watermark {
+  position: fixed; inset: 0; pointer-events: none; z-index: 60; opacity: 0.045;
+  background-repeat: repeat; background-size: 360px 200px;
+}
+@media print { .watermark { opacity: 0.12; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* Glide Data Grid overlay editor must sit above dialogs */
+#portal { position: fixed; left: 0; top: 0; z-index: 9999; }

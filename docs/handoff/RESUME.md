@@ -41,12 +41,12 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 | Phase | Status | Notes |
 |---|---|---|
 | P0 Baseline | done | pilot 47 tests + 42 subtests green; baseline migration = pilot schema (diff 0); CI; ADRs |
-| P1 Foundation | backend done; web pending | see P1 checklist (Keycloak realm + design system/app shell remain) |
-| P2 Capture | backend done; web pending | refine engine, lifecycle/locks, Refine & Save, precheck — Sheet View/My Work UI pending; XLSX import job pending |
-| P3 Integrity | backend done; web pending | duplicates/flags/follow-ups/strong FU/leads/auto-assign/attribution; SLA escalation job pending |
-| P4 Meetings & Celebration | backend done; web pending | SSE gateway, dispatcher, celebration < 3 s (measured in-process), Google adapter (mock-tested), Wall of Fame |
-| P5 Dashboards | rollups done; API + web pending | score ledger + agent_day/hour rollups + reconcile exist; dashboard endpoints pending |
-| P6 Agreements v2 | backend done (both apps); web pending | provisioning, handoff + Agreement Lock, signed events, inbox, client profile; E2E acceptance 12-13 green with real LibreOffice |
+| P1 Foundation | done except Keycloak | design system + app shell + world clock + OpenAPI TS client shipped in `apps/crm-web` (v2); Keycloak realm remains (P7) |
+| P2 Capture | done except import job | My Work quick entry + Sheet View (Glide grid, paste/header detect, Refine/Refine & Save, encrypted draft) shipped; XLSX import job pending |
+| P3 Integrity | done except SLA job | follow-ups, strong FU, leads, flags, people/teams UI shipped; SLA escalation job pending (P7) |
+| P4 Meetings & Celebration | done | meetings UI, celebration overlay (SSE, confetti without worker for CSP), Wall of Fame |
+| P5 Dashboards | done except workbook reconciliation | dashboard API (`routes_dashboard.py`) + Overview widgets (ECharts, react-grid-layout) + Reports; reconciliation importer pending |
+| P6 Agreements v2 | done | backend both apps + CRM pre-flight/client profile UI; E2E acceptance 12-13 green with real LibreOffice |
 | P7 Hardening & Scale | not started | |
 
 ## P0 checklist
@@ -69,20 +69,31 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 - [x] Authz matrix tests (every OpenAPI op classified) + agent leak scan + RLS isolation test — `tests_v2/test_security.py`
 - [x] Acceptance 1-10, 14, 15 as API tests (`tests_v2/test_api_capture.py`, `test_api_pipeline.py`) — 52 v2 tests green
 - [x] Bridge contract package (`packages/bridge-contract`, Py + TS)
-- [ ] Keycloak realm export + OIDC (`infra/keycloak`), design system + app shell + world clock (crm-web v2)
-- [ ] OpenAPI → TS client generation
+- [ ] Keycloak realm export + OIDC (`infra/keycloak`) — moved to P7
+- [x] design system + app shell + world clock (crm-web v2)
+- [x] OpenAPI → TS client generation (`tools/export_openapi.py` → `apps/crm-api/openapi.json` → `npm run gen:api`; CI fails on drift)
 
 ## Next actions (do the first unchecked one)
-1. [ ] P5 dashboard API: metric catalog endpoints over rollups (agent/GL/supervisor/manager/super), leaderboard (paginated),
-       layouts (validated widget ids), period presets, comparison; workbook reconciliation importer (§20.5, needs the xlsx)
-2. [ ] crm-web v2 (biggest remaining item): React 19 + TanStack + Tailwind v4 design system (§22), app shell + nav + world clock,
-       My Work quick entry + toggles + calendar + precheck, Sheet View (Glide grid paste/refine/save), follow-ups board,
-       strong FU queue, leads, meetings, flags center, people & teams, settings, dashboards (ECharts + react-grid-layout),
-       celebration overlay (SSE), agreements pre-flight, client profile, mobile bottom nav; OpenAPI TS client
-3. [ ] XLSX/CSV import job (resumable, all sheets, 50k rows) + legacy workbook historical import (Super Admin)
-4. [ ] P7: security center, exports (watermarked, approval), offboarding, flag SLA escalation job, audit anchor, Keycloak realm,
-       k6 load tests + docs/PERFORMANCE.md, backups/runbooks, compose/Helm, agreements Alembic baseline
-5. [ ] Playwright E2E + screenshots; regenerate both _HANDOFF zips (§29)
+1. [x] P5 dashboard API (metric catalog, leaderboard, layouts, presets, comparison) — `routes_dashboard.py`, `tests_v2/test_dashboard.py`
+2. [x] crm-web v2 — `apps/crm-web` (pilot UI moved to `apps/crm-web-pilot`). Verified with screenshots
+       (`apps/crm-web/e2e/screens.mjs` against `tools/seed_demo.py` data) + 21 Vitest tests.
+3. [ ] Workbook reconciliation importer (§20.5, acceptance 18) with a SANITIZED fixture (never commit the real xlsx)
+4. [ ] XLSX/CSV import job (resumable, all sheets, 50k rows) + legacy workbook historical import (Super Admin)
+5. [ ] P7: security center, exports (watermarked, approval), offboarding, flag SLA escalation job, audit anchor, Keycloak realm,
+       k6 load tests + docs/PERFORMANCE.md, backups/runbooks, compose/Helm (Dockerfile must run `tfsc_crm.main:app`),
+       agreements Alembic baseline
+6. [ ] Playwright E2E acceptance flows (beyond screenshots); regenerate both _HANDOFF zips (§29)
+
+## How to run the v2 web app locally
+```
+tools/dev_services.sh start
+createdb -h 127.0.0.1 -p 54329 -U postgres crm_demo
+cd apps/crm-api && CRM_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:54329/crm_demo alembic upgrade head
+CRM_DATABASE_URL=... CRM_DATA_DIR=/tmp/demodata python tools/seed_demo.py   # synthetic demo users, password Demo-password-2026!
+(cd ../crm-web && npm ci && npm run build)
+CRM_DATABASE_URL=... CRM_DATA_DIR=/tmp/demodata CRM_MODE=local CRM_ORIGIN=http://127.0.0.1:8766 uvicorn tfsc_crm.main:app --port 8766
+node ../crm-web/e2e/screens.mjs http://127.0.0.1:8766 /tmp/screens   # optional screenshots
+```
 
 ## How to run v2 tests
 `tools/dev_services.sh start` then `cd apps/crm-api && python -m pytest -q tests_v2` (uses CRM_TEST_DATABASE_URL,
@@ -100,3 +111,6 @@ default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
   activity row + revisions (not audit_log) to avoid write contention at scale.
 - Rollups are maintained synchronously in the save transaction (O(1) upsert per agent/day) + nightly reconcile,
   rather than via the outbox consumer — simpler and always consistent; outbox still drives SSE/TFSC delivery.
+- Web: canvas-confetti runs without its blob: worker (CSP `script-src 'self'` stays strict).
+- Web: dashboard widget tables use container queries (tiles are resizable), not viewport breakpoints.
+- Web deps pinned exactly; prod `npm audit` clean (lodash 4.18.1, echarts 6.1.0). Glide Data Grid needs `legacy-peer-deps` (.npmrc).

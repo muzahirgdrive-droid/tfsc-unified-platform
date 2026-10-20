@@ -28,3 +28,23 @@ start doing all the work from where you stop with all the chat history as well."
   bridge 6 + 6 TS. E2E acceptance 12-13 passes across two running sites with real LibreOffice rendering.
 - Hypothesis found a real idempotence bug in name casing; fixed in both ports.
 - Interim handoff ZIP generated at 01:43Z and sent to the owner.
+
+## 2026-10-20 — Session 1, continued (after a context compaction and an auto-resume firing)
+
+**Owner messages:** none new. The scheduled "TFSC auto-resume" task fired once (03:48Z) and work continued from RESUME.md.
+
+**Work done:**
+- P5 dashboard API (`routes_dashboard.py`): metric catalog, leaderboard, team board, funnel, heatmap, breakdowns,
+  supervisor comparison, validated layouts; rollup drift fix (points by activity date) + invariant test.
+- crm-web v2 (`apps/crm-web`, pilot UI moved to `apps/crm-web-pilot`): React 19 + TanStack Router/Query + Tailwind v4
+  design system, app shell (navy sidebar, command palette, world clock, notifications, mobile bottom nav, watermark),
+  Overview dashboards (ECharts, react-grid-layout), My Work, Sheet View (Glide grid), Follow-ups, Strong FU, Leads
+  (+ Agreements pre-flight), Meetings, Wall of Fame, Clients, Flags, People & Teams, Reports, Settings, Security, Me.
+- API: `/api/auth/me` returns `{user, csrf}`; new `/api/config` (dialer, celebration seconds, agreements URL, timezone);
+  SSE celebration backlog includes the agent name; OpenAPI exported + typed client generated, CI fails on drift.
+- Verified visually with Playwright screenshots on a synthetic demo DB (`tools/seed_demo.py`); fixed issues found:
+  deep links bounced through /login (auth state race), CSP blocked confetti's blob worker, cramped widget tables,
+  low-contrast avatars on navy, heatmap axis overlap, "1 sales".
+- 21 Vitest unit tests (sheet parsing, Pacific time/DST, toggles + rules, API errors, refine vectors via the app alias).
+- Prod `npm audit` clean (lodash 4.18.1, echarts 6.1.0).
+- All suites green: pilot 17, v2 82, refine+bridge 306, agreements 37 (+42 subtests), web 21.

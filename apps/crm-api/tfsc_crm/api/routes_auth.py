@@ -111,11 +111,12 @@ def logout(request: Request, response: Response) -> OkOut:
     return OkOut()
 
 
-@router.get('/auth/me', response_model=UserMe)
-def me(a: ResetActorDep) -> UserMe:
+@router.get('/auth/me', response_model=SessionOut)
+def me(a: ResetActorDep) -> SessionOut:
+    """Current user plus the session's CSRF token (same-origin JS only; the session cookie is HttpOnly)."""
     with system_tx() as c:
         u = c.execute(select(m.users.c.photo_object_key, m.users.c.reset_required).where(m.users.c.id == a.id)).one()
-    return me_out(a, bool(u[0]), bool(u[1]))
+    return SessionOut(user=me_out(a, bool(u[0]), bool(u[1])), csrf=a.csrf)
 
 
 @router.post('/auth/password', response_model=OkOut)
@@ -129,6 +130,21 @@ def change_password(body: PasswordIn, a: ResetActorDep, request: Request) -> OkO
         c.execute(update(m.user_sessions).where(m.user_sessions.c.user_id == a.id, m.user_sessions.c.token_hash != a.session_hash).values(revoked_at=utcnow()))
         audit.record(c, a.org_id, a.id, 'auth.password_changed', 'user', a.id)
     return OkOut()
+
+
+@router.get('/config')
+def client_config(a: ActorDep) -> dict:
+    """Non-sensitive settings every signed-in user needs (dialer mode, celebration timing, labels)."""
+    from ..db.session import read
+    from ..domain import settings as cfg
+    with read(a.org_id, a.id) as c:
+        dialer = cfg.get(c, a.org_id, 'dialer') or {}
+        cel = cfg.get(c, a.org_id, 'celebration') or {}
+    template = dialer.get('template') if dialer.get('mode') == 'template' and dialer.get('verified') else None
+    from ..integrations import tfsc
+    return {'dialer': {'mode': dialer.get('mode', 'tel') if template or dialer.get('mode') != 'template' else 'tel', 'template': template},
+            'celebration_seconds': int(cel.get('seconds', 6)), 'agreements_url': tfsc.public_url() if a.can('agreements.open') else None,
+            'business_timezone': 'America/Los_Angeles'}
 
 
 @router.get('/auth/sessions')

@@ -32,6 +32,8 @@ jobs:
       - name: Typecheck (v2 code)
         if: hashFiles('apps/crm-api/mypy.ini') != ''
         run: mypy --config-file apps/crm-api/mypy.ini apps/crm-api/tfsc_crm
+      - name: API contract is current (openapi.json)
+        run: python apps/crm-api/tools/export_openapi.py && git diff --exit-code apps/crm-api/openapi.json
       - name: Migrations up/down/up
         working-directory: apps/crm-api
         env: {CRM_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/crm_test}
@@ -60,6 +62,9 @@ jobs:
       - name: Build CRM web
         working-directory: apps/crm-web
         run: npm ci && npm run build
+      - name: Typed client matches the API contract
+        working-directory: apps/crm-web
+        run: npx openapi-typescript ../crm-api/openapi.json -o src/lib/schema.d.ts && git diff --exit-code src/lib/schema.d.ts
       - name: Unit tests (CRM web)
         working-directory: apps/crm-web
         run: npm test --if-present

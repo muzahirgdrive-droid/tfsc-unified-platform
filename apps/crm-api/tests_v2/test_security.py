@@ -21,6 +21,7 @@ MATRIX = {
     ('POST', '/api/auth/login'): ('public', None),
     ('POST', '/api/auth/logout'): ('public', None),
     ('GET', '/api/auth/me'): ('any', None),
+    ('GET', '/api/config'): ('any', None),
     ('POST', '/api/auth/password'): ('any', None),
     ('GET', '/api/auth/sessions'): ('any', None),
     ('DELETE', '/api/auth/sessions/{sid}'): ('any', None),

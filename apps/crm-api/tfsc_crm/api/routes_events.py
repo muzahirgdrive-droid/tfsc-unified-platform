@@ -31,10 +31,12 @@ async def events(request: Request) -> StreamingResponse:
     org, uid, rank = str(a.org_id), str(a.id), a.rank
     # Anyone who signs in within 10 minutes of a sale sees the celebration once (client de-duplicates by id).
     with read(a.org_id, a.id) as c:
-        recent = c.execute(select(m.celebrations).where(m.celebrations.c.created_at > utcnow() - timedelta(minutes=10))
+        recent = c.execute(select(m.celebrations, m.users.c.display_name.label('agent_name'))
+                           .join(m.users, m.users.c.id == m.celebrations.c.agent_id)
+                           .where(m.celebrations.c.created_at > utcnow() - timedelta(minutes=10))
                            .order_by(m.celebrations.c.created_at)).mappings().all()
     backlog = [{'id': f'c-{r["id"]}', 'topic': 'sale.celebrated', 'celebration_id': str(r['id']), 'agent_id': str(r['agent_id']),
-                'message': r['message'], 'audience': 'all', 'at': r['created_at'].isoformat()} for r in recent]
+                'agent_name': r['agent_name'], 'message': r['message'], 'audience': 'all', 'at': r['created_at'].isoformat()} for r in recent]
 
     async def stream():
         yield b'retry: 3000\n\n'

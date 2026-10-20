@@ -662,7 +662,7 @@ import google_calendar
 google_calendar.install(app,ORIGIN,get_record,clean)
 import oidc_support
 oidc_support.install(app,db,sec,session_response,ORIGIN,'CRM',sec.actor)
-WEB=Path(os.getenv('CRM_WEB_DIST') or (db.APP/'web'/'dist' if (db.APP/'web'/'dist').exists() else db.APP.parent/'crm-web'/'dist'))
+WEB=Path(os.getenv('CRM_WEB_DIST') or (db.APP/'web'/'dist' if (db.APP/'web'/'dist').exists() else db.APP.parent/'crm-web-pilot'/'dist'))
 @app.get('/')
 @app.get('/login')
 def index():
