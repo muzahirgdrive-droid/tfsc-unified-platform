@@ -341,6 +341,7 @@ followups = Table(
     _user_fk('completed_by'),
     Column('completed_at', TS),
     *_stamps(),
+    Column('escalated_at', TS),  # overdue 3+ days: supervisor notified once (§13)
     _enum_check('status', ('open', 'done', 'missed', 'cancelled'), 'status'),
     Index('ix_followups_owner_due', 'org_id', 'owner_id', 'status', 'due_at'),
 )
@@ -737,7 +738,41 @@ exports = Table(
     Column('status', String(20), nullable=False, server_default='requested'),
     Column('object_key', String(300)),
     Column('watermark', String(200)),
+    Column('reason', Text),
+    Column('approved_at', TS),
+    Column('expires_at', TS),
+    Column('file_sha256', String(64)),
+    Column('password_enc', Text),  # one-time ZIP password, encrypted at rest; revealed once to the requester
+    Column('password_revealed_at', TS),
+    Column('downloads', Integer, nullable=False, server_default=text('0')),
+    Column('error', Text),
     *_stamps(),
+)
+
+audit_anchors = Table(
+    'audit_anchors', metadata,
+    Column('id', BigInteger, primary_key=True, autoincrement=True),
+    _org(),
+    Column('anchored_for', Date, nullable=False),
+    Column('last_audit_id', BigInteger, nullable=False),
+    Column('head_hash', String(64), nullable=False),
+    Column('rows', Integer, nullable=False),
+    Column('sink', String(40), nullable=False),
+    Column('sink_ref', String(300)),
+    Column('created_at', TS, nullable=False, server_default=func.now()),
+    UniqueConstraint('org_id', 'anchored_for'),
+)
+
+# Scheduler bookkeeping (not org data): one row per job and period makes every job idempotent across nodes.
+job_runs = Table(
+    'job_runs', metadata,
+    Column('job', String(60), nullable=False),
+    Column('period_key', String(40), nullable=False),
+    Column('started_at', TS, nullable=False, server_default=func.now()),
+    Column('finished_at', TS),
+    Column('status', String(12), nullable=False, server_default='running'),
+    Column('detail', JSONB),
+    PrimaryKeyConstraint('job', 'period_key'),
 )
 
 # Created in migration 0003. DB-backed object store for local/single-node mode (photos, import files);

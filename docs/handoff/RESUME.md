@@ -47,7 +47,7 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 | P4 Meetings & Celebration | done | meetings UI, celebration overlay (SSE, confetti without worker for CSP), Wall of Fame |
 | P5 Dashboards | done | dashboards + legacy workbook import with §20.5 reconciliation (acceptance 18; see runbook) |
 | P6 Agreements v2 | done | backend both apps + CRM pre-flight/client profile UI; E2E acceptance 12-13 green with real LibreOffice |
-| P7 Hardening & Scale | not started | |
+| P7 Hardening & Scale | in progress | P7a done (security center, offboarding, exports, SLA, audit anchors, scheduler); P7b/P7c pending |
 
 ## P0 checklist
 - [x] Unpack both handoffs into monorepo (`apps/crm-api`, `apps/crm-web`, `apps/agreements`)
@@ -81,10 +81,13 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
        figures), `domain/legacy_import.py` (resumable job), `/api/admin/legacy-imports`, Settings → Legacy import,
        `tools/legacy_reconcile.py`, sanitized fixture `tests_v2/legacy_fixture.py`, runbook `docs/runbooks/legacy-workbook-import.md`
 4. [x] XLSX/CSV import job: `domain/file_import.py`, `/api/imports`, Sheet View → Upload file → ImportDialog
-5. [ ] P7: security center, exports (watermarked, approval), offboarding, flag SLA escalation job, audit anchor, Keycloak realm,
-       k6 load tests + docs/PERFORMANCE.md, backups/runbooks, compose/Helm (Dockerfile must run `tfsc_crm.main:app`),
-       agreements Alembic baseline
-6. [ ] Playwright E2E acceptance flows (beyond screenshots); regenerate both _HANDOFF zips (§29)
+5. [x] P7a: Security Center (`routes_security.py`, Security page tabs), one-click offboarding, approval-logged AES-ZIP exports
+       (watermark, formula-safe, password shown once), red-flag SLA + overdue follow-up escalation, audit content verification +
+       daily anchors, scheduler (`workers/scheduler.py`, idempotent `job_runs`), migration 0004, models-vs-migrations test
+6. [ ] P7b: OIDC/Keycloak login (+MFA claim for Supervisor+), Keycloak realm export, Dockerfile -> `tfsc_crm.main:app`,
+       compose/Helm, agreements Alembic baseline, backups/restore runbook + drill, THREAT-MODEL.md, /metrics
+7. [ ] P7c: k6 load tests + docs/PERFORMANCE.md (measured numbers only)
+8. [ ] Playwright E2E acceptance flows (beyond screenshots); regenerate both _HANDOFF zips (§29)
 
 ## How to run the v2 web app locally
 ```
@@ -128,3 +131,10 @@ default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
 - File import job (non-legacy) uses live rules: server Pacific date, import lock window, duplicate flags; same file + sheet
   cannot be imported twice by the same owner (request_key = sha256 + sheet).
 - `defusedxml` added so openpyxl parses uploaded workbooks defensively.
+- Exports: Manager requests, Director approves; ZIP password random, stored encrypted, revealed once to the requester only;
+  24 h expiry; 50k rows; requester's scope; meeting fields never exported; cells starting = + - @ tab CR get a leading '.
+- Audit anchors are written to `audit_anchors` (app role: insert-only) and appended to `<CRM_DATA_DIR>/audit-anchors/*.jsonl`.
+  Shipping that file to a write-once (object-lock) bucket is a deployment step; no remote sink is claimed.
+- Offboarding moves active leads to the user's manager as audited reassignments with the departing owner keeping 100%
+  attribution of past work; TFSC revocation goes through the outbox (retried until delivered).
+- Scheduler runs in-process only in `CRM_MODE=local`; hosted deployments run `python -m tfsc_crm.workers.scheduler`.

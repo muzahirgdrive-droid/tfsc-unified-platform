@@ -36,12 +36,15 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         from .domain import bootstrap
         bootstrap.ensure_setup_key()
-        stop = None
+        stops = []
         if os.getenv('CRM_INLINE_DISPATCHER', '1' if not s.hosted else '0') == '1':
             from .workers import dispatcher
-            stop = dispatcher.start_background()
+            stops.append(dispatcher.start_background())
+        if os.getenv('CRM_INLINE_SCHEDULER', '1' if s.mode == 'local' else '0') == '1':
+            from .workers import scheduler
+            stops.append(scheduler.start_background())
         yield
-        if stop is not None:
+        for stop in stops:
             stop()
         from .db.session import dispose
         dispose()

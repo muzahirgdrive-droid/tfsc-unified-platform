@@ -12,3 +12,5 @@ Authlib==1.9.1
 cryptography==47.0.0
 Pillow==12.3.0
 defusedxml==0.7.1
+pyzipper==0.3.6
+pycryptodomex==3.24.1

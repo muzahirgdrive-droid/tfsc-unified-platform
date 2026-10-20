@@ -76,6 +76,7 @@ function UserForm({ user, users, teams, onClose }: { user: U | null; users: U[];
     crm_role: user?.crm_role ?? 'sales_agent', manager_id: user?.manager_id ?? me?.id ?? '', domain_id: user?.domain_id ?? 'scribe_align', project_id: user?.project_id ?? '', vonage_extension: user?.vonage_extension ?? '',
     team_id: '', group_id: '', group_leader: false, temporary_password: '', status: user?.status ?? 'active' });
   const [agr, setAgr] = useState<{ enabled: boolean; role: string; companies: string[] } | null>(null);
+  const [offboard, setOffboard] = useState(false);
   const a = agr ?? { enabled: access.data?.enabled ?? false, role: access.data?.role ?? 'user', companies: access.data?.companies ?? [] };
   const proj = projects.data?.find((p) => p.id === v.project_id);
   const save = useMutation({
@@ -93,7 +94,9 @@ function UserForm({ user, users, teams, onClose }: { user: U | null; users: U[];
   const f = (k: keyof typeof v, label: string, type = 'text') => <div><label className="label">{label}</label><input type={type} className="input" value={String(v[k])} onChange={(e) => setV({ ...v, [k]: e.target.value })} disabled={k === 'email' && !!user} /></div>;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={user ? `Manage ${user.display_name}` : 'Create user'} dismissOnOutside={false} wide
-      footer={<><button className="btn-secondary" onClick={onClose}>Close</button><button className="btn-primary" disabled={save.isPending || !v.first_name || !v.last_name || !v.email} onClick={() => save.mutate()}>{user ? 'Save' : 'Create user'}</button></>}>
+      footer={<>{user && rank >= 2 && user.id !== me?.id && user.status !== 'offboarded' && <button className="btn-danger mr-auto" onClick={() => setOffboard(true)}>Offboard…</button>}
+        <button className="btn-secondary" onClick={onClose}>Close</button><button className="btn-primary" disabled={save.isPending || !v.first_name || !v.last_name || !v.email} onClick={() => save.mutate()}>{user ? 'Save' : 'Create user'}</button></>}>
+      {offboard && user && <OffboardDialog user={user} onClose={(done) => { setOffboard(false); if (done) onClose(); }} />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {f('first_name', 'First name')}{f('last_name', 'Last name')}{f('display_name', 'Display name')}{f('email', 'Email', 'email')}{f('phone', 'Phone')}{f('employee_code', 'Employee code')}
         <div><label className="label">CRM role</label><select className="input" value={v.crm_role} onChange={(e) => setV({ ...v, crm_role: e.target.value })}>{ROLES.filter(([, , min]) => rank >= min || rank === 4).map(([r, l]) => <option key={r} value={r}>{l}</option>)}</select></div>
@@ -146,6 +149,24 @@ function TeamForm({ team, users, onClose }: { team: T | null; users: U[]; onClos
         <div><span className="label">Members</span><div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto">{agents.map((u) => <label key={u.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.members.includes(u.id)} onChange={(e) => setV({ ...v, members: e.target.checked ? [...v.members, u.id] : v.members.filter((x) => x !== u.id) })} />{u.display_name}</label>)}</div></div>
         {v.kind === 'group' && <div><label className="label">Group leader (coordinates follow-ups; no extra power)</label><select className="input" value={v.leader_id} onChange={(e) => setV({ ...v, leader_id: e.target.value })}><option value="">None</option>{v.members.map((id) => <option key={id} value={id}>{users.find((u) => u.id === id)?.display_name}</option>)}</select></div>}
       </div>
+    </Dialog>
+  );
+}
+
+/** One click (§21): suspends CRM + Agreements access, ends sessions, moves open follow-ups and active leads to the supervisor. */
+function OffboardDialog({ user, onClose }: { user: U; onClose: (done: boolean) => void }) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState('');
+  const run = useMutation({
+    mutationFn: () => raw<{ sessions_revoked: number; followups_moved: number; leads_moved: number; agreements_revoked: boolean }>(`/api/users/${user.id}/offboard`, { method: 'POST', body: JSON.stringify({ reason }) }),
+    onSuccess: (r) => { toast.success(`${user.display_name} offboarded: ${r.followups_moved} follow-up(s) and ${r.leads_moved} lead(s) moved, ${r.sessions_revoked} session(s) ended${r.agreements_revoked ? ', Agreements access revoked' : ''}.`); qc.invalidateQueries({ queryKey: ['users'] }); onClose(true); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose(false)} title={`Offboard ${user.display_name}?`} dismissOnOutside={false}
+      description="Suspends CRM and Agreements access, ends every session, and moves open follow-ups and active leads to their supervisor's queue (recorded as reassignments). This is audited."
+      footer={<><button className="btn-secondary" onClick={() => onClose(false)}>Cancel</button><button className="btn-danger" disabled={run.isPending || reason.trim().length < 3} onClick={() => run.mutate()}>Offboard</button></>}>
+      <label className="label" htmlFor="ob-r">Reason</label><input id="ob-r" className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Resigned on 2026-10-20" />
     </Dialog>
   );
 }

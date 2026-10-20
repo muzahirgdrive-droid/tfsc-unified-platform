@@ -55,3 +55,6 @@ start doing all the work from where you stop with all the chat history as well."
 - XLSX/CSV server import job (`/api/imports`) with live rules, per-row results, resume and idempotent re-import;
   Sheet View → Upload file → import dialog. Paste batch save now shares the same per-row code.
 - Tests: v2 100, pilot 17, web 21.
+- P7a: Security Center (overview, audit browse + verify with content hashes and daily anchors, sessions with remote end,
+  dead-letter retry), one-click offboarding, approval-logged encrypted exports, SLA escalations, scheduler with idempotent
+  job runs, migration 0004 and a models-vs-migrations drift test. Tests: v2 121, pilot 17, refine+bridge 306, agreements 37.

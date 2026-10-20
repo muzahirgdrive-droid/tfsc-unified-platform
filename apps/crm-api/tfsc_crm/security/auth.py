@@ -104,3 +104,9 @@ def build_actor(c: Connection, u: dict, csrf: str, token_hash: str) -> Actor:
     return Actor(id=u['id'], org_id=u['org_id'], role=u['crm_role'], display_name=u['display_name'], email=u['email'],
                  routing_view=u['routing_view'], led_group_ids=groups, agreements_grant=dict(grant) if grant else None,
                  employee_code=u['employee_code'], csrf=csrf, session_hash=token_hash)
+
+
+def actor_for_user(c: Connection, user_id) -> Actor:
+    """An Actor for a stored user (no session), e.g. to apply a requester's scope in a background step."""
+    u = c.execute(select(m.users).where(m.users.c.id == user_id)).mappings().one()
+    return build_actor(c, dict(u), '', '')

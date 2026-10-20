@@ -12,8 +12,13 @@ def _db(ws):
 
 
 def test_health_and_time(ws):
+    from pathlib import Path
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    head = ScriptDirectory.from_config(Config(str(Path(__file__).resolve().parents[1] / 'alembic.ini'))).get_current_head()
     r = ws['a'].get('/api/health')
-    assert r.status_code == 200 and r.json()['database'] == '0003_seed_and_pilot_data'
+    assert r.status_code == 200 and r.json()['database'] == head
     t = ws['a'].get('/api/time').json()
     zones = {i['zone']: i for i in t['items']}
     assert zones['America/Los_Angeles']['is_business_clock'] and zones['Asia/Karachi']['diff_vs_pakistan_hours'] == 0

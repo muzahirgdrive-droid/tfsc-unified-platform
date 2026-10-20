@@ -65,3 +65,31 @@ def test_pilot_data_migrates_and_downgrade_restores():
         assert _counts(url, ['users', 'activities']) == {'users': 5, 'activities': 5}
     finally:
         drop_database(url)
+
+
+def test_models_match_migrations(db_url):
+    """The SQLAlchemy models and the migrated schema agree (no hand-written drift). Known, intentional differences:
+    partition children/defaults (created by functions), the frozen pilot `crm_*` / `oidc_*` tables, the trigram index."""
+    import re
+
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from tfsc_crm.db.models import metadata
+    allowed = re.compile(r'(_\d{4}_\d{2}|_default)$|^crm_|^oidc_(accounts|states)$|^alembic_version$')
+    eng = create_engine(db_url)
+    try:
+        with eng.connect() as c:
+            diff = compare_metadata(MigrationContext.configure(c, opts={'compare_type': True}), metadata)
+    finally:
+        eng.dispose()
+
+    def table_of(d) -> str:
+        obj = d[1] if isinstance(d, tuple) else d[0][1]
+        t = getattr(obj, 'table', None)
+        return getattr(t, 'name', None) or getattr(obj, 'name', '') or ''
+
+    unexpected = [str(d)[:200] for d in diff
+                  if not (isinstance(d, tuple) and allowed.search(table_of(d)))
+                  and not (isinstance(d, tuple) and d[0] == 'remove_index' and d[1].name == 'ix_prospects_name_trgm')]
+    assert not unexpected, unexpected

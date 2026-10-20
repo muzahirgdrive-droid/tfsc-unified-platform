@@ -984,6 +984,125 @@
     "title": "AgreementsAccessOut",
     "type": "object"
    },
+   "AuditPageOut": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/AuditRowOut"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items",
+     "next_cursor"
+    ],
+    "title": "AuditPageOut",
+    "type": "object"
+   },
+   "AuditRowOut": {
+    "properties": {
+     "action": {
+      "title": "Action",
+      "type": "string"
+     },
+     "actor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actor"
+     },
+     "after": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "After"
+     },
+     "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+     },
+     "before": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Before"
+     },
+     "id": {
+      "title": "Id",
+      "type": "integer"
+     },
+     "ip": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ip"
+     },
+     "resource": {
+      "title": "Resource",
+      "type": "string"
+     },
+     "resource_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Resource Id"
+     }
+    },
+    "required": [
+     "id",
+     "at",
+     "actor",
+     "action",
+     "resource",
+     "resource_id",
+     "ip",
+     "before",
+     "after"
+    ],
+    "title": "AuditRowOut",
+    "type": "object"
+   },
    "AuthStatus": {
     "properties": {
      "local_login": {
@@ -1598,6 +1717,65 @@
     "title": "ConvertIn",
     "type": "object"
    },
+   "CountOut": {
+    "properties": {
+     "count": {
+      "title": "Count",
+      "type": "integer"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "count"
+    ],
+    "title": "CountOut",
+    "type": "object"
+   },
+   "DeadLetterOut": {
+    "properties": {
+     "attempts": {
+      "title": "Attempts",
+      "type": "integer"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "integer"
+     },
+     "last_error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Error"
+     },
+     "topic": {
+      "title": "Topic",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "topic",
+     "attempts",
+     "last_error",
+     "created_at"
+    ],
+    "title": "DeadLetterOut",
+    "type": "object"
+   },
    "DomainIn": {
     "additionalProperties": false,
     "properties": {
@@ -1781,6 +1959,183 @@
      "version"
     ],
     "title": "DomainUpdate",
+    "type": "object"
+   },
+   "ExportDecisionIn": {
+    "additionalProperties": false,
+    "properties": {
+     "approve": {
+      "title": "Approve",
+      "type": "boolean"
+     },
+     "note": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Note",
+      "type": "string"
+     }
+    },
+    "required": [
+     "approve"
+    ],
+    "title": "ExportDecisionIn",
+    "type": "object"
+   },
+   "ExportIn": {
+    "additionalProperties": false,
+    "properties": {
+     "end": {
+      "format": "date",
+      "title": "End",
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "activities",
+       "leads"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "reason": {
+      "maxLength": 1000,
+      "minLength": 5,
+      "title": "Reason",
+      "type": "string"
+     },
+     "start": {
+      "format": "date",
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kind",
+     "start",
+     "end",
+     "reason"
+    ],
+    "title": "ExportIn",
+    "type": "object"
+   },
+   "ExportOut": {
+    "properties": {
+     "approved_by_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approved By Name"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "downloads": {
+      "title": "Downloads",
+      "type": "integer"
+     },
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "expires_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expires At"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "password_revealed": {
+      "title": "Password Revealed",
+      "type": "boolean"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "requested_by": {
+      "title": "Requested By",
+      "type": "string"
+     },
+     "requested_by_name": {
+      "title": "Requested By Name",
+      "type": "string"
+     },
+     "row_count": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Row Count"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "kind",
+     "status",
+     "start",
+     "end",
+     "reason",
+     "requested_by",
+     "requested_by_name",
+     "approved_by_name",
+     "row_count",
+     "expires_at",
+     "password_revealed",
+     "downloads",
+     "error",
+     "created_at"
+    ],
+    "title": "ExportOut",
     "type": "object"
    },
    "FlagAck": {
@@ -3656,6 +4011,55 @@
     "title": "NotificationPage",
     "type": "object"
    },
+   "OffboardIn": {
+    "additionalProperties": false,
+    "properties": {
+     "reason": {
+      "maxLength": 500,
+      "minLength": 3,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "OffboardIn",
+    "type": "object"
+   },
+   "OffboardOut": {
+    "properties": {
+     "agreements_revoked": {
+      "title": "Agreements Revoked",
+      "type": "boolean"
+     },
+     "followups_moved": {
+      "title": "Followups Moved",
+      "type": "integer"
+     },
+     "leads_moved": {
+      "title": "Leads Moved",
+      "type": "integer"
+     },
+     "queue_owner": {
+      "title": "Queue Owner",
+      "type": "string"
+     },
+     "sessions_revoked": {
+      "title": "Sessions Revoked",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "sessions_revoked",
+     "followups_moved",
+     "leads_moved",
+     "agreements_revoked",
+     "queue_owner"
+    ],
+    "title": "OffboardOut",
+    "type": "object"
+   },
    "OkOut": {
     "properties": {
      "ok": {
@@ -3687,6 +4091,19 @@
      "new_password"
     ],
     "title": "PasswordIn",
+    "type": "object"
+   },
+   "PasswordOut": {
+    "properties": {
+     "password": {
+      "title": "Password",
+      "type": "string"
+     }
+    },
+    "required": [
+     "password"
+    ],
+    "title": "PasswordOut",
     "type": "object"
    },
    "PrecheckOut": {
@@ -4588,6 +5005,107 @@
     "title": "SaveOut",
     "type": "object"
    },
+   "SecurityOverviewOut": {
+    "properties": {
+     "active_sessions": {
+      "title": "Active Sessions",
+      "type": "integer"
+     },
+     "audit_rows": {
+      "title": "Audit Rows",
+      "type": "integer"
+     },
+     "exports_pending": {
+      "title": "Exports Pending",
+      "type": "integer"
+     },
+     "exports_ready": {
+      "title": "Exports Ready",
+      "type": "integer"
+     },
+     "failed_logins_24h": {
+      "title": "Failed Logins 24H",
+      "type": "integer"
+     },
+     "failed_logins_by_user": {
+      "items": {
+       "$ref": "#/components/schemas/CountOut"
+      },
+      "title": "Failed Logins By User",
+      "type": "array"
+     },
+     "jobs": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Jobs",
+      "type": "array"
+     },
+     "last_anchor": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Anchor"
+     },
+     "offboarded_30d": {
+      "title": "Offboarded 30D",
+      "type": "integer"
+     },
+     "open_red_flags": {
+      "items": {
+       "$ref": "#/components/schemas/CountOut"
+      },
+      "title": "Open Red Flags",
+      "type": "array"
+     },
+     "outbox_dead": {
+      "title": "Outbox Dead",
+      "type": "integer"
+     },
+     "outbox_pending": {
+      "title": "Outbox Pending",
+      "type": "integer"
+     },
+     "scraping_suspected_7d": {
+      "title": "Scraping Suspected 7D",
+      "type": "integer"
+     },
+     "sse_connections": {
+      "title": "Sse Connections",
+      "type": "integer"
+     },
+     "supervisors_without_sso": {
+      "title": "Supervisors Without Sso",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "open_red_flags",
+     "scraping_suspected_7d",
+     "failed_logins_24h",
+     "failed_logins_by_user",
+     "active_sessions",
+     "supervisors_without_sso",
+     "offboarded_30d",
+     "exports_pending",
+     "exports_ready",
+     "outbox_pending",
+     "outbox_dead",
+     "sse_connections",
+     "audit_rows",
+     "last_anchor",
+     "jobs"
+    ],
+    "title": "SecurityOverviewOut",
+    "type": "object"
+   },
    "SessionOut": {
     "properties": {
      "csrf": {
@@ -4603,6 +5121,65 @@
      "csrf"
     ],
     "title": "SessionOut",
+    "type": "object"
+   },
+   "SessionRowOut": {
+    "properties": {
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "ip": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ip"
+     },
+     "last_seen_at": {
+      "format": "date-time",
+      "title": "Last Seen At",
+      "type": "string"
+     },
+     "user": {
+      "title": "User",
+      "type": "string"
+     },
+     "user_agent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Agent"
+     },
+     "user_id": {
+      "title": "User Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "user_id",
+     "user",
+     "created_at",
+     "last_seen_at",
+     "ip",
+     "user_agent"
+    ],
+    "title": "SessionRowOut",
     "type": "object"
    },
    "SettingsOut": {
@@ -6145,6 +6722,65 @@
      "type"
     ],
     "title": "ValidationError",
+    "type": "object"
+   },
+   "VerifyOut": {
+    "properties": {
+     "altered_rows": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Altered Rows",
+      "type": "array"
+     },
+     "anchors": {
+      "title": "Anchors",
+      "type": "integer"
+     },
+     "anchors_failed": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Anchors Failed",
+      "type": "array"
+     },
+     "broken_links": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Broken Links",
+      "type": "array"
+     },
+     "head": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Head"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "rows": {
+      "title": "Rows",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "ok",
+     "rows",
+     "broken_links",
+     "altered_rows",
+     "anchors",
+     "anchors_failed",
+     "head"
+    ],
+    "title": "VerifyOut",
     "type": "object"
    },
    "WidgetPos": {
@@ -8683,6 +9319,204 @@
     ]
    }
   },
+  "/api/exports": {
+   "get": {
+    "operationId": "list_exports_api_exports_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExportOut"
+         },
+         "title": "Response List Exports Api Exports Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Exports",
+    "tags": [
+     "security"
+    ]
+   },
+   "post": {
+    "operationId": "request_export_api_exports_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExportIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ExportOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Request Export",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/exports/{export_id}/decision": {
+   "post": {
+    "operationId": "decide_export_api_exports__export_id__decision_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "export_id",
+      "required": true,
+      "schema": {
+       "title": "Export Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExportDecisionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ExportOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decide Export",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/exports/{export_id}/download": {
+   "get": {
+    "operationId": "export_download_api_exports__export_id__download_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "export_id",
+      "required": true,
+      "schema": {
+       "title": "Export Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Download",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/exports/{export_id}/password": {
+   "post": {
+    "operationId": "export_password_api_exports__export_id__password_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "export_id",
+      "required": true,
+      "schema": {
+       "title": "Export Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PasswordOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Password",
+    "tags": [
+     "security"
+    ]
+   }
+  },
   "/api/flags": {
    "get": {
     "operationId": "list_flags_api_flags_get",
@@ -10034,6 +10868,343 @@
     ]
    }
   },
+  "/api/security/anchors": {
+   "get": {
+    "operationId": "anchors_api_security_anchors_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Anchors Api Security Anchors Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Anchors",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/audit": {
+   "get": {
+    "operationId": "audit_log_api_security_audit_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "action",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Action"
+      }
+     },
+     {
+      "in": "query",
+      "name": "resource",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Resource"
+      }
+     },
+     {
+      "in": "query",
+      "name": "actor_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Actor Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AuditPageOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Audit Log",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/audit/verify": {
+   "post": {
+    "operationId": "verify_api_security_audit_verify_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VerifyOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Verify",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/outbox/dead": {
+   "get": {
+    "operationId": "dead_letters_api_security_outbox_dead_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/DeadLetterOut"
+         },
+         "title": "Response Dead Letters Api Security Outbox Dead Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Dead Letters",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/outbox/{event_id}/retry": {
+   "post": {
+    "operationId": "retry_dead_api_security_outbox__event_id__retry_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "event_id",
+      "required": true,
+      "schema": {
+       "title": "Event Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OkOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Retry Dead",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/overview": {
+   "get": {
+    "operationId": "overview_api_security_overview_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SecurityOverviewOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Overview",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/sessions": {
+   "get": {
+    "operationId": "sessions_api_security_sessions_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "user_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SessionRowOut"
+         },
+         "title": "Response Sessions Api Security Sessions Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sessions",
+    "tags": [
+     "security"
+    ]
+   }
+  },
+  "/api/security/sessions/{sid}": {
+   "delete": {
+    "operationId": "revoke_session_api_security_sessions__sid__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sid",
+      "required": true,
+      "schema": {
+       "title": "Sid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OkOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Revoke Session",
+    "tags": [
+     "security"
+    ]
+   }
+  },
   "/api/settings": {
    "get": {
     "operationId": "get_settings_values_api_settings_get",
@@ -11357,6 +12528,58 @@
     "summary": "Set Access",
     "tags": [
      "agreements"
+    ]
+   }
+  },
+  "/api/users/{user_id}/offboard": {
+   "post": {
+    "operationId": "offboard_api_users__user_id__offboard_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "user_id",
+      "required": true,
+      "schema": {
+       "title": "User Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OffboardIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OffboardOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Offboard",
+    "tags": [
+     "security"
     ]
    }
   },

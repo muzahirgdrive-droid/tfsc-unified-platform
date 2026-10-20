@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ExportsPanel } from '@/components/Exports';
 import { WIDGETS, useSummary, type Filters } from '@/components/widgets';
 import { Hint, PageHeader } from '@/components/ui/bits';
 import { rankOf, useAuth } from '@/lib/auth';
@@ -35,6 +36,7 @@ export default function Reports() {
         <div className="xl:col-span-3">{WIDGETS.team_trends!.render(f)}</div>
         {rank >= 2 && <div className="xl:col-span-2">{WIDGETS.supervisor_comparison!.render(f)}</div>}
         {rank >= 2 && <div>{WIDGETS.domain_project_treemap!.render(f)}</div>}
+        {rank >= 2 && <div className="xl:col-span-3"><ExportsPanel /></div>}
       </div>
     </div>
   );

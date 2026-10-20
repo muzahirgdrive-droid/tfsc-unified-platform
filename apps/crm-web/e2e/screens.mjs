@@ -24,10 +24,11 @@ async function shoot(user, pages, viewport, tag) {
   await page.waitForTimeout(2000);
   const dismiss = page.getByRole('button', { name: 'Dismiss' });
   if (await dismiss.isVisible()) { await page.screenshot({ path: `${out}/${tag}-celebration.png` }); await dismiss.click(); await page.waitForTimeout(400); }
-  for (const [path, name] of pages) {
+  for (const [path, name, tab] of pages) {
     await page.goto(base + path);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1800);
+    if (tab) { await page.getByRole('tab', { name: tab }).click(); await page.waitForTimeout(1200); }
     await page.screenshot({ path: `${out}/${tag}-${name}.png`, fullPage: false });
   }
   await ctx.close();
@@ -39,7 +40,9 @@ await (async () => {
 })();
 await shoot('agent1@demo.test', [['/', 'agent-overview'], ['/my-work', 'my-work'], ['/sheet', 'sheet'], ['/followups', 'followups'], ['/leads', 'agent-leads']], { width: 1440, height: 900 }, 'desktop');
 await shoot('sup@demo.test', [['/', 'supervisor-overview'], ['/strong', 'strong'], ['/flags', 'flags'], ['/meetings', 'meetings'], ['/people', 'people'], ['/wall-of-fame', 'wall-of-fame']], { width: 1440, height: 900 }, 'desktop');
-await shoot('super@demo.test', [['/', 'super-overview'], ['/settings', 'settings'], ['/reports', 'reports']], { width: 1440, height: 900 }, 'desktop');
+await shoot('super@demo.test', [['/', 'super-overview'], ['/settings', 'settings'], ['/settings', 'legacy-import', 'legacy import'], ['/reports', 'reports'],
+  ['/security', 'security'], ['/security', 'security-audit', 'audit']], { width: 1440, height: 900 }, 'desktop');
+await shoot('manager@demo.test', [['/reports', 'manager-reports']], { width: 1440, height: 1600 }, 'desktop');
 await shoot('agent1@demo.test', [['/', 'agent-overview'], ['/my-work', 'my-work'], ['/sheet', 'sheet']], { width: 390, height: 844 }, 'mobile');
 await browser.close();
 console.log(errors.length ? 'ERRORS:\n' + errors.join('\n') : 'no page errors');
