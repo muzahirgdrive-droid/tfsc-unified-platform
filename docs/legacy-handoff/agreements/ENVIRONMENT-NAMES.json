@@ -1,0 +1,14 @@
+[
+  "'DATABASE_URL'",
+  "'DB_POOL_SIZE'",
+  "'LIBREOFFICE_BIN'",
+  "'SystemRoot'",
+  "'TFSC_CRM_SHARED_SECRET'",
+  "'TFSC_DATA_DIR'",
+  "'TFSC_MODE'",
+  "'TFSC_ORIGIN'",
+  "'TFSC_OUTPUT_ROOT'",
+  "'TFSC_RENDERER'",
+  "'TFSC_REQUIRE_APPROVAL'",
+  "prefix + '_OIDC_' + k"
+]

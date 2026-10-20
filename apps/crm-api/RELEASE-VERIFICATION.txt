@@ -1,0 +1,26 @@
+TFSC integrated pilot verification — October 15, 2026
+
+1.0.1 USER-FORM FIX
+Browser verified Add a team member remains open after a click on the backdrop,
+retaining the typed name and email. Manage team member also remains open.
+Explicit Close still dismisses the form. No accounts were created during this
+check; synthetic test data was used. TypeScript and Vite production build passed.
+This patch changes modal dismissal behavior only; no database migration required.
+
+Executed on Windows with isolated synthetic SQLite databases:
+- Combined CRM core/integration and TFSC account/bridge/document regression run:
+  47 tests and 42 document subtests passed.
+- React TypeScript production compilation and Vite production build passed.
+- Browser review: synthetic sign-in, scoped dashboard, persisted follow-up date
+  and notes, desktop and 390-pixel mobile layout, no browser console errors.
+
+Provider tests use mocked Google and OIDC responses. No live invitations,
+contracts, email or provider credentials were transmitted. Existing client data
+was not used as a fixture and is not included in the distribution ZIP.
+The two dependency deprecation warnings (Starlette/httpx and Authlib JOSE) are
+tracked upgrade work; currently pinned versions pass the functional tests.
+
+Not certified: Docker runtime, PostgreSQL concurrency, VPS TLS deployment,
+50,000-user load, live OAuth/SSO provider setup, mobile device hardware,
+new Word/PDF visual rendering on Linux. Existing legal templates are preserved;
+passing structural tests is not a substitute for renderer-specific visual QA.

@@ -1,0 +1,35 @@
+TFSC SALES CRM + TFSC COMPLIANCE
+Development handoff package | 14 October 2026
+
+WHAT THIS IS
+A build command and architecture specification based on the supplied sales workbook and the actual TFSC Compliance v4.0.0 source. This package is not a deployed CRM or a replacement for the completed agreements application.
+
+HOW TO USE IT
+1. Upload this ZIP in the chat that has the current TFSC Compliance project.
+2. Paste the full contents of PASTE-THIS-COMMAND.txt. Alternatively, ask:
+
+   Read every file in the attached TFSC-Sales-CRM-Architecture package. Treat PASTE-THIS-COMMAND.txt as my development instruction, and implement the system in the existing TFSC workspace according to ARCHITECTURE-AND-BUSINESS-RULES.txt and ACCEPTANCE-TESTS.csv. Continue the current TFSC Compliance v4.0.0 application; preserve its agreements, formatting, data and permissions. Build the Sales CRM as a separate site with the specified integration. Start by checking the actual source and reporting any material difference from the audit, then implement and verify the work through the delivery phases. Do not stop after a plan or a mockup.
+
+IF USING A NEW CHAT OR A DEVELOPER'S COMPUTER
+Supply this architecture ZIP and the latest full application source. The verified application baseline here is TFSC-Compliance-Complete-v4.0.0.zip, not an old Alpha Bridge integration-only archive. Supply a newer complete build instead if the source has changed since this audit. Provide the sales workbook through a private channel if historical-data migration is required; synthetic fixtures are sufficient for development.
+
+LOCAL SOURCE REFERENCES
+Application: C:\Users\MuzahirHussain\Documents\Codex\2026-10-05\we-have-following-companies-under-which\outputs\ScribeAlignContractStudio
+Full existing application ZIP: same workspace\outputs\TFSC-Compliance-Complete-v4.0.0.zip
+Workbook: C:\Users\MuzahirHussain\Downloads\Sales - Office 2 - Tracking (2).xlsx
+
+FILES TO READ
+- PASTE-THIS-COMMAND.txt: direct instruction for the development agent.
+- ARCHITECTURE-AND-BUSINESS-RULES.txt: product behavior, permissions, data model, integration, operations and delivery phases.
+- WORKBOOK-AUDIT.txt: actual spreadsheet structure, formulas, aggregate checks and defects to avoid.
+- TFSC-INTEGRATION-AUDIT.txt: actual current code, routes, storage and compatibility gaps.
+- SEED-CONFIG.json: nine sales domains, 28 projects, scoring and time defaults. Project owners intentionally remain unassigned.
+- INTEGRATION-CONTRACT.json: proposed integration envelope and contracts. These routes do not yet exist.
+- ACCEPTANCE-TESTS.csv: executable-test requirements and measurable review criteria.
+- SOURCES.txt: official technical references and research limitations.
+- MANIFEST.sha256: file integrity checks.
+
+IMPORTANT BOUNDARIES
+The workbook is a downloaded snapshot, not an inspected live Google Sheet. The source workbook was not modified. This package contains no raw lead/contact rows, credentials, client database, or signature images. It does contain aggregate workbook findings and internal architecture; share with your authorized developer.
+
+Several business ambiguities have explicit, changeable defaults: 15-minute imported-record edit window; no automatic project default; supervisor approval of strong follow-ups and leads; independent agreement entitlement; owner assignment within a permitted team. These defaults are identified in the specification. Google and Vonage setup requires your actual account configuration later. No live messages, invitations, or client contracts are sent by this planning package.

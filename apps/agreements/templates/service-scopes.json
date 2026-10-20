@@ -1,0 +1,130 @@
+{
+  "medical_billing": {
+    "source": "Scribe Align - Serices Agreement - Template (Medical Billing and credentialing).docx",
+    "sha256": "37ed79740c31604ad4500d1a7bbf15915d63e023180bdccce35247af05b08cf3",
+    "scope": [
+      {
+        "type": "p",
+        "text": "The client hereby expressly authorizes SCRIBE ALIGN LLC to prepare process and submit claims to commercial and government payors. SCRIBE ALIGN LLC will apply its best efforts to obtain reimbursement for Client charges for all clinical procedures and medical services provided to patients. All such claims shall be submitted by SCRIBE ALIGN LLC in the Client’s name and utilize provider numbers assigned to the Client by the respective third-party payor. Claims will be submitted either electronically or through paper submission, as directed by the third-party payor. Payment of all claims filed on behalf of Client shall be directed to such accounts to which Client has control as may be required by third-party payors. SCRIBE ALIGN LLC shall post payments received from the third-party payors to the patient's file. SCRIBE ALIGN LLC will apply its best efforts to avoid any denials/rejections through claim scrubbing and coding audits. However, in the case of any denials, we have experienced resources that work aggressively on all denials as soon as they are received. The denials are checked by Coding, QA, and billing team to make necessary corrections and resubmit such cases. The denials are checked as per coding, insurance, and LCD/NCD guidelines so such cases can be avoided in the future. SCRIBE ALIGN LLC shall also send any appeals/redetermination letters to reprocess any denials."
+      }
+    ]
+  },
+  "credentialing": {
+    "source": "Scribe Align - Serices Agreement - Template (Medical Billing and credentialing).docx",
+    "sha256": "37ed79740c31604ad4500d1a7bbf15915d63e023180bdccce35247af05b08cf3",
+    "scope": [
+      {
+        "type": "p",
+        "text": "SCRIBE ALIGN LLC shall provide the following Credentialing Services to PRACTICE NAME if the Client requires these services:"
+      },
+      {
+        "type": "bullet",
+        "text": "Submit and verify receipt of the credentialing applications to designated health plans;"
+      },
+      {
+        "type": "bullet",
+        "text": "Follow up on the application with designated health plans;"
+      },
+      {
+        "type": "bullet",
+        "text": "Document receipt of the requested information by the designated health plan; and"
+      },
+      {
+        "type": "bullet",
+        "text": "Conduct follow-up activities, document acceptance or rejection information from the health plan; or"
+      },
+      {
+        "type": "bullet",
+        "text": "Create or modify the Client’s CAQH database, NPI Registry, or apply for Telehealth licensure under the Interstate Medical Licensure Compact (IMLC)."
+      }
+    ]
+  },
+  "medical_scribe": {
+    "source": "Scribe Align - Serices Agreement - Template (Medical Scribe).docx",
+    "sha256": "2b80af83a4568e43eee9756bfd7cd8d05b828087fa3fbd87817f49297704e4fe",
+    "scope": [
+      {
+        "type": "p",
+        "text": "SCRIBE ALIGN LLC shall provide the following Services to PRACTICE NAME."
+      },
+      {
+        "type": "bullet",
+        "text": "Prepares and assembles medical record documentation/charts for physician(s)."
+      },
+      {
+        "type": "bullet",
+        "text": "Enters the patient room with the physician during patient visit to capture and transcribe medical record documentation utilizing electronic medical record applications."
+      },
+      {
+        "type": "bullet",
+        "text": "Ensures medical record compliance by self-documentation attestation."
+      },
+      {
+        "type": "bullet",
+        "text": "Updates patient history, physical exam, and other pertinent health information in the patient."
+      },
+      {
+        "type": "bullet",
+        "text": "Prepares and sends all documentation to physicians for review and approval via authentication of detailed data entry and facility-specific procedures."
+      },
+      {
+        "type": "bullet",
+        "text": "Monitors the duration of basic lab results and screening procedures."
+      },
+      {
+        "type": "bullet",
+        "text": "Complies with hospital and medical facility policies, including those relating to HIPAA and Joint Commission."
+      },
+      {
+        "type": "bullet",
+        "text": "Performs other clerical duties and tasks to improve provider productivity and clinic workflow as assigned."
+      }
+    ]
+  },
+  "virtual_assistant": {
+    "source": "Scribe Align - Serices Agreement - Template (Virtual Assistant).docx",
+    "sha256": "39b0781e263fd7ad99be1effd463d2c2080f89a0b640a42b24f42d40c3a8a8c0",
+    "scope": [
+      {
+        "type": "p",
+        "text": "SCRIBE ALIGN LLC shall provide the following Services to PRACTICE NAME."
+      },
+      {
+        "type": "bullet",
+        "text": "Intake of New Patients & Referrals."
+      },
+      {
+        "type": "bullet",
+        "text": "Appointment setting - Scheduling, managing cancelations, and sending reminders to patients."
+      },
+      {
+        "type": "bullet",
+        "text": "Calendar management - creating a schedule that includes appointments with patients as well as other commitments, such as meetings and events."
+      },
+      {
+        "type": "bullet",
+        "text": "Organizing files in your E-database."
+      },
+      {
+        "type": "bullet",
+        "text": "Supply management - keeping track of supplies at your practice and ordering new items, when necessary, through EHR/EMR/HRM."
+      },
+      {
+        "type": "bullet",
+        "text": "Follow ups and checking on patients after appointments."
+      },
+      {
+        "type": "bullet",
+        "text": "Prescription refills."
+      },
+      {
+        "type": "bullet",
+        "text": "Email/e-Fax Management - responding to messages and cleaning your inbox."
+      },
+      {
+        "type": "bullet",
+        "text": "Verification of Benefits and Eligibility Check (pre appointment)."
+      }
+    ]
+  }
+}

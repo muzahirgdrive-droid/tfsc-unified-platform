@@ -1,0 +1,1046 @@
+{
+  "source": "Scribe Align - Business Associate Agreement - Sample.docx",
+  "sha256": "7e434c1627593c6f5ca6bf6a2e9c4973037bd016c4cca4212954de34f35d6301",
+  "sample_date": "10/6/2026",
+  "blocks": [
+    {
+      "type": "title",
+      "text": "BUSINESS ASSOCIATE AGREEMENT",
+      "runs": [
+        {
+          "text": "BUSINESS ASSOCIATE AGREEMENT",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "(HIPAA/HITECH Compliant)",
+      "runs": [
+        {
+          "text": "(HIPAA/HITECH Compliant)",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "This Business Associate Agreement (\"Agreement\") is entered into and made effective upon the date 10/6/2026 (the \"Effective Date\") by and between PRACTICE NAME, a covered entity as defined under the Health Insurance Portability and Accountability Act of 1996 (\"Covered Entity\"), and SCRIBE ALIGN LLC, a business associate as defined under HIPAA (\"Business Associate\") (each a \"Party\" and collectively the \"Parties\").",
+      "runs": [
+        {
+          "text": "This Business Associate Agreement (\"",
+          "bold": false
+        },
+        {
+          "text": "Agreement",
+          "bold": true
+        },
+        {
+          "text": "\") is entered into and made effective upon the date ",
+          "bold": false
+        },
+        {
+          "text": "10/6/2026",
+          "bold": false
+        },
+        {
+          "text": " (the \"",
+          "bold": false
+        },
+        {
+          "text": "Effective Date",
+          "bold": true
+        },
+        {
+          "text": "\") by and between ",
+          "bold": false
+        },
+        {
+          "text": "PRACTICE NAME,",
+          "bold": true
+        },
+        {
+          "text": " a covered entity as defined under the Health Insurance Portability and Accountability Act of 1996 (\"",
+          "bold": false
+        },
+        {
+          "text": "Covered Entity",
+          "bold": true
+        },
+        {
+          "text": "\"), and ",
+          "bold": false
+        },
+        {
+          "text": "SCRIBE ALIGN LLC",
+          "bold": true
+        },
+        {
+          "text": ", a business associate as defined under HIPAA (\"",
+          "bold": false
+        },
+        {
+          "text": "Business Associate",
+          "bold": true
+        },
+        {
+          "text": "\") (each a \"Party\" and collectively the \"Parties\").",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "RECITALS",
+      "runs": [
+        {
+          "text": "RECITALS",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "WHEREAS, Covered Entity is a covered entity under HIPAA and may disclose certain Protected Health Information (“PHI”) to Business Associate in connection with services provided to Covered Entity; and",
+      "runs": [
+        {
+          "text": "WHEREAS",
+          "bold": true
+        },
+        {
+          "text": ", Covered Entity is a covered entity under HIPAA and may disclose certain Protected Health Information (",
+          "bold": false
+        },
+        {
+          "text": "“PHI”",
+          "bold": false
+        },
+        {
+          "text": ") to Business Associate in connection with services provided to Covered Entity; and",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "WHEREAS, Business Associate may create, receive, maintain, or transmit PHI on behalf of Covered Entity; and",
+      "runs": [
+        {
+          "text": "WHEREAS",
+          "bold": true
+        },
+        {
+          "text": ", Business Associate may create, receive, maintain, or transmit PHI on behalf of Covered Entity; and",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "WHEREAS, HIPAA, as amended by the Health Information Technology for Economic and Clinical Health Act of 2009 (\"HITECH\"), and implementing regulations at 45 C.F.R. Parts 160 and 164 (collectively, the \"HIPAA Rules\"), require covered entities to obtain satisfactory assurances from business associates that they will appropriately safeguard PHI; and",
+      "runs": [
+        {
+          "text": "WHEREAS",
+          "bold": true
+        },
+        {
+          "text": ", HIPAA, as amended by the Health Information Technology for Economic and Clinical Health Act of 2009 (\"HITECH\"), and implementing regulations at 45 C.F.R. Parts 160 and 164 (collectively, the \"HIPAA Rules\"), require covered entities to obtain satisfactory assurances from business associates that they will appropriately safeguard PHI; and",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "WHEREAS, the Parties wish to enter into this Agreement to satisfy the requirements of 45 C.F.R. §§ 164.308(b), 164.314(a), and 164.502(e).",
+      "runs": [
+        {
+          "text": "WHEREAS",
+          "bold": true
+        },
+        {
+          "text": ", the Parties wish to enter into this Agreement to satisfy the requirements of 45 C.F.R. §§ 164.308(b), 164.314(a), and 164.502(e).",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "NOW, THEREFORE, in consideration of the mutual promises and covenants contained herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the Parties agree as follows:",
+      "runs": [
+        {
+          "text": "NOW, THEREFORE, in consideration of the mutual promises and covenants contained herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the Parties agree as follows:",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "ARTICLE I - DEFINITIONS",
+      "runs": [
+        {
+          "text": "ARTICLE I - DEFINITIONS",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Capitalized terms used but not otherwise defined in this Agreement shall have the meanings ascribed to them under the HIPAA Rules. The following terms shall have the meanings set forth below:",
+      "runs": [
+        {
+          "text": "Capitalized terms used but not otherwise defined in this Agreement shall have the meanings ascribed to them under the HIPAA Rules. The following terms shall have the meanings set forth below:",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.1  “Business Associate” shall have the meaning given to such term under the HIPAA Rules, including 45 C.F.R. § 160.103.",
+      "runs": [
+        {
+          "text": "1.1  “Business Associate”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under the HIPAA Rules, including 45 C.F.R. § 160.103.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.2  “Covered Entity” shall have the meaning given to such term under the HIPAA Rules, including 45 C.F.R. § 160.103.",
+      "runs": [
+        {
+          "text": "1.2  “Covered Entity”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under the HIPAA Rules, including 45 C.F.R. § 160.103.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.3  “Data Aggregation” shall have the meaning given to such term under 45 C.F.R. § 164.501.",
+      "runs": [
+        {
+          "text": "1.3  “Data Aggregation”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 164.501.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.4 “Designated Record Set” shall have the meaning given to such term under 45 C.F.R. § 164.501.",
+      "runs": [
+        {
+          "text": "1.4 ",
+          "bold": true
+        },
+        {
+          "text": "“Designated Record Set”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 164.501.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.5 “Electronic Protected Health Information” or “ePHI” means PHI that is transmitted by or maintained in electronic media, as defined in 45 C.F.R. § 160.103.",
+      "runs": [
+        {
+          "text": "1.5 ",
+          "bold": true
+        },
+        {
+          "text": "“Electronic Protected Health Information”",
+          "bold": true
+        },
+        {
+          "text": " or ",
+          "bold": true
+        },
+        {
+          "text": "“ePHI”",
+          "bold": true
+        },
+        {
+          "text": " means PHI that is transmitted by or maintained in electronic media, as defined in 45 C.F.R. § 160.103.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.6 “HIPAA Rules” means the Privacy, Security, Breach Notification, and Enforcement Rules at 45 C.F.R. Parts 160 and 164, as amended by HITECH.",
+      "runs": [
+        {
+          "text": "1.6 ",
+          "bold": true
+        },
+        {
+          "text": "“HIPAA Rules”",
+          "bold": true
+        },
+        {
+          "text": " means the Privacy, Security, Breach Notification, and Enforcement Rules at 45 C.F.R. Parts 160 and 164, as amended by HITECH.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.7 “Protected Health Information” or “PHI” shall have the meaning given to such term under 45 C.F.R. § 160.103, limited to PHI created, received, maintained, or transmitted by Business Associate on behalf of Covered Entity.",
+      "runs": [
+        {
+          "text": "1.7 ",
+          "bold": true
+        },
+        {
+          "text": "“Protected Health Information”",
+          "bold": true
+        },
+        {
+          "text": " or ",
+          "bold": true
+        },
+        {
+          "text": "“PHI”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 160.103, limited to PHI created, received, maintained, or transmitted by Business Associate on behalf of Covered Entity.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.8 “Required By Law” shall have the meaning given to such term under 45 C.F.R. § 160.103.",
+      "runs": [
+        {
+          "text": "1.8 ",
+          "bold": true
+        },
+        {
+          "text": "“Required By Law”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 160.103.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.9 “Breach” shall have the meaning given to such term under 45 C.F.R. § 164.402.",
+      "runs": [
+        {
+          "text": "1.9 ",
+          "bold": true
+        },
+        {
+          "text": "“Breach”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 164.402.",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.10 “Security Incident” shall have the meaning given to such term under 45 C.F.R. § 164.304.",
+      "runs": [
+        {
+          "text": "1.10 ",
+          "bold": true
+        },
+        {
+          "text": "“Security Incident”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 164.304.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.11 “Subcontractor” means a person to whom Business Associate delegates a function, activity, or service, other than in the capacity of a member of the workforce of Business Associate.",
+      "runs": [
+        {
+          "text": "1.11 ",
+          "bold": true
+        },
+        {
+          "text": "“Subcontractor”",
+          "bold": true
+        },
+        {
+          "text": " means a person to whom Business Associate delegates a function, activity, or service, other than in the capacity of a member of the workforce of Business Associate.",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "1.12 “Unsecured PHI” shall have the meaning given to such term under 45 C.F.R. § 164.402.",
+      "runs": [
+        {
+          "text": "1.12 ",
+          "bold": true
+        },
+        {
+          "text": "“Unsecured PHI”",
+          "bold": true
+        },
+        {
+          "text": " shall have the meaning given to such term under 45 C.F.R. § 164.402.",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "ARTICLE II - OBLIGATIONS AND ACTIVITIES OF BUSINESS ASSOCIATE",
+      "runs": [
+        {
+          "text": "ARTICLE II - OBLIGATIONS AND ACTIVITIES OF BUSINESS ASSOCIATE",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Business Associate agrees to:",
+      "runs": [
+        {
+          "text": "Business Associate agrees to:",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.1 Use and Disclosure Limitations. Not use or disclose PHI other than as permitted or required by this Agreement or as Required by Law.",
+      "runs": [
+        {
+          "text": "2.1 Use and Disclosure Limitations.",
+          "bold": true
+        },
+        {
+          "text": " Not use or disclose PHI other than as permitted or required by this Agreement or as Required by Law.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.2 HITECH Direct Applicability. Recognize and comply with the fact that HITECH and its implementing regulations (including 45 C.F.R. Parts 160 and 164, Subparts A, C, and D) apply directly to Business Associate in the same manner that such provisions apply to Covered Entity. Business Associate shall comply with the HIPAA Security Rule (45 C.F.R. §§ 164.308, 164.310, 164.312, and 164.316) with respect to ePHI.",
+      "runs": [
+        {
+          "text": "2.2 HITECH Direct Applicability.",
+          "bold": true
+        },
+        {
+          "text": " Recognize and comply with the fact that HITECH and its implementing regulations (including 45 C.F.R. Parts 160 and 164, Subparts A, C, and D) apply directly to Business Associate in the same manner that such provisions apply to Covered Entity. Business Associate shall comply with the HIPAA Security Rule (45 C.F.R. §§ 164.308, 164.310, 164.312, and 164.316) with respect to ePHI.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.3 Safeguards. Use appropriate administrative, physical, and technical safeguards, and comply with the HIPAA Security Rule with respect to ePHI, to prevent use or disclosure of PHI other than as provided for by this Agreement.",
+      "runs": [
+        {
+          "text": "2.3 Safeguards.",
+          "bold": true
+        },
+        {
+          "text": " Use appropriate administrative, physical, and technical safeguards, and comply with the HIPAA Security Rule with respect to ePHI, to prevent use or disclosure of PHI other than as provided for by this Agreement.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.4 Reporting of Unauthorized Use or Disclosure. Report to Covered Entity, without unreasonable delay, any use or disclosure of PHI not provided for by this Agreement of which Business Associate becomes aware, including any Breaches of Unsecured PHI as required by 45 C.F.R. § 164.410 and any Security Incidents of which it becomes aware. In the case of a Breach of Unsecured PHI, Business Associate shall provide such notification to Covered Entity no later than thirty (30) calendar days after discovery of the Breach, and such notice shall include, to the extent possible, the information required under 45 C.F.R. § 164.410(c).",
+      "runs": [
+        {
+          "text": "2.4 Reporting of Unauthorized Use or Disclosure.",
+          "bold": true
+        },
+        {
+          "text": " Report to Covered Entity, without unreasonable delay, any use or disclosure of PHI not provided for by this Agreement of which Business Associate becomes aware, including any Breaches of Unsecured PHI as required by 45 C.F.R. § 164.410 and any Security Incidents of which it becomes aware. In the case of a Breach of Unsecured PHI, Business Associate shall provide such notification to Covered Entity no later than thirty (30) calendar days after discovery of the Breach, and such notice shall include, to the extent possible, the information required under 45 C.F.R. § 164.410(c).",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.5 Subcontractors. In accordance with 45 C.F.R. §§ 164.308(b)(2) and 164.502(e)(1)(ii), ensure that any Subcontractors that create, receive, maintain, or transmit PHI on behalf of Business Associate agree, by written contract, to the same restrictions, conditions, and requirements that apply to Business Associate under this Agreement with respect to such PHI.",
+      "runs": [
+        {
+          "text": "2.5 Subcontractors.",
+          "bold": true
+        },
+        {
+          "text": " In accordance with 45 C.F.R. §§ 164.308(b)(2) and 164.502(e)(1)(ii), ensure that any Subcontractors that create, receive, maintain, or transmit PHI on behalf of Business Associate agree, by written contract, to the same restrictions, conditions, and requirements that apply to Business Associate under this Agreement with respect to such PHI.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.6 Access to PHI. To the extent Business Associate maintains PHI in a Designated Record Set, make such PHI available to Covered Entity (or, at Covered Entity’s direction, to an individual) to enable Covered Entity to fulfill its obligations to provide access to PHI under 45 C.F.R. § 164.524.",
+      "runs": [
+        {
+          "text": "2.6 Access to PHI.",
+          "bold": true
+        },
+        {
+          "text": " To the extent Business Associate maintains PHI in a Designated Record Set, make such PHI available to Covered Entity (or, at Covered Entity’s direction, to an individual) to enable Covered Entity to fulfill its obligations to provide access to PHI under 45 C.F.R. § 164.524.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.7 Amendment of PHI. To the extent Business Associate maintains PHI in a Designated Record Set, make such PHI available to Covered Entity for amendment, and incorporate any amendments to PHI as directed by or agreed to by Covered Entity pursuant to 45 C.F.R. § 164.526.",
+      "runs": [
+        {
+          "text": "2.7 Amendment of PHI.",
+          "bold": true
+        },
+        {
+          "text": " To the extent Business Associate maintains PHI in a Designated Record Set, make such PHI available to Covered Entity for amendment, and incorporate any amendments to PHI as directed by or agreed to by Covered Entity pursuant to 45 C.F.R. § 164.526.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.8 Accounting of Disclosures. Maintain and make available to Covered Entity the information required to provide an accounting of disclosures of PHI as necessary to satisfy Covered Entity’s obligations under 45 C.F.R. § 164.528. Business Associate shall document disclosures of PHI for a period of at least six (6) years from the date of the disclosure, including: (a) the date of disclosure; (b) the name of the entity or person who received PHI, and if known, the address of such entity or person; (c) a brief description of PHI disclosed; and (d) a brief statement of the purpose of the disclosure.",
+      "runs": [
+        {
+          "text": "2.8 Accounting of Disclosures.",
+          "bold": true
+        },
+        {
+          "text": " Maintain and make available to Covered Entity the information required to provide an accounting of disclosures of PHI as necessary to satisfy Covered Entity’s obligations under 45 C.F.R. § 164.528. Business Associate shall document disclosures of PHI for a period of at least six (6) years from the date of the disclosure, including: (a) the date of disclosure; (b) the name of the entity or person who received PHI, and if known, the address of such entity or person; (c) a brief description of PHI disclosed; and (d) a brief statement of the purpose of the disclosure.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.9 Internal Practices. Make available its internal practices, books, and records relating to the use and disclosure of PHI to the Secretary of the U.S. Department of Health and Human Services (\"Secretary\") for purposes of determining compliance with the HIPAA Rules.",
+      "runs": [
+        {
+          "text": "2.9 Internal Practices.",
+          "bold": true
+        },
+        {
+          "text": " Make available its internal practices, books, and records relating to the use and disclosure of PHI to the Secretary of the U.S. Department of Health and Human Services (\"Secretary\") for purposes of determining compliance with the HIPAA Rules.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.10 Minimum Necessary. To the extent practicable, use, disclose, or request only the minimum amount of PHI necessary to accomplish the intended purpose of the use, disclosure, or request, in accordance with 45 C.F.R. § 164.502(b) and 45 C.F.R. § 164.514(d).",
+      "runs": [
+        {
+          "text": "2.10 Minimum Necessary.",
+          "bold": true
+        },
+        {
+          "text": " To the extent practicable, use, disclose, or request only the minimum amount of PHI necessary to accomplish the intended purpose of the use, disclosure, or request, in accordance with 45 C.F.R. § 164.502(b) and 45 C.F.R. § 164.514(d).",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.11 Prohibition on Sale of PHI. Not directly or indirectly receive remuneration in exchange for PHI, except as permitted under 45 C.F.R. § 164.502(a)(5)(ii) and applicable provisions of HITECH.",
+      "runs": [
+        {
+          "text": "2.11 Prohibition on Sale of PHI.",
+          "bold": true
+        },
+        {
+          "text": " Not directly or indirectly receive remuneration in exchange for PHI, except as permitted under 45 C.F.R. § 164.502(a)(5)(ii) and applicable provisions of HITECH.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.12 Marketing and Fundraising. Not use or disclose PHI for marketing purposes or for fundraising without prior written authorization from Covered Entity, as may be required by HITECH and 45 C.F.R. Part 164.",
+      "runs": [
+        {
+          "text": "2.12 Marketing and Fundraising.",
+          "bold": true
+        },
+        {
+          "text": " Not use or disclose PHI for marketing purposes or for fundraising without prior written authorization from Covered Entity, as may be required by HITECH and 45 C.F.R. Part 164.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.13 Standard Transactions. If Business Associate conducts Standard Transactions for or on behalf of Covered Entity, comply with each applicable requirement of 45 C.F.R. Part 162.",
+      "runs": [
+        {
+          "text": "2.13 Standard Transactions.",
+          "bold": true
+        },
+        {
+          "text": " If Business Associate conducts Standard Transactions for or on behalf of Covered Entity, comply with each applicable requirement of 45 C.F.R. Part 162.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "2.14 Audit Rights. Upon reasonable advance written notice, and no more than once per calendar year absent a suspected Breach or Security Incident, Business Associate shall permit Covered Entity, or an independent auditor designated by Covered Entity, to inspect Business Associate's policies, procedures, and safeguards relevant to the protection of PHI under this Agreement, in order to verify Business Associate's compliance with this Agreement and the HIPAA Rules. Any such audit shall be conducted during normal business hours and shall not unreasonably interfere with Business Associate's operations.",
+      "runs": [
+        {
+          "text": "2.14 Audit Rights.",
+          "bold": true
+        },
+        {
+          "text": " Upon reasonable advance written notice, and no more than once per calendar year absent a suspected Breach or Security Incident, Business Associate shall permit Covered Entity, or an independent auditor designated by Covered Entity, to inspect Business Associate's policies, procedures, and safeguards relevant to the protection of PHI under this Agreement, in order to verify Business Associate's compliance with this Agreement and the HIPAA Rules. Any such audit shall be conducted during normal business hours and shall not unreasonably interfere with Business Associate's operations.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "ARTICLE III - PERMITTED USES AND DISCLOSURES BY BUSINESS ASSOCIATE",
+      "runs": [
+        {
+          "text": "ARTICLE III - PERMITTED USES AND DISCLOSURES BY BUSINESS ASSOCIATE",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "3.1 Services. Business Associate may use and disclose PHI only as necessary to perform the services described in any underlying service agreement between the Parties, or as otherwise permitted or required by this Agreement.",
+      "runs": [
+        {
+          "text": "3.1 Services.",
+          "bold": true
+        },
+        {
+          "text": " Business Associate may use and disclose PHI only as necessary to perform the services described in any underlying service agreement between the Parties, or as otherwise permitted or required by this Agreement.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "3.2 Operations of Covered Entity. Business Associate may use PHI for the proper management and administration of Business Associate and to carry out its legal responsibilities. Business Associate may disclose PHI for the proper management and administration of Business Associate, provided: (a) the disclosures are Required By Law; or (b) Business Associate obtains reasonable assurances from the recipient that the PHI will be held confidentially, used or further disclosed only as Required By Law or for the purpose for which it was disclosed, and the recipient will notify Business Associate of any breaches of confidentiality.",
+      "runs": [
+        {
+          "text": "3.2 Operations of Covered Entity.",
+          "bold": true
+        },
+        {
+          "text": " Business Associate may use PHI for the proper management and administration of Business Associate and to carry out its legal responsibilities. Business Associate may disclose PHI for the proper management and administration of Business Associate, provided: (a) the disclosures are Required By Law; or (b) Business Associate obtains reasonable assurances from the recipient that the PHI will be held confidentially, used or further disclosed only as Required By Law or for the purpose for which it was disclosed, and the recipient will notify Business Associate of any breaches of confidentiality.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "3.3 Data Aggregation. Business Associate may use PHI to provide Data Aggregation services to Covered Entity, as permitted by 45 C.F.R. § 164.504(e)(2)(i)(B).",
+      "runs": [
+        {
+          "text": "3.3 Data Aggregation.",
+          "bold": true
+        },
+        {
+          "text": " Business Associate may use PHI to provide Data Aggregation services to Covered Entity, as permitted by 45 C.F.R. § 164.504(e)(2)(i)(B).",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "3.4 De-Identified Information. Business Associate and its authorized Subcontractors may disclose information that has been de-identified in accordance with 45 C.F.R. §§ 164.514(a)–(c), provided that no key or other mechanism that would enable re-identification is disclosed.",
+      "runs": [
+        {
+          "text": "3.4 De-Identified Information.",
+          "bold": true
+        },
+        {
+          "text": " Business Associate and its authorized Subcontractors may disclose information that has been de-identified in accordance with 45 C.F.R. §§ 164.514(a)–(c), provided that no key or other mechanism that would enable re-identification is disclosed.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "ARTICLE IV - OBLIGATIONS OF COVERED ENTITY",
+      "runs": [
+        {
+          "text": "ARTICLE IV - OBLIGATIONS OF COVERED ENTITY",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Covered Entity shall:",
+      "runs": [
+        {
+          "text": "Covered Entity shall:",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "4.1 Notice of Privacy Practices. Notify Business Associate of any limitation(s) in Covered Entity’s notice of privacy practices under 45 C.F.R. § 164.520, to the extent that such limitation may affect Business Associate’s use or disclosure of PHI.",
+      "runs": [
+        {
+          "text": "4.1 Notice of Privacy Practices.",
+          "bold": true
+        },
+        {
+          "text": " Notify Business Associate of any limitation(s) in Covered Entity’s notice of privacy practices under 45 C.F.R. § 164.520, to the extent that such limitation may affect Business Associate’s use or disclosure of PHI.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "4.2 Permission Changes. Notify Business Associate of any changes in, or revocation of, permission by an individual to use or disclose PHI, to the extent that such changes may affect Business Associate’s permitted or required uses and disclosures.",
+      "runs": [
+        {
+          "text": "4.2 Permission Changes.",
+          "bold": true
+        },
+        {
+          "text": " Notify Business Associate of any changes in, or revocation of, permission by an individual to use or disclose PHI, to the extent that such changes may affect Business Associate’s permitted or required uses and disclosures.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "4.3 Restrictions. Notify Business Associate of any restriction on the use or disclosure of PHI that Covered Entity has agreed to or is required to abide by under 45 C.F.R. § 164.522, to the extent that such restriction may affect Business Associate’s use or disclosure of PHI.",
+      "runs": [
+        {
+          "text": "4.3 Restrictions.",
+          "bold": true
+        },
+        {
+          "text": " Notify Business Associate of any restriction on the use or disclosure of PHI that Covered Entity has agreed to or is required to abide by under 45 C.F.R. § 164.522, to the extent that such restriction may affect Business Associate’s use or disclosure of PHI.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "4.4 Minimum Necessary Requests. Covered Entity shall only request Business Associate to use or disclose the minimum PHI necessary to accomplish the intended purpose.",
+      "runs": [
+        {
+          "text": "4.4 Minimum Necessary Requests.",
+          "bold": true
+        },
+        {
+          "text": " Covered Entity shall only request Business Associate to use or disclose the minimum PHI necessary to accomplish the intended purpose.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "ARTICLE V - TERM AND TERMINATION",
+      "runs": [
+        {
+          "text": "ARTICLE V - TERM AND TERMINATION",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "5.1 Term. This Agreement shall be effective as of the Effective Date and shall continue in effect until all PHI provided by Covered Entity to Business Associate, or created or received by Business Associate on behalf of Covered Entity, is destroyed or returned to Covered Entity, or, if such return or destruction is infeasible, protections are extended in accordance with Section 5.4 below.",
+      "runs": [
+        {
+          "text": "5.1 Term.",
+          "bold": true
+        },
+        {
+          "text": " This Agreement shall be effective as of the Effective Date and shall continue in effect until all PHI provided by Covered Entity to Business Associate, or created or received by Business Associate on behalf of Covered Entity, is destroyed or returned to Covered Entity, or, if such return or destruction is infeasible, protections are extended in accordance with Section 5.4 below.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "5.2 Termination for Cause. Upon Covered Entity’s knowledge of a material breach or violation by Business Associate of this Agreement, Covered Entity shall: (a) provide written notice to Business Associate and give Business Associate an opportunity to cure the breach or end the violation within fifteen (15) business days of receipt of written notice; (b) immediately terminate this Agreement if Business Associate has breached a material term and cure is not possible; or (c) if termination is not feasible, report the breach to the Secretary in accordance with 45 C.F.R. § 164.504(e)(1)(ii).",
+      "runs": [
+        {
+          "text": "5.2 Termination for Cause.",
+          "bold": true
+        },
+        {
+          "text": " Upon Covered Entity’s knowledge of a material breach or violation by Business Associate of this Agreement, Covered Entity shall: (a) provide written notice to Business Associate and give Business Associate an opportunity to cure the breach or end the violation within fifteen (15) business days of receipt of written notice; (b) immediately terminate this Agreement if Business Associate has breached a material term and cure is not possible; or (c) if termination is not feasible, report the breach to the Secretary in accordance with 45 C.F.R. § 164.504(e)(1)(ii).",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "5.3 Effect of Termination. Upon termination of this Agreement for any reason, Business Associate shall return or destroy all PHI received from Covered Entity or created or received by Business Associate on behalf of Covered Entity. Business Associate shall retain no copies of such PHI in any form. Business Associate shall certify in writing to Covered Entity that all PHI has been returned or destroyed within thirty (30) days of the effective date of termination.",
+      "runs": [
+        {
+          "text": "5.3 Effect of Termination.",
+          "bold": true
+        },
+        {
+          "text": " Upon termination of this Agreement for any reason, Business Associate shall return or destroy all PHI received from Covered Entity or created or received by Business Associate on behalf of Covered Entity. Business Associate shall retain no copies of such PHI in any form. Business Associate shall certify in writing to Covered Entity that all PHI has been returned or destroyed within thirty (30) days of the effective date of termination.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "5.4 Infeasibility of Return or Destruction. If Business Associate determines that returning or destroying PHI is infeasible, Business Associate shall notify Covered Entity in writing of the conditions that make return or destruction infeasible. In such event, Business Associate shall extend the protections of this Agreement to the PHI for as long as Business Associate retains the PHI, limit further uses and disclosures of PHI to those purposes that make return or destruction infeasible, and upon resolution of the conditions that make return or destruction infeasible, return or destroy the PHI.",
+      "runs": [
+        {
+          "text": "5.4 Infeasibility of Return or Destruction.",
+          "bold": true
+        },
+        {
+          "text": " If Business Associate determines that returning or destroying PHI is infeasible, Business Associate shall notify Covered Entity in writing of the conditions that make return or destruction infeasible. In such event, Business Associate shall extend the protections of this ",
+          "bold": false
+        },
+        {
+          "text": "Agreement to the PHI for as long as Business Associate retains the PHI, limit further uses and disclosures of PHI to those purposes that make return or destruction infeasible, and upon resolution of the conditions that make return or destruction infeasible, return or destroy the PHI.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "ARTICLE VI - MISCELLANEOUS",
+      "runs": [
+        {
+          "text": "ARTICLE VI - MISCELLANEOUS",
+          "bold": true
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.1 Regulatory References. A reference in this Agreement to a section in the HIPAA Rules means the section as in effect or as amended from time to time.",
+      "runs": [
+        {
+          "text": "6.1 Regulatory References.",
+          "bold": true
+        },
+        {
+          "text": " A reference in this Agreement to a section in the HIPAA Rules means the section as in effect or as amended from time to time.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.2 Amendment. The Parties agree to take such action as is necessary to amend this Agreement from time to time as is necessary for compliance with the requirements of the HIPAA Rules and any other applicable law. No amendment shall be valid unless it is in writing and signed by authorized representatives of both Parties.",
+      "runs": [
+        {
+          "text": "6.2 Amendment.",
+          "bold": true
+        },
+        {
+          "text": " The Parties agree to take such action as is necessary to amend this Agreement from time to time as is necessary for compliance with the requirements of the HIPAA Rules and any other applicable law. No amendment shall be valid unless it is in writing and signed by authorized representatives of both Parties.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.3 Interpretation. This Agreement shall be construed in accordance with the requirements of HIPAA and the HIPAA Rules. Any ambiguity in this Agreement shall be resolved in favor of a meaning that permits Covered Entity to comply with the HIPAA Rules.",
+      "runs": [
+        {
+          "text": "6.3 Interpretation.",
+          "bold": true
+        },
+        {
+          "text": " This Agreement shall be construed in accordance with the requirements of HIPAA and the HIPAA Rules. Any ambiguity in this Agreement shall be resolved in favor of a meaning that permits Covered Entity to comply with the HIPAA Rules.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.4 Survival. The obligations imposed by this Agreement shall survive any expiration or termination of this Agreement and shall remain in effect so long as Business Associate maintains any PHI received from or on behalf of Covered Entity.",
+      "runs": [
+        {
+          "text": "6.4 Survival.",
+          "bold": true
+        },
+        {
+          "text": " The obligations imposed by this Agreement shall survive any expiration or termination of this Agreement and shall remain in effect so long as Business Associate maintains any PHI received from or on behalf of Covered Entity.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.5 Indemnification. Each Party shall indemnify, defend, and hold harmless the other Party from and against any and all third-party claims, losses, liabilities, fines, penalties, and reasonable expenses (including reasonable attorneys' fees) arising out of or resulting from the indemnifying Party's breach of this Agreement or violation of the HIPAA Rules, except to the extent such claims, losses, liabilities, fines, penalties, or expenses arise from the negligence or willful misconduct of the indemnified Party.",
+      "runs": [
+        {
+          "text": "6.5 Indemnification.",
+          "bold": true
+        },
+        {
+          "text": " Each Party shall indemnify, defend, and hold harmless the other Party from and against any and all third-party claims, losses, liabilities, fines, penalties, and reasonable expenses (including reasonable attorneys' fees) arising out of or resulting from the indemnifying Party's breach of this Agreement or violation of the HIPAA Rules, except to the extent such claims, losses, liabilities, fines, penalties, or expenses arise from the negligence or willful misconduct of the indemnified Party.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.6 No Third-Party Beneficiaries. Nothing in this Agreement shall confer upon any person other than the Parties and their respective successors or assigns any rights, remedies, obligations, or liabilities whatsoever.",
+      "runs": [
+        {
+          "text": "6.6 No Third-Party Beneficiaries.",
+          "bold": true
+        },
+        {
+          "text": " Nothing in this Agreement shall confer upon any person other than the Parties and their respective successors or assigns any rights, remedies, obligations, or liabilities whatsoever.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.7 Severability. If any provision of this Agreement is found to be unenforceable, the remainder of this Agreement shall continue in full force and effect.",
+      "runs": [
+        {
+          "text": "6.7 Severability.",
+          "bold": true
+        },
+        {
+          "text": " If any provision of this Agreement is found to be unenforceable, the remainder of this Agreement shall continue in full force and effect.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.8 Entire Agreement. This Agreement, together with any underlying service agreement(s) between the Parties, constitutes the entire agreement between the Parties relating to the subject matter hereof and supersedes all prior agreements and understandings, both written and oral, relating to such subject matter.",
+      "runs": [
+        {
+          "text": "6.8 Entire Agreement.",
+          "bold": true
+        },
+        {
+          "text": " This Agreement, together with any underlying service agreement(s) between the Parties, constitutes the entire agreement between the Parties relating to the subject matter hereof and supersedes all prior agreements and understandings, both written and oral, relating to such subject matter.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.9 Governing Law. This Agreement shall be governed by and construed in accordance with the laws of the State of Georgia, without regard to its conflict of laws principles, except to the extent superseded by federal law.",
+      "runs": [
+        {
+          "text": "6.9 Governing Law.",
+          "bold": true
+        },
+        {
+          "text": " This Agreement shall be governed by and construed in accordance with the laws of the State of Georgia, without regard to its conflict of laws principles, except to the extent superseded by federal law.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.10 Counterparts. This Agreement may be executed in counterparts, each of which shall be deemed an original, and all of which together shall constitute one and the same instrument. Electronic and facsimile signatures shall be deemed valid.",
+      "runs": [
+        {
+          "text": "6.10 Counterparts.",
+          "bold": true
+        },
+        {
+          "text": " This Agreement may be executed in counterparts, each of which shall be deemed an original, and all of which together shall constitute one and the same instrument. Electronic and facsimile signatures shall be deemed valid.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.11 Assignment. Neither Party may assign or delegate this Agreement, in whole or in part, without the prior written consent of the other Party, except that either Party may assign this Agreement without consent to a successor entity in connection with a merger, acquisition, or sale of substantially all of its assets, provided the successor agrees in writing to be bound by the terms of this Agreement.",
+      "runs": [
+        {
+          "text": "6.11 Assignment.",
+          "bold": true
+        },
+        {
+          "text": " Neither Party may assign or delegate this Agreement, in whole or in part, without the prior written consent of the other Party, except that either Party may assign this Agreement without ",
+          "bold": false
+        },
+        {
+          "text": "consent to a successor entity in connection with a merger, acquisition, or sale of substantially all of its assets, provided the successor agrees in writing to be bound by the terms of this Agreement.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.12 Independent Contractor. The Parties are independent contractors. Nothing in this Agreement shall be construed to create an employer–employee, partnership, joint venture, or agency relationship between the Parties.",
+      "runs": [
+        {
+          "text": "6.12 Independent Contractor.",
+          "bold": true
+        },
+        {
+          "text": " The Parties are independent contractors. Nothing in this Agreement shall be construed to create an employer–employee, partnership, joint venture, or agency relationship between the Parties.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "p",
+      "text": "6.13 Notices. Any notice required or permitted under this Agreement shall be in writing and delivered by hand, by nationally recognized overnight courier, or by certified mail, return receipt requested, to the address for each Party set forth in the signature block below, or to such other address as a Party may designate in writing. Notice shall be deemed given upon receipt.",
+      "runs": [
+        {
+          "text": "6.13 Notices.",
+          "bold": true
+        },
+        {
+          "text": " Any notice required or permitted under this Agreement shall be in writing and delivered by hand, by nationally recognized overnight courier, or by certified mail, return receipt requested, to the address for each Party set forth in the signature block below, or to such other address as a Party may designate in writing. Notice shall be deemed given upon receipt.",
+          "bold": false
+        }
+      ]
+    },
+    {
+      "type": "signature",
+      "text": "IN WITNESS WHEREOF, the Parties have executed this Business Associate Agreement as of the date last written below.",
+      "source_exact": true
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+Read _HANDOFF/00-READ-FIRST.txt. It supersedes historical names/runtime claims in older documents. This is TFSC Compliance; extract its companion beside it.

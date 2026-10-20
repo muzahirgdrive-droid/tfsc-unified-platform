@@ -1,0 +1,17 @@
+.data
+.env
+.venv
+__pycache__
+*.pyc
+*.zip
+*.sqlite*
+*.db
+tests/results
+runtime
+web/node_modules
+web/dist
+.pytest_cache
+tests
+*.log
+*.key
+private-assets

@@ -1,0 +1,251 @@
+TFSC SALES CRM + TFSC COMPLIANCE
+Implementation architecture and decision record | 14 October 2026
+Status: proposed build specification grounded in the current source and supplied workbook.
+
+1. PRODUCT BOUNDARY AND PRIORITIES
+
+Build a separate Sales CRM site integrated with the existing TFSC Compliance site. The CRM owns sales work; TFSC continues owning legal documents and rendering. Centralize identity and stable client references without granting either site unrestricted access to the other's database. A single organization may contain many sales domains, projects, teams and legal entities; these concepts are not interchangeable.
+
+Initial users: approximately 550. Growth target: 50,000 registered identities. Concurrent activity and data volume must be measured separately from registered user count. Priorities are correctness and confidentiality, usable entry and follow-ups, trustworthy reporting, then measured scale. No architecture can guarantee that a person cannot photograph information they are allowed to see.
+
+Retain TFSC Compliance's three legal entities, approved BAA content, all 19 services, original letterheads, signatures, Times New Roman body, justified paragraphs, approved heading sizes/colors, Page X of Y, editable DOCX/PDF and historical outputs. Personal Injury Collection supports FTE or percentage of eligible net collections. Credentialing retains its two payer rate entries; website development retains WordPress/custom choices. This CRM work is not authorization to rewrite legal content.
+
+2. APPLICATION AND DEPLOYMENT ARCHITECTURE
+
+Browser A: Sales CRM responsive frontend, React + TypeScript, accessible virtualized grid and charts.
+Browser B: existing TFSC Compliance frontend and document workflow.
+Both authenticate through an OIDC identity authority with separate clients and local server sessions.
+CRM backend: FastAPI modular monolith, PostgreSQL, SQLAlchemy and reviewed migrations.
+TFSC backend: retain existing FastAPI, SQLAlchemy and render worker; additive integration migrations.
+Background work: durable import, integration and aggregate jobs; separate document-render queue.
+Optional Redis: cache, rate limiting and bounded event fanout; never authoritative for lead ownership or audit.
+Data: distinct application database ownership and least-privilege credentials. Separate logical databases are the default; a common PostgreSQL cluster is acceptable initially. Shared identity is accessed through validated identity claims and explicit application grants, not shared passwords or cross-database writes.
+
+Request path: browser -> same-origin backend -> authorization -> domain service -> database transaction/outbox -> worker -> external adapter -> inbox/status. Only narrowly scoped backend integration endpoints cross the site boundary. No broad wildcard CORS or cross-site cookie sharing. Same-site cookies, CSRF checks and origin validation remain in place. OIDC uses Authorization Code + PKCE, state/nonce and exact callback allowlists. Map identities by issuer plus subject; linking by matching email alone is insufficient.
+
+Use organization_id on business rows even if one organization is currently deployed. Do not pretend organization isolation follows from a database row field alone. Enforce it in query policies, tests and background jobs. Avoid prematurely splitting every module into a network service. Modular boundaries should allow later extraction of high-volume analytics or ingestion.
+
+Do not select a hosting vendor in this work. Provide reproducible local and VPS-capable deployment, configuration, health checks and production requirements. Secrets belong in an appropriate secret store or protected runtime configuration, never in the ZIP, frontend bundle or source control.
+
+3. ROLES, SCOPES AND CAPABILITIES
+
+CRM hierarchy: Super Admin > Director/Admin > Manager > Supervisor > Sales Agent.
+Group leader is an agent delegation scoped to follow-up tasks, not a sixth administrative role.
+
+Super Admin: organization-wide administration, role policy, all permitted data, routing catalogs, integrations, audit, emergency overrides and account suspension. Every override requires a reason. Do not permit routine erasure of audit records.
+Director/Admin: administer assigned organizational branches, create managers/supervisors/agents, assign teams and module grants within delegated bounds, maintain domains/projects and owners, see scoped management reports. Cannot create a Super Admin or extend own grants.
+Manager: manage assigned supervisors/teams and workload, resolve scoped conflicts, review performance, and grant the explicit routing-metadata view permission to supervisors within the manager's scope. User creation or agreement access delegation requires an explicit additional capability; never infer it from title.
+Supervisor: work only assigned teams; form groups, choose follow-up coordinators, allocate existing permitted users, review follow-ups, confirm strong follow-ups, qualify/assign leads, manage meetings, confirm sales, and perform justified corrections. User invitation is a separately delegated capability. Cannot create arbitrary privileged roles or assign people outside their scope. Routing metadata is invisible unless expressly granted. Agreement access is separately assigned.
+Sales Agent: own research, own call/activity records, permitted assigned contacts, own task queue and performance; cannot confirm strong follow-ups, qualify leads, change ownership, view meeting details, manage users, override locks or access routing metadata.
+Group leader: all agent restrictions remain. May coordinate assigned group follow-up tasks and see only explicitly delegated task details. Cannot see full group contact lists automatically, approve leads, view meetings, unlock records or administer users. Supervisor retains authority.
+
+Custom role labels may be supported, but capability grants cannot exceed the grantor's delegation scope or defeat hard confidentiality constraints. User creation fields include email, display/legal name as appropriate, unique agent ID, photo, active status, manager/team, CRM role, app entitlements and privately assigned domain/project. Invitations and account provisioning must not expose private assignment fields to the invitee. No public self-registration. Photo uploads need size/type checks, decoding/re-encoding, metadata stripping and authorized delivery.
+
+Separate TFSC entitlements: none / user / admin / super_admin plus allowed legal entities. Preserve existing TFSC role behavior until explicitly migrated. A CRM supervisor is not automatically a TFSC admin. CRM-only and contracts-only accounts must be supported. Every service action rechecks current grants; queued work rechecks before execution. Suspended/revoked access stops active sessions and sensitive event streams within a defined bounded interval.
+
+Permission model = identity + organization + application + action + resource scope + restricted-field policy. Apply deny by default. Fetch only permitted fields in agent DTOs. RLS is useful defense in depth where practical; runtime users must not be database owners or BYPASSRLS users, and applicable tables need tested FORCE ROW LEVEL SECURITY behavior. Application checks still enforce field visibility and business transitions. Reference: PostgreSQL row security documentation in SOURCES.txt.
+
+4. DOMAINS, PROJECTS AND HIDDEN ROUTING METADATA
+
+Seed the exact catalogs in SEED-CONFIG.json. A sales domain is a selling brand/business assignment, not a DNS name or permission to generate contracts. Scribe Align LLC is the default for a new user without a selected sales domain. Retain assignment history with effective dates, actor and reason. Projects have stable IDs such as P0001, editable display labels, an owner record, status, and approved domain association. Owner records store only necessary authorized business contact details. Missing owners stay pending; never fabricate them. No default project was specified, so use a private Unassigned state and administrative resolution queue. P0000 is a real selectable project, not an implicit default.
+
+Admin and Super Admin create/archive catalogs and assign project owners. Manager and above see data within their delegated scope and may explicitly permit supervisor access. Agents and group leaders never receive domain/project identifiers, names, owner contacts, assignment metadata or hidden configuration values through the CRM. This includes bootstrapping data, URLs, HTML, JSON, spreadsheet exports, errors, audit detail, notifications, caches, analytics payloads, filter options and search indexes. A supervisor without permission receives similarly filtered DTOs. API rejection must not disclose hidden field values.
+
+Private user assignment defaults into prospect/opportunity/client attribution through a server-controlled rule. Capture the assignment effective at the activity or acquisition time; later user transfers do not silently rewrite historical attribution. Authorized correction creates a new version with a reason. Multiple future projects may be assigned explicitly, but keep the active default unambiguous. Do not guess project membership from a spreadsheet tab name.
+
+Domain-to-contract mapping is explicit and nullable. Only SCRIBE ALIGN LLC, EXTENDED HEALTH SERVICES INC., and 24-7 CONSULTANCY LLC currently have approved TFSC entities. The six other sales brands cannot become contract entities merely because they were seeded. An authorized dual-role user selecting a legal entity in TFSC must have explicit company permission. Contracts necessarily display the selected legal company; the secrecy rule covers hidden CRM routing metadata and cannot conceal a company printed on an agreement that the user is expressly permitted to read.
+
+5. CORE DATA MODEL
+
+Use UUID identifiers or equivalently safe stable opaque identifiers, server UTC timestamps, optimistic version counters, foreign keys and explicit retention rules. Names, phone numbers and emails are not primary keys.
+
+Identity/configuration:
+- organizations, identity_links(issuer, subject, legacy_user_id), app_entitlements, capability_grants with scope/effective dates.
+- user_profiles, teams, team_memberships, reporting_relationships and group_followup_delegations with history; reject cycles.
+- sales_domains, projects, project_owners and private routing_assignments. Audit catalog changes; archive rather than destructive deletion.
+- scoring_policy_versions, target_assignments, work_calendars, settings and personal_dashboard_layouts.
+
+Sales registry:
+- prospects: person/practice type, raw/display name, canonical legal-name candidate, address, status, source and version.
+- contacts and prospect_contact_links: individuals and practices may have multiple contacts and shared telephone endpoints.
+- contact_endpoints: raw values, E.164 candidate, national display, extension, validation status and email value; deduplicate endpoint keys without collapsing distinct prospects.
+- research_records: owner/source, discovered fields, unresolved validation and source import references; no call credit by themselves.
+- outreach_activities: actor_user_id, prospect_id, contact_endpoint_id, source/manual/provider, occurred_at, received_at, Pacific date, tri-state outcomes, first_committed_at, edit_deadline, version and original import row.
+- activity_revisions/corrections: append-only old/new references, reason, approver, effective version; original audit survives soft deletion.
+- followup_tasks: due timestamp, target timezone, owner, delegate, status, recurrence if requested, reason and linked activity. Distinguish task due date from last actual follow-up attempt.
+- qualification_reviews and opportunities: state, qualification evidence, assigned agent, supervisor, routing snapshot, version and sale status.
+- ownership_claims: one active qualified owner per canonical opportunity/defined exclusivity scope, with transaction lock/unique constraint.
+- duplicate_conflicts: normalized endpoint key, candidate references, severity, visibility scope, resolution actor/reason and status.
+- meetings: restricted provider event ID, encrypted/protected join details, organizer identity, times, attendees, sync state and access policy.
+- sales_confirmations: authorized confirmation, attribution recipients, timestamp, evidence, reversal reason; no automatic commission calculation.
+- clients and prospect_client_links: stable canonical CRM client; no name-only automatic merge.
+
+Integration/operations:
+- imports, import_rows, import_row_decisions, idempotency_requests, background_jobs and leases.
+- audit_events, transactional_outbox, integration_inbox and provider_connections.
+- daily_agent_metrics / daily_team_metrics with policy version and source watermark; drilldowns remain authorized.
+- tfsc_links and agreement_handoffs; TFSC adds request/review/revision approval records and artifact manifests alongside existing clients/contracts/documents/jobs.
+
+Indexes must match queries: organization + scope + business_date; owner + due_at + status; normalized phone + organization; import_id + row; opportunity_id + active ownership; event_id uniqueness; outbox state + available_at; created_at + ID cursor. Keep contact data, document BLOBs and meeting secrets out of aggregate tables. High-volume append-only activity/audit tables may use monthly partitions after realistic query tests. Preserve uniqueness across partition boundaries through a nonpartitioned registry where needed.
+
+6. RESEARCH, OUTCOMES, LOCKING AND ATTRIBUTION
+
+State model: research_draft -> committed_activity -> locked_activity. Corrections create audited revisions; they do not erase the original. A prospect can have many activities. A new attempt creates a new activity rather than reopening an old call row.
+
+Tri-state fields: Unset, Yes, No. Merely saving a name/number or importing blank toggles is research. It starts no effort timer, outreach credit or exclusive lead ownership. A first successful server commit of an actual outcome starts the edit window exactly once. Called=No records an intentional no-attempt outcome and starts the record's edit window, but yields zero call attempts. Called=Yes, Connected=No is a valid unsuccessful attempt. Unsetting every toggle later cannot reset the original deadline. All deadlines use database/server time, not the device's clock.
+
+For live call records, Called must be explicit before dependent call outcomes. Reject or flag Connected=Yes with Called=No. Email/SMS work without a call can be represented as a separate channel activity and measured separately, not inflated call credit. Import contradictory spreadsheet values into a review queue without silently overwriting evidence.
+
+Manual window: 60 minutes from first_committed_at. Imported/bulk-pasted window: 15 minutes by default, configurable from 10 to 20 minutes by authorized policy. Research imported with no outcome has no timer until commitment. A row pasted with existing explicit outcomes begins its system edit window at accepted import commit, not at a historical source date. Store source dates separately; do not let a past source date fabricate system provenance. Lock comparison is now >= deadline. All mutation routes, bulk endpoints and workers enforce it atomically using version checks. Edits at the boundary must have one deterministic result.
+
+Supervisor+ corrections require scope, correction capability, reason, before/after history and recalculation of affected aggregates. Delete means soft delete, with original evidence retained under retention policy. No group-leader exception. A record transferred between teams keeps its original actor and historical reporting attribution.
+
+Keep separate timestamps/credits: discovered, entered into system, first attempted, first connected, qualified, assigned, sold, and contract executed. Imported claims about earlier calls are source-reported until reconciled with reliable provider evidence. A shared Vonage outbound number is not a user identity. Do not award commissions solely by first database insert, sheet row order or a matching practice phone.
+
+7. DUPLICATES, FOLLOW-UPS AND EXCLUSIVE LEADS
+
+Normalize phone to an E.164 candidate with extension separately; display standard U.S. national format. Domestic toll-free and shared practice switchboards are valid endpoints but weak evidence of a unique legal prospect. Match normalized telephone candidates globally within the organization for warnings; use person/practice/contact evidence and authorized human review for merges.
+
+Workflow: research -> contacted -> follow_up -> strong_follow_up_pending -> strong_follow_up_confirmed -> qualified_lead -> meeting/planned engagement -> signed_up -> agreement workflow. A direct qualified path or externally sourced lead requires supervisor evidence and audit, not invented call outcomes. Meetings are related records, not a mandatory replacement for the lead state. Lost, disqualified, paused and reopened states need reasons/history.
+
+Agents create ordinary follow-ups and propose strong follow-up status. Supervisors confirm strong status and then qualify/assign a lead. The UI distinguishes requested and confirmed. Default automatic allocation uses eligible team membership, permission, active status and round-robin fairness; supervisor confirms qualified ownership. Skip unavailable/ineligible users and audit the allocation decision. Never reassign an already owned lead through a background round-robin process.
+
+Duplicate severities:
+- Existing research/attempt: informational duplicate with a route to supervisor review; no exclusive ownership inferred.
+- Ordinary follow-up: warning to supervisor and permitted agent with minimal disclosure.
+- Confirmed strong follow-up: high-priority conflict; proposed new work enters review.
+- Qualified/owned lead: blocking ownership conflict requiring supervisor adjudication before new ownership or incentive attribution. Actual calls already made still need recording as conflict-tagged evidence; do not discard them because of the lock.
+
+For agents show 'This contact requires supervisor review' plus a case reference, not another agent's notes or protected owner/client metadata. Supervisor sees details only for authorized scope; cross-team conflicts go to the nearest authorized common manager and Super Admin. Super Admin receives a grouped conflict inbox; avoid one notification for every repeated keystroke.
+
+Database constraint plus transaction-level locking enforces one active ownership claim per canonical opportunity. Phone locks flag conflicts but do not prohibit separate practices sharing a switchboard after reviewed resolution. Deduplicate concurrent requests by idempotency key. Ownership reassignment needs reason, effective date, old/new owner and explicit incentive-attribution decision; original caller evidence is immutable.
+
+8. SHEET VIEW, IMPORT AND NORMALIZATION
+
+Provide grid entry, paste TSV/CSV from Excel, XLSX/CSV import and mobile card entry. Columns mirror the workbook where appropriate: date, provider/practice, phone, email, attempt, connected, text, email, strong-follow-up request, sale request/status, follow-up count, last/next follow-up, call again, remarks, quality and stage. Computed and supervisor-only fields cannot be edited by agents. Counts derive from events; historical declared counts remain separate import facts.
+
+Refine is a preview showing original, proposed value and reason. Refine and Save validates then persists accepted rows with a visible batch result. Trimming whitespace and ordinary phone formatting may be automatic; changes to identity require review. Do not add M.D., LLC or other suffixes that were not supplied. Preserve meaningful capitalization, apostrophes, acronyms, Unicode and organization styling. Use provider-specific parsing rather than naive title-case rules. Trim outer email spaces and flag internal whitespace/malformed syntax; do not silently turn an uncertain address into a different recipient. Lowercase the domain; preserve the local part unless an explicit policy and confirmation allow change. Format ZIP/postal codes as strings to preserve leading zeroes.
+
+Never execute formulas/macros from imported files. For this supplied XLSX, ignore Dashboard, Validations, formula-only rows and unused templates as prospect data. Import raw input A:O plus source references, independently derive P/Q, and map named sheets to existing user IDs through supervisor review. Hidden/unassigned sheets are not automatically staff accounts. Detect malformed dates, duplicate rows, conflicting toggles and missing agent mapping. Preserve source workbook hash, sheet, row and approved transformation decisions. Prevent spreadsheet-formula injection on future CSV exports.
+
+Imports are staged, chunked, resumable and idempotent, with file/row limits, zip-bomb protection, parser isolation and bounded memory. Re-uploading a file should offer prior import status rather than silently doubling rows; a row fingerprint alone must not erase legitimate repeated calls. Use import ID + source row + accepted operation key, with reviewed duplicate handling across batches. Show valid/skipped/review/error totals. An import failure cannot half-confirm leads or issue contracts. Publish data-quality checks before an authorized historical import is finalized. Do not notify the whole company or celebrate historical sign-ups on import.
+
+Historical data and current production events have separate provenance. A dry run must reconcile meaningful rows, dates, attribution, calls, outcomes and errors. Migrate a representative small set first, compare dashboards, then import in controlled batches with rollback/reversal that preserves audit. The live Google Sheet itself and any Apps Script automation are outside this snapshot inspection.
+
+9. SCORING, REPORTING AND DASHBOARDS
+
+Initial score policy v1 preserves the intended spreadsheet ladder. For an attempted activity: confirmed sign-up 100; else supervisor-confirmed strong follow-up 50; else connected and at least one text/email 30; else connected 20; else attempted 10. No attempt: no call-quality score. SMS plus email still earns 30, not 40. New-app supervisor confirmation replaces agent-editable strong/sign-up flags; imported source claims remain separately labeled until approved. Credit confirmed milestones to the qualifying/originating activity once, not every later call to the same lead. Preserve the actor, assigned owner and sale attribution separately.
+
+For a period, define:
+attempts = count of valid, nonreversed Called=Yes activities in scope;
+connections = attempts with Connected=Yes;
+connection_rate = connections / attempts, or no-data when attempts=0;
+quality = sum(highest score per attempted activity) / (100 * attempts), or no-data;
+volume_attainment = min(1, attempts / sum(eligible daily targets));
+connection_attainment = min(1, connection_rate / connection_target);
+composite = 0.50*quality + 0.25*volume_attainment + 0.25*connection_attainment.
+Thresholds: >=80% Extraordinary, >=65% Satisfactory, >=50% Average, >=35% Below Average, otherwise Poor. Display No activity rather than Poor for a genuine zero-attempt/no-data period. Show sample size to avoid misleading comparisons.
+
+Default weekday target is 170; connection target 60%. Workbook uses NETWORKDAYS without holidays. New app uses versioned work calendars, eligible employment/team dates and approved leave/holiday adjustments. Do not silently count a new hire's earlier days as missed targets. The organization's performance is a ratio of totals with correct target denominators, not an unweighted average of different-size teams. Show targets and policy version. Target edits do not silently rewrite historical published reports; explicitly select prospective effect or audited restatement.
+
+Show texts, emails and unique touched attempts separately, with a definition of whether touch required connection. A conversion funnel uses a defined cohort of distinct opportunities/prospects and valid transition order; activity totals cannot be mislabeled as a monotonic lead funnel. Sales and meetings are distinct business counts. Follow-up task counts are not the same as spreadsheet I=Yes strong-follow-up counts.
+
+Agent dashboard: own calls, connections, score, targets, follow-up tasks, quality issues and permitted aggregate team benchmarks. User asks to see performance across agents; default to a scoped leaderboard of approved staff display names and aggregate metrics with no drilldown into another agent's contacts, notes, domains, projects or meetings. Enable wider organization visibility through an explicit leadership policy, not accidental global API access.
+Supervisor: assigned team productivity, overdue/strong follow-ups, qualification inbox, conflict queue, restricted meeting panel and sales pipeline; domain/project widgets only with permission.
+Manager/Director: scoped cross-team comparison, workload, conversion, attribution, capacity and review bottlenecks.
+Super Admin: organization-wide health, permissions, imports, conflicts, integration failures and audit.
+
+Dashboard widgets support date range, comparable periods, timezone labels, accessible tooltips and authorized drilldown. Supervisor+ can drag/reorder/resize widgets and save personal layouts with keyboard controls. Layout changes cannot alter metric definitions. Use scoped incremental daily aggregates updated from events with watermarks; recomputation handles corrections and policy changes. SSE/WebSocket updates invalidate relevant caches rather than broadcast every contact row. Show last updated time and a reconnect banner. Target live visibility within 5 seconds under the agreed normal load; surface lag during backpressure.
+
+10. TIME, CLOCKS AND CALENDAR
+
+Store timezone-aware UTC timestamps. Derive operational/reporting date with America/Los_Angeles using current IANA timezone data. Never use a fixed PST offset or a browser-local date for business logic. Date-only agreement effective dates remain date-only. Imported historical dates are explicitly Pacific business dates where the source supports that interpretation; unknown dates enter review. Keep source precision and ambiguity rather than inventing an exact call time.
+
+Clock panel: America/New_York, America/Chicago, America/Denver, America/Phoenix, America/Los_Angeles, America/Anchorage, Pacific/Honolulu and Asia/Karachi. Provide additional U.S. territory zones when selected, with accurate labels. Each row shows local date/time, zone abbreviation, current UTC offset and 'Pakistan is N hours ahead/behind'. Compute signed differences at the current instant, including date crossings. Do not call Arizona and the Mountain DST zone equivalent. Derive an accurate current instant from the server and refresh periodically; handle device clock errors.
+
+Follow-up and meeting scheduling require an explicit date/time and timezone, default Pacific with local preview. Handle nonexistent spring-forward times and ambiguous fall-back times explicitly. Database lock durations are elapsed minutes, not wall-clock arithmetic across DST.
+
+Google Calendar/Meet: backend OAuth, encrypted refresh-token storage, least required scopes, state validation, per-organizer connection and revocation. Create conference data with conferenceDataVersion=1 and a stable unique request ID for that creation. Poll pending conference creation; do not display a fabricated Meet link. Track event/meeting IDs and idempotency keys. Use incremental sync tokens, pagination and full resync on HTTP 410. Renew watch channels if push notifications are implemented; verify channel metadata and fetch authorized event changes. Handle quotas, cancellations, reschedules, expired tokens, retries and duplicate notifications.
+
+Meeting details, attendee list, notes and join link are Supervisor+ only. Do not invite an agent or expose the record through a broad shared calendar. Calendar permissions outside the CRM must also be configured correctly; filtering the CRM does not revoke an invitation already sent by Google. Agents may see a generic workflow status if approved, but no meeting detail payload. Sending invitations is a separate explicit action. Test using sandbox calendars before any production contact.
+
+11. VONAGE AND COMMUNICATIONS
+
+First identify the user's actual Vonage product, licensed integration and user/extension mapping. Vonage Business Communications Click-to-Connect depends on its supported integration/extension; a generic tel: link opens the operating system's registered handler and is not proof of Vonage support. Provide a configurable dialing adapter with a tested path for the selected deployment, plus clear copy-number fallback. Never invent a vonage:// scheme.
+
+Optional provider call events require signed/verified callbacks or the documented authenticated mechanism, provider event ID deduplication, out-of-order handling and explicit extension-to-user mapping. A shared caller ID cannot establish who dialed. Store observed dialer events separately from manually entered outcomes, then reconcile with evidence and supervisor adjudication where needed. A click-to-dial action alone is not a completed call or a connection. No automatic texting, emailing, call recording or AI transcription is included by implication.
+
+12. TFSC HANDOFF, APPROVAL AND CONTRACT STORAGE
+
+Read TFSC-INTEGRATION-AUDIT.txt for the actual current routes. Existing APIs use cookie sessions and CSRF; they are not ready-made cross-site integration routes. Add explicit versioned internal endpoints and stable CRM mappings. Do not write directly into TFSC tables from the CRM or reuse frontend session cookies as service credentials.
+
+At supervisor-confirmed sign-up, an authorized dual-role user may choose Proceed to agreements. CRM verifies scope and entitlement, creates a versioned handoff snapshot and outbox event, then calls TFSC with a narrow service identity and verifiable initiating identity. TFSC checks its own current entitlements and allowed entity. Return a short-lived opaque single-use handoff reference; the browser must authenticate to TFSC and match the intended user before redemption. Put no reusable privilege token or client details in the URL. Apply no-referrer policy and avoid third-party resources on the redemption page.
+
+CRM owns the relationship profile; TFSC stores a frozen legal snapshot at issuance. Map CRM client/opportunity UUIDs to TFSC client IDs explicitly. Existing TFSC uniqueness is owner+normalized-name hash, so review duplicate mappings; never merge by name alone. Later CRM edits can propose a new draft revision but cannot rewrite an issued contract. Map only supported service IDs and validate all fees server-side. Keep private projects/domains and meeting details out of the handoff unless indispensable and explicitly authorized. Actor-supplied role strings are not trusted claims.
+
+Agreement request states: draft -> submitted_for_review -> approved -> issued -> sent -> executed. Include changes_requested/rejected, superseded and cancelled; generation jobs have their own queued/running/failed states. Sign-up is not executed. Manual execution confirmation needs actor, evidence and date, or a validated provider event.
+
+Approval binds to revision ID, normalized payload hash, template version, selected company, signatory/signature policy, client details, dates, services, fees and special terms. Freeze the approved snapshot and version signature assets so later changes cannot alter it. Material changes create a new revision and invalidate approval. Approve/issue capabilities are separately assigned; default independent reviewer, with explicit audited Super Admin override/self-approval policy. Validate approval and current permissions inside the issue transaction and again before rendering/releasing; if templates/assets change, create a new approval revision.
+
+An internal preview is clearly Draft and omits the final pre-signature. Gate all final generation/download/send paths, including existing /api/generate and /files/{id}, rather than only adding an interface button. Legacy finalized records remain historically readable under existing permissions and explicit migration status; do not falsely mark them newly approved. Prevent an agent from fetching signature images directly. Once an authorized final DOCX is downloaded, edits outside the app cannot be prevented; verification identifies the approved hash/version, and any imported edited file requires new review.
+
+Use a transactional outbox/inbox with event IDs, correlation IDs, schema version, source revision, replay detection and authenticated transport. Retry with backoff/dead-letter review. Handle out-of-order events monotonically per revision. Never send twice on worker retry. Email/e-sign provider adapters must remain disabled until configured and deliberately enabled. A local stub must be labeled, not reported as delivery.
+
+Store original DOCX/PDF bytes in TFSC database and server output folder, with SHA-256 and manifest. A background job is not complete until its publication state is consistent; use temporary writes and atomic rename plus a recoverable database status, because filesystem and DB commits are not one transaction. Reconcile/retry failures without overwriting history. Lists and analytics must not load BLOBs. Maintain restore drills for both copies.
+
+Server path selection and laptop folder selection are different. A hosted site cannot browse arbitrary server or local paths from a text field. Configure an allowlisted server root through administration. Provide a user-gesture browser directory picker on supported secure-context browsers and a ZIP/download fallback. Save database/server artifacts first, then copy exact bytes to the authorized browser folder. Show cancellation, denied permission, missing files and partial copies honestly; no blocking native dialog on a headless server. Use client/agreement/version subfolders, safe filenames and traversal protection. Never claim local-folder success before all copies/hash checks succeed.
+
+13. SECURITY, AUDIT AND DATA PROTECTION
+
+Least-privilege scoped access, TLS, secure sessions, MFA for privileged accounts, invitation expiry, throttled authentication, CSRF, CSP, parameterized queries, upload validation and dependency maintenance are baseline. Audit all meaningful create/update/correct/assign/qualify/approve/issue/download/import/export/admin actions. Read audits can be sampled/aggregated according to retention, but sensitive exports and downloads must be recorded. Audit writer roles cannot update/delete existing events; restricted administrators and integrity checks mitigate tampering without claiming cryptographic immutability against database owners.
+
+Audit fields: stable actor, organization, UTC time, Pacific date, resource IDs, action, reason, source, correlation/request ID, permission decision and protected before/after references. Restrict IP/device metadata to necessary operations. Redact passwords, tokens, raw meeting links and unnecessary contact values from logs. User-visible audit uses a filtered projection. Supervisor corrections, data exports and ownership disputes must be discoverable.
+
+Prevent bulk extraction through default-denied exports, bounded pagination, rate limits, scoped downloads and anomaly alerts. These controls reduce leakage; they cannot make visible data impossible to copy. Allow authorized operational export for recovery and administration with an audit reason. No 'disable right click' or screenshot-blocking claims. The sales CRM should not collect patient/clinical records; don't import PHI from notes without an authorized scope and handling decision.
+
+Delete/archive behavior and retention are configurable business policies. Do not silently delete old leads, audit or documents to meet a benchmark. Backups are encrypted, access-restricted and periodically restored in a test environment. Revocation propagates to cached authorization, downloads and live subscriptions. Cache keys and CDN policy must prevent cross-user responses. Test object-ID guessing, bulk endpoints and restricted field inference.
+
+14. SCALE, RELIABILITY AND PROVISIONAL PERFORMANCE GATES
+
+50,000 registered users is the capacity design target, not 50,000 simultaneous active writers. At 170 calls/day, 550 fully active agents imply 93,500 calls/day. At 50,000 fully active agents, 8.5 million calls/day over eight working hours is approximately 295 call writes/second on average, before edits, notes or imports. A three-times burst approaches 900 writes/second. At 260 days/year that upper scenario is approximately 2.21 billion call records/year. These are planning assumptions, not measured demand or promised capacity.
+
+Design for cursor pagination, bounded imports, connection-pool budgets, batching, sensible indexes, partition-aware access, incremental aggregates and separate render capacity. Use short transactional ownership checks; avoid holding locks while calling providers. Deduplicate integration retries. Backpressure queues with visible status rather than exhaust the database. One render job must not starve call entry. Stable query plans and storage/backup growth matter as much as CPU.
+
+Provisional load profiles, to validate on documented hardware and adjust with the owner:
+A. Near-term: 550 registered, 150 active sessions, 25 writes/second, concurrent import and document render.
+B. Growth: 50,000 registered, 5,000 connected sessions, 1,000 actively interacting users, 300 writes/second sustained and 900/second short burst, with a realistically sized history and scoped live events.
+These are acceptance targets, not previous test results. Record exact dataset size and test duration; a 10,000-row user lookup benchmark does not certify this workload.
+
+Proposed service objectives at the agreed profile: p95 normal scoped reads <=500ms; p95 ordinary activity writes <=1s; dashboard refresh visible <=5s normally; zero unauthorized disclosures or duplicate ownership; no lost acknowledged writes. Define timeout/retry behavior and report error rates and p99, not only averages. Run soak and failure recovery tests. Large imports and DOCX/PDF rendering are asynchronous with progress and separate completion targets. Benchmark TLS/auth/authorization and queries end-to-end, not an empty endpoint.
+
+Measure queue age, job failures, DB latency/pool saturation, aggregate lag, duplicate conflicts, authorization denials and provider failures. Correlate traces without exposing contact data. Capacity planning must specify measured storage per activity and artifact; do not invent a cheap single-VPS guarantee for the extreme scenario. Target recovery point <=15 minutes and recovery time <=4 hours as provisional operational goals requiring a tested backup/replication design; report whether achieved.
+
+15. INTERFACE AND ACCESSIBILITY
+
+Use the supplied 24-7 logo and the current TFSC design assets with restrained navy/blue/cyan/white styling. Consistent navigation: Overview, My Work, Sheet View, Follow-ups, Leads, Clients, Activity; management sections appear only when authorized. TFSC Agreements is a clearly labeled cross-application entry for entitled users. Login, empty states, errors and mobile views must be designed, not left as browser defaults.
+
+Grid: sticky headers, keyboard paste/navigation, visible dirty/saving/saved states, row validation and lock countdown, clear Yes/No/Unset controls, undo before commit, and conflict review without losing typed data. Use server version checks to avoid overwriting another supervisor's correction. Mobile uses cards and date pickers with touch targets. Avoid tiny toggle controls. Respect prefers-reduced-motion, keyboard focus, screen-reader labels and color contrast; flags need text/icons in addition to color. Dashboard arrangements have accessible non-drag alternatives.
+
+Sale celebration contains staff display names and a generic congratulatory message only; no private routing, client, fee or meeting details. Deliver once per authorized live confirmation, with dismissal and reduced-motion support. A reversal corrects the sale metrics and history without pretending the earlier confirmation never occurred.
+
+16. DELIVERY PHASES AND DEFINITION OF DONE
+
+Phase 0: inspect source/repository instructions, back up data, record baseline, use synthetic fixtures, reconcile any changes since this audit. Confirm that approval/SSO/provider routes are new work. Publish a concise permission matrix and migration plan. No destructive schema reset.
+Phase 1: organization identity, roles/scopes, hidden routing catalogs, projects, private assignments, PostgreSQL migrations and permission tests. Create seed accounts only through documented secure setup. No hard-coded passwords.
+Phase 2: prospect/contact model, research and activities, spreadsheet entry/import preview, normalization, Pacific dates, immutable timers, corrections and audit. Demonstrate permission and race tests.
+Phase 3: follow-ups, supervisor review, strong qualification, ownership/conflict queues, assignment, restricted meetings and confirmed sales. Implement real adapters when configured and labeled development adapters otherwise.
+Phase 4: reconciled metrics and responsive dashboards, scoped live updates, clocks, configurable targets and layouts, synthetic volume testing.
+Phase 5: OIDC account linking, TFSC handoff/mappings, approval/release enforcement, outbox events and file/database consistency. Run document regressions for all entities and service combinations, including billing plus credentialing and Personal Injury variants.
+Phase 6: historical import dry run and reconciliation, staged migration, security/access review, end-to-end tests, load/soak tests, restore/rollback drill and deployment package.
+
+Each phase should produce working, reviewable code and tests. Continue through independent phases when credentials or project owners are missing; do not claim blocked integrations are complete. Follow ACCEPTANCE-TESTS.csv and report pass/fail/not-run with evidence. Avoid cosmetic tests that only mirror implementation.
+
+Final package: full current source, pinned dependencies, migrations, seed configuration without real secrets, environment example, production startup/reverse-proxy instructions, separate worker instructions, admin onboarding, import guide, API/schema documentation, backup/restore/rollback procedure, test results and known limitations. Include the current TFSC source needed for integration; exclude production databases, tokens and private credentials unless the owner explicitly requests a protected migration backup. Preserve authorized company assets through an access-controlled delivery path. Open and run the actual packaged build as a smoke test before delivery.
+
+17. EXPLICIT DEFAULTS AND DECISIONS NOT TO GUESS
+
+Defaults adopted for implementation: imported edit window 15 minutes; server Pacific business date; research has no timer; Called=No commits a zero-effort outcome; strong/sign-up score requires supervisor confirmation; group leader only coordinates delegated follow-ups; independent agreement approval unless overridden by authorized policy; default sales brand Scribe Align; no default project; round-robin proposes eligible ownership while supervisor confirms qualification; agents get own details and scoped aggregate comparisons only.
+
+Values still requiring real configuration: project owners and domain mappings; current staff/team mapping; actual Google organizer accounts and scopes; Vonage product/extensions; invitation/email/e-sign providers; legal entity mapping for additional sales brands; final work/holiday calendars and incentives; retention, measured peak workload and operational recovery requirements. Provide configuration/review screens and continue independent development. Do not ask for these values merely to begin building the core.
+
+This document describes proposed behavior. WORKBOOK-AUDIT and TFSC-INTEGRATION-AUDIT identify verified existing facts. If actual source differs, record the discrepancy and reconcile safely instead of assuming this specification describes already implemented features.

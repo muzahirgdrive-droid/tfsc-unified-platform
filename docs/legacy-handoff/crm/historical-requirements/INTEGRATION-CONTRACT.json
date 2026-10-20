@@ -1,0 +1,215 @@
+{
+  "specification_version": "1.0",
+  "status": "PROPOSED: these new integration endpoints must be implemented and tested.",
+  "existing_application": "TFSC Compliance v4.0.0; preserve existing cookie/CSRF endpoints",
+  "trust": {
+    "browser_auth": "Separate OIDC clients and server sessions; immutable issuer+subject mapping",
+    "service_auth": "Narrow server-to-server credentials, authenticated transport, verifiable initiating subject, replay protection; do not trust browser role strings",
+    "scope": "Both apps independently recheck current organization, application, resource and company grants",
+    "secrets_in_url": false,
+    "crm_direct_database_writes_to_tfsc": false
+  },
+  "new_endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/integrations/v1/crm/handoffs",
+      "app": "TFSC",
+      "purpose": "Create or retrieve an idempotent editable draft mapping",
+      "success": 202
+    },
+    {
+      "method": "GET",
+      "path": "/api/integrations/v1/crm/handoffs/{handoff_id}/status",
+      "app": "TFSC",
+      "purpose": "Authorized progress for the integration caller",
+      "success": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/handoffs/redeem",
+      "app": "TFSC",
+      "purpose": "Authenticated intended browser user redeems a single-use reference",
+      "success": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/agreement-requests/{id}/submit-review",
+      "app": "TFSC",
+      "purpose": "Freeze a candidate revision for review",
+      "success": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/agreement-requests/{id}/approve",
+      "app": "TFSC",
+      "purpose": "Approve exact version and hash under scoped reviewer policy",
+      "success": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/agreement-requests/{id}/reject",
+      "app": "TFSC",
+      "purpose": "Record review reason and changes requested",
+      "success": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/agreement-requests/{id}/issue",
+      "app": "TFSC",
+      "purpose": "Atomically check approval and enqueue immutable revision",
+      "success": 202
+    },
+    {
+      "method": "POST",
+      "path": "/api/integrations/v1/events",
+      "app": "CRM",
+      "purpose": "Authenticated, idempotent receipt of agreement milestones",
+      "success": 202
+    }
+  ],
+  "request_requirements": {
+    "idempotency_key": "Required UUID or documented bounded equivalent. Persist body hash and result. Same key with different body returns 409.",
+    "correlation_id": "Required across both applications, outbox and job",
+    "expected_version": "Required for updates/transitions; stale version returns 409",
+    "tenant_resolution": "Resolve from trusted authenticated service plus actor mapping, not unchecked user input",
+    "unknown_fields": "Reject in integration DTO; do not silently drop stable link fields"
+  },
+  "handoff_request_example": {
+    "schema_version": "1.0",
+    "request_id": "00000000-0000-4000-8000-000000000001",
+    "correlation_id": "00000000-0000-4000-8000-000000000002",
+    "crm_client_id": "00000000-0000-4000-8000-000000000003",
+    "crm_opportunity_id": "00000000-0000-4000-8000-000000000004",
+    "source_revision": 3,
+    "initiating_identity": {
+      "issuer": "https://identity.example.invalid",
+      "subject": "synthetic-user-001"
+    },
+    "entity": "SCRIBE ALIGN LLC",
+    "client": {
+      "legal_name": "Example Practice, LLC",
+      "address": "Synthetic test address; replace with validated client address",
+      "signatory_name": "Example Signatory",
+      "signatory_title": "Authorized Representative",
+      "email": "contracts@example.invalid"
+    },
+    "effective_date": "2026-10-14",
+    "baa_effective_date": "2026-10-14",
+    "document_types": [
+      "baa",
+      "services"
+    ],
+    "services": [
+      {
+        "id": "medical_billing",
+        "model": "percentage",
+        "rate": 3,
+        "details": "Illustrative value only; validate against the existing catalog and actual agreed pricing."
+      }
+    ],
+    "note": "This example is semantic. The implementation must translate model IDs and fields using the actual TFSC validators, not assume this illustrative model literal is accepted."
+  },
+  "handoff_response_requirements": [
+    "handoff_id",
+    "status",
+    "mapped_tfsc_client_id when known",
+    "opaque single-use browser reference when ready",
+    "expires_at",
+    "correlation_id"
+  ],
+  "handoff_reference": {
+    "proposed_ttl_seconds": 600,
+    "single_use": true,
+    "bound_to_authenticated_subject": true,
+    "redeem_requires_current_entitlement": true,
+    "contains_no_client_data": true,
+    "no_third_party_scripts_on_redemption_page": true
+  },
+  "forbidden_browser_privileges": [
+    "output_root",
+    "signature asset path",
+    "provider credentials",
+    "trusted role",
+    "project owner fields",
+    "arbitrary template HTML",
+    "approval status"
+  ],
+  "event_types": [
+    "agreement.handoff_accepted",
+    "agreement.review_submitted",
+    "agreement.approved",
+    "agreement.changes_requested",
+    "agreement.issued",
+    "agreement.sent",
+    "agreement.executed",
+    "agreement.cancelled",
+    "agreement.failed"
+  ],
+  "event_envelope_example": {
+    "schema_version": "1.0",
+    "event_id": "00000000-0000-4000-8000-000000000005",
+    "event_type": "agreement.issued",
+    "occurred_at": "2026-10-14T20:00:00Z",
+    "source": "tfsc_compliance",
+    "correlation_id": "00000000-0000-4000-8000-000000000002",
+    "aggregate_id": "synthetic-agreement-id",
+    "aggregate_version": 4,
+    "crm_client_id": "00000000-0000-4000-8000-000000000003",
+    "crm_opportunity_id": "00000000-0000-4000-8000-000000000004",
+    "revision_id": "synthetic-revision-id",
+    "payload_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "artifacts": [
+      {
+        "document_id": "synthetic-document-id",
+        "kind": "pdf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 12345
+      }
+    ],
+    "note": "All values are synthetic placeholders, not an issued agreement."
+  },
+  "event_rules": [
+    "Transactional outbox in producer; durable inbox unique event_id in receiver.",
+    "No event may elevate permissions or mark an unverified execution.",
+    "Record source aggregate version and tolerate out-of-order delivery without regressing state.",
+    "Acknowledge only durable receipt; retry with backoff and dead-letter review.",
+    "Event payload contains IDs and necessary status only, not raw document bytes or private CRM meeting/project details.",
+    "Check file access at TFSC for every retrieval; do not send reusable public download URLs."
+  ],
+  "approval_binding_fields": [
+    "revision_id",
+    "canonical_payload_sha256",
+    "template_version",
+    "legal_entity",
+    "signatory_asset_version",
+    "signature_policy",
+    "effective_dates",
+    "client_legal_details",
+    "services_and_fees",
+    "special_terms"
+  ],
+  "artifact_consistency": {
+    "database_copy_required": true,
+    "server_folder_copy_required": true,
+    "sha256_must_match": true,
+    "browser_folder_copy": "Optional user-selected local mirror; acknowledge separately",
+    "historical_revisions_immutable": true
+  },
+  "errors": {
+    "400": "Invalid schema or unsupported fields",
+    "401": "Unauthenticated or invalid service proof",
+    "403": "Insufficient app/company/scope permission without secret disclosure",
+    "404": "Missing or inaccessible object under nonenumeration policy",
+    "409": "Version/idempotency/ownership/approval conflict",
+    "422": "Business validation failed",
+    "429": "Rate or queue limit; documented retry",
+    "503": "Temporary dependency failure; retriable with same idempotency key"
+  },
+  "compatibility_tests": [
+    "Existing /api/generate cannot bypass review.",
+    "Existing /files/{id} cannot bypass release policy.",
+    "Current client IDs and document hashes remain stable after migration.",
+    "Legacy finalized records have explicit historical status, not fabricated approvals.",
+    "Repeated handoff does not duplicate client, contract or sign-up celebration."
+  ]
+}

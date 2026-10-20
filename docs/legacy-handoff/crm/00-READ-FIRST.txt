@@ -1,0 +1,33 @@
+QUICKEST TRANSFER: read ONE-SHOT-CONTEXT.txt. It combines the essential context,
+architecture, known issues, integration, setup and continuation prompt in one file.
+Then add your corrections. Full editable source is in the parent application folder.
+
+TFSC Sales CRM — PORTABLE HANDOFF, OCTOBER 15, 2026
+
+START HERE. This archive contains the actual current application, not only a plan.
+The second archive contains its companion system. Extract both beside each other.
+No previous chat, local Codex install, drive letter or AI account is needed to read
+this handoff. Runtime dependencies must be installed on the new laptop/server.
+
+1. Paste 01-PASTE-INTO-NEW-CHAT.txt into the new AI chat, attach both archives,
+   and add your corrections. A file-capable agent can inspect source immediately.
+2. Read 02-ARCHITECTURE.txt for what actually exists and what is unfinished.
+3. Read 03-SHARED-INTEGRATION.txt for how the two apps communicate.
+4. Review 04-KNOWN-ISSUES.csv before treating the existing architecture as correct.
+5. Follow 05-SETUP-AND-DATA.txt to run safely on a fresh laptop/VPS.
+6. Open 06-DESIGN.html offline for design flow, tokens and screenshot references.
+7. Use 07-CORRECTIONS-TEMPLATE.txt if helpful to describe your changes.
+
+Machine-readable API/table/env inventories are generated from current Python AST.
+They include source filenames/lines and Table expressions, not guessed schemas.
+Common helper identity() expands id + org_id; see crm_db.py for exact constraints.
+Manifests hash every included file. Current source wins over older embedded docs.
+
+The latest combined tests passed 47 tests +42 document subtests; current user-form
+fix passed browser testing and TypeScript/Vite build. No new hosted load test is
+claimed by packaging. Historical TFSC checks are separately labeled in old files.
+
+No live users, client databases, contracts, sales workbook, OAuth tokens, passwords,
+setup keys or .env are included. This CRM archive contains no signature images.
+Existing data requires a separate controlled backup/restore described in setup.
+The source remains a PILOT. Read limitations; do not call the architecture complete.

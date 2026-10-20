@@ -1,0 +1,39 @@
+TFSC Compliance 4.0.0 verification, October 14, 2026
+
+25 automated tests pass on SQLite. The 10 account, authorization, storage and
+concurrency tests also pass on an isolated PostgreSQL 18 database.
+Checks cover ownership isolation, Admin boundaries, company restrictions, password
+session revocation, CSRF, folder boundaries, failed exports, retained database
+downloads after a disk copy is removed, audit events, duplicate submissions and
+the per-user pending-job limit under simultaneous requests.
+
+Real Word/PDF exports were generated for all three companies using fictional
+clients. Database bytes were compared with disk bytes and SHA-256 values.
+Page X of Y text was checked on every page. Both signatories' revised signing-line
+placements were visually reviewed. Original letterhead hashes remain enforced.
+
+Docker image built successfully. Linux LibreOffice produced BAA and Services PDFs
+for all three contracting companies. Page totals were verified and signature pages inspected.
+Linux footer counter placement was adjusted without altering letterhead artwork.
+Word and LibreOffice can paginate differently; install licensed Times New Roman
+fonts and approve examples on the target VPS before issuing contracts.
+
+Browser checks: sign-in, company selection, service selection, folder browsing,
+client saving, real four-file generation, client revisions, activity and the
+user/company-permission form. Desktop and narrow mobile layouts were inspected.
+
+POSTGRESQL CAPACITY CHECK (LOCAL DEVELOPMENT MACHINE)
+10,000 registered user rows; 9,999 client rows.
+1,000 authorized list queries across 40 concurrent query threads.
+Measured 1,732.9 queries/second; median 5.37 ms; p95 8.95 ms.
+100 queued jobs claimed across eight threads: zero duplicate claims.
+This is a database benchmark, not an end-to-end simulation of 10,000 concurrent
+web users or PDF exports. Production concurrency and renderer capacity require
+load testing on the actual VPS. No zero-defect guarantee is implied.
+
+RELEASE PACKAGE
+A fresh ZIP extraction passed bundled-runtime startup, first-account setup,
+authentication checks, three-company/19-service configuration, signature presence,
+static asset loading and graceful shutdown. Docker Compose and Caddy configurations
+validated successfully. The ZIP has a per-file SHA-256 manifest and no client
+database, account passwords or setup keys.

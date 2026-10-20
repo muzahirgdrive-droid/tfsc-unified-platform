@@ -1,0 +1,7 @@
+{$TFSC_DOMAIN} {
+    request_body {
+        max_size 3MB
+    }
+    encode zstd gzip
+    reverse_proxy api:8000
+}

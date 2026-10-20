@@ -1,0 +1,296 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/integrations/v1/crm/status",
+    "handler": "client_status",
+    "file": "crm_bridge.py",
+    "line": 79
+  },
+  {
+    "method": "POST",
+    "path": "/api/integrations/crm/actors",
+    "handler": "map_actor",
+    "file": "crm_bridge.py",
+    "line": 87
+  },
+  {
+    "method": "POST",
+    "path": "/api/integrations/v1/crm/handoffs",
+    "handler": "receive_handoff",
+    "file": "crm_bridge.py",
+    "line": 95
+  },
+  {
+    "method": "POST",
+    "path": "/api/handoffs/redeem",
+    "handler": "redeem",
+    "file": "crm_bridge.py",
+    "line": 110
+  },
+  {
+    "method": "GET",
+    "path": "/api/reviews",
+    "handler": "list_reviews",
+    "file": "crm_bridge.py",
+    "line": 118
+  },
+  {
+    "method": "POST",
+    "path": "/api/reviews/submit",
+    "handler": "submit",
+    "file": "crm_bridge.py",
+    "line": 123
+  },
+  {
+    "method": "POST",
+    "path": "/api/reviews/{id}/decision",
+    "handler": "decide",
+    "file": "crm_bridge.py",
+    "line": 133
+  },
+  {
+    "method": "POST",
+    "path": "/api/reviews/{id}/generate",
+    "handler": "issue",
+    "file": "crm_bridge.py",
+    "line": 146
+  },
+  {
+    "method": "GET",
+    "path": "/reviews",
+    "handler": "review_page",
+    "file": "crm_bridge.py",
+    "line": 155
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sso/status",
+    "handler": "status",
+    "file": "oidc_support.py",
+    "line": 28
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sso/login",
+    "handler": "start",
+    "file": "oidc_support.py",
+    "line": 30
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sso/callback",
+    "handler": "callback",
+    "file": "oidc_support.py",
+    "line": 38
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/sso/accounts",
+    "handler": "link",
+    "file": "oidc_support.py",
+    "line": 64
+  },
+  {
+    "method": "GET",
+    "path": "/api/health",
+    "handler": "health",
+    "file": "portal.py",
+    "line": 75
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/status",
+    "handler": "auth_status",
+    "file": "portal.py",
+    "line": 79
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/setup",
+    "handler": "setup",
+    "file": "portal.py",
+    "line": 82
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/login",
+    "handler": "login",
+    "file": "portal.py",
+    "line": 110
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/me",
+    "handler": "me",
+    "file": "portal.py",
+    "line": 124
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "handler": "logout",
+    "file": "portal.py",
+    "line": 128
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/password",
+    "handler": "change_password",
+    "file": "portal.py",
+    "line": 134
+  },
+  {
+    "method": "GET",
+    "path": "/",
+    "handler": "home",
+    "file": "portal.py",
+    "line": 144
+  },
+  {
+    "method": "GET",
+    "path": "/login",
+    "handler": "login_page",
+    "file": "portal.py",
+    "line": 150
+  },
+  {
+    "method": "GET",
+    "path": "/api/config",
+    "handler": "config",
+    "file": "portal.py",
+    "line": 153
+  },
+  {
+    "method": "GET",
+    "path": "/api/clients",
+    "handler": "list_clients",
+    "file": "portal.py",
+    "line": 178
+  },
+  {
+    "method": "GET",
+    "path": "/api/clients/{id}",
+    "handler": "get_client",
+    "file": "portal.py",
+    "line": 186
+  },
+  {
+    "method": "POST",
+    "path": "/api/clients",
+    "handler": "put_client",
+    "file": "portal.py",
+    "line": 190
+  },
+  {
+    "method": "GET",
+    "path": "/api/clients/{id}/history",
+    "handler": "history",
+    "file": "portal.py",
+    "line": 197
+  },
+  {
+    "method": "GET",
+    "path": "/api/clients/{id}/activity",
+    "handler": "activity",
+    "file": "portal.py",
+    "line": 207
+  },
+  {
+    "method": "GET",
+    "path": "/files/{id}",
+    "handler": "download",
+    "file": "portal.py",
+    "line": 214
+  },
+  {
+    "method": "POST",
+    "path": "/api/preview",
+    "handler": "preview",
+    "file": "portal.py",
+    "line": 225
+  },
+  {
+    "method": "POST",
+    "path": "/api/generate",
+    "handler": "generate",
+    "file": "portal.py",
+    "line": 240
+  },
+  {
+    "method": "GET",
+    "path": "/api/jobs",
+    "handler": "list_jobs",
+    "file": "portal.py",
+    "line": 273
+  },
+  {
+    "method": "GET",
+    "path": "/api/jobs/{id}",
+    "handler": "get_job",
+    "file": "portal.py",
+    "line": 280
+  },
+  {
+    "method": "POST",
+    "path": "/api/folders",
+    "handler": "folders",
+    "file": "portal.py",
+    "line": 288
+  },
+  {
+    "method": "GET",
+    "path": "/api/users",
+    "handler": "list_users",
+    "file": "portal.py",
+    "line": 314
+  },
+  {
+    "method": "GET",
+    "path": "/api/admins",
+    "handler": "list_admins",
+    "file": "portal.py",
+    "line": 323
+  },
+  {
+    "method": "POST",
+    "path": "/api/users",
+    "handler": "create_user",
+    "file": "portal.py",
+    "line": 331
+  },
+  {
+    "method": "POST",
+    "path": "/api/users/{id}",
+    "handler": "update_user",
+    "file": "portal.py",
+    "line": 352
+  },
+  {
+    "method": "POST",
+    "path": "/api/signature",
+    "handler": "signature",
+    "file": "portal.py",
+    "line": 380
+  },
+  {
+    "method": "POST",
+    "path": "/api/import-legacy",
+    "handler": "import_legacy",
+    "file": "portal.py",
+    "line": 393
+  },
+  {
+    "method": "GET",
+    "path": "/{name}",
+    "handler": "static_file",
+    "file": "portal.py",
+    "line": 406
+  },
+  {
+    "method": "GET",
+    "path": "/assets/{name:path}",
+    "handler": "asset",
+    "file": "portal.py",
+    "line": 412
+  }
+]

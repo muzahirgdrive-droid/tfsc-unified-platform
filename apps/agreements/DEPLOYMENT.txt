@@ -1,0 +1,87 @@
+TFSC COMPLIANCE 4.0.0
+
+This package contains the standalone application, not an Alpha Bridge integration.
+The same document engine, 19 services, company letterheads and signature assets are
+included. It now has accounts, roles, client history, audit activity, database file
+copies and a durable generation queue.
+
+WINDOWS DESKTOP
+Extract the complete folder to a short writable location. Run Start TFSC
+Compliance.cmd. Python and dependencies are bundled. Activated desktop Microsoft
+Word is required for the Word PDF renderer. Open .data/setup-key.txt and use its
+key on the first sign-in page to create your Super Admin. No default password is
+provided. On this existing PC, original drafts and contract folders remain intact;
+use Client & contract history > Import existing local contracts after setup.
+Historical authors were not recorded, so imported activity is labelled accordingly.
+
+VPS (LINUX, DOCKER COMPOSE)
+1. Point your domain at the VPS and allow inbound HTTPS/HTTP. Install Docker with
+   Compose. Keep the database and worker inaccessible from public networks.
+2. Copy .env.example to .env. Set TFSC_DOMAIN to the real host without a scheme.
+   Replace POSTGRES_PASSWORD with a strong random hexadecimal value.
+3. Put properly licensed Times New Roman font files in deployment-fonts before
+   final output validation. Fonts supplied by the image are a fallback and may
+   change document pagination. Company signatures are included in private-assets;
+   do not place them in a public web directory.
+4. Run: docker compose build
+5. Run: docker compose up -d database
+6. Run: docker compose run --rm api python manage.py init
+7. Run: docker compose run --rm api python manage.py setup-key
+8. Read the setup key privately:
+   docker compose run --rm api cat /data/setup-key.txt
+9. Run: docker compose up -d
+10. Visit https://YOUR_DOMAIN/login and create the first Super Admin. Then upload
+    the supplied company signatures through the Super Admin's Sign & export page,
+    or copy private-assets/signatures into the app-data volume at /data/signatures
+    to retain the supplied crop metadata.
+
+The Linux worker uses LibreOffice with an isolated profile per export. The Windows
+edition uses Word. Both produce DOCX and PDF, but renderer/font differences require
+visual sign-off on the actual VPS. Do not assume the Linux output is identical to
+the Word output. The document engine and page-number fields are preserved.
+
+ROLES
+Super Admin: all clients, contracts, users, companies and signature administration.
+Admin: own clients/contracts plus assigned users' records; can create Users, grant
+companies within their own permissions, reset passwords and deactivate their users.
+User: own clients/contracts, with generation/download restricted to permitted
+companies. Removing a company permission is enforced on the server. Deactivating
+an Admin blocks their assigned Users. New accounts receive a temporary password
+shown once and must change it on first sign-in. Share credentials privately.
+
+DATABASE AND STORAGE
+Desktop defaults to SQLite WAL in .data/tfsc.db. Hosted mode requires PostgreSQL.
+Document bytes and SHA-256 hashes are stored in the database as well as the chosen
+output folder. Downloads are authenticated and use the database copy. Data tables
+are indexed, lists paginated, and generation requests use idempotency keys.
+Job claims use PostgreSQL SKIP LOCKED; workers generate separately from web requests.
+The provided composition starts two API processes and one rendering worker.
+Use docker compose up -d --scale worker=N only after measuring CPU/RAM and render
+throughput. Each LibreOffice render consumes material resources. Do not run the
+desktop Word exporter as a generic unattended web-server renderer.
+
+Folders are local to the running application. Desktop mode can browse accessible
+folders/drives without a native modal. Hosted users choose subfolders of managed
+server storage; browsers cannot arbitrarily write to users' PC paths. Download
+contracts to save additional copies on a PC.
+
+CAPACITY AND OPERATIONS
+10,000 registered users is a planning target, not a promise of 10,000 simultaneous
+PDF exports. Benchmark the actual VPS, expected concurrent sessions, render queue,
+document sizes and retention. See VERIFICATION.txt for checks actually performed.
+Set DB_POOL_SIZE against the database connection budget: each API/worker process
+has its own pool. Database document bytes increase storage and backup requirements.
+Monitor queue age, failed jobs, render duration, disk/database capacity and API
+latency. Configure resource limits for the workload before public rollout.
+Expired running jobs are marked failed and require a new generation; this avoids
+silently duplicating a possibly published agreement after a worker crash.
+
+BACKUP/RESTORE
+Back up PostgreSQL using pg_dump plus app-data and contracts volumes on a schedule.
+Use encryption and restrict access. Verify restore to an isolated instance. Keep
+database and filesystem snapshots associated with the same backup window.
+The schema is versioned in settings; manage.py init creates version 1. Future
+schema changes need reviewed migrations, not deletion/recreation of production data.
+Keep .env and setup keys private. The API exposes no delete/edit operation for
+audit events, but database administrators still control database contents.
+Setup keys and private images are not intended for public repositories.

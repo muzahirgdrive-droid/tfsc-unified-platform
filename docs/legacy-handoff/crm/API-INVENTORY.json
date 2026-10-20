@@ -1,0 +1,443 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/health",
+    "handler": "health",
+    "file": "crm_app.py",
+    "line": 150
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/status",
+    "handler": "auth_status",
+    "file": "crm_app.py",
+    "line": 154
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/setup",
+    "handler": "setup",
+    "file": "crm_app.py",
+    "line": 157
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/login",
+    "handler": "login",
+    "file": "crm_app.py",
+    "line": 170
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/me",
+    "handler": "me",
+    "file": "crm_app.py",
+    "line": 180
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "handler": "logout",
+    "file": "crm_app.py",
+    "line": 184
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/password",
+    "handler": "password",
+    "file": "crm_app.py",
+    "line": 189
+  },
+  {
+    "method": "GET",
+    "path": "/api/config",
+    "handler": "config",
+    "file": "crm_app.py",
+    "line": 198
+  },
+  {
+    "method": "GET",
+    "path": "/api/users",
+    "handler": "list_users",
+    "file": "crm_app.py",
+    "line": 206
+  },
+  {
+    "method": "POST",
+    "path": "/api/users",
+    "handler": "create_user",
+    "file": "crm_app.py",
+    "line": 234
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/users/{id}",
+    "handler": "update_user",
+    "file": "crm_app.py",
+    "line": 239
+  },
+  {
+    "method": "POST",
+    "path": "/api/activities",
+    "handler": "create_activity_route",
+    "file": "crm_app.py",
+    "line": 272
+  },
+  {
+    "method": "GET",
+    "path": "/api/activities",
+    "handler": "list_activities",
+    "file": "crm_app.py",
+    "line": 275
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/activities/{id}",
+    "handler": "edit_activity",
+    "file": "crm_app.py",
+    "line": 285
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/activities/{id}",
+    "handler": "delete_activity",
+    "file": "crm_app.py",
+    "line": 308
+  },
+  {
+    "method": "POST",
+    "path": "/api/refine",
+    "handler": "refine",
+    "file": "crm_app.py",
+    "line": 315
+  },
+  {
+    "method": "POST",
+    "path": "/api/import",
+    "handler": "import_rows",
+    "file": "crm_app.py",
+    "line": 329
+  },
+  {
+    "method": "POST",
+    "path": "/api/import/file-preview",
+    "handler": "preview_workbook",
+    "file": "crm_app.py",
+    "line": 352
+  },
+  {
+    "method": "POST",
+    "path": "/api/profile/photo",
+    "handler": "upload_photo",
+    "file": "crm_app.py",
+    "line": 376
+  },
+  {
+    "method": "GET",
+    "path": "/api/profile/photo/{id}",
+    "handler": "photo",
+    "file": "crm_app.py",
+    "line": 389
+  },
+  {
+    "method": "GET",
+    "path": "/api/followups",
+    "handler": "delegated_followups",
+    "file": "crm_app.py",
+    "line": 398
+  },
+  {
+    "method": "GET",
+    "path": "/api/leads",
+    "handler": "list_leads",
+    "file": "crm_app.py",
+    "line": 411
+  },
+  {
+    "method": "GET",
+    "path": "/api/clients",
+    "handler": "list_leads",
+    "file": "crm_app.py",
+    "line": 411
+  },
+  {
+    "method": "POST",
+    "path": "/api/activities/{id}/followup",
+    "handler": "create_followup",
+    "file": "crm_app.py",
+    "line": 420
+  },
+  {
+    "method": "POST",
+    "path": "/api/leads/{id}/transition",
+    "handler": "lead_transition",
+    "file": "crm_app.py",
+    "line": 428
+  },
+  {
+    "method": "POST",
+    "path": "/api/leads/{id}/assign",
+    "handler": "reassign",
+    "file": "crm_app.py",
+    "line": 456
+  },
+  {
+    "method": "GET",
+    "path": "/api/conflicts",
+    "handler": "list_conflicts",
+    "file": "crm_app.py",
+    "line": 464
+  },
+  {
+    "method": "POST",
+    "path": "/api/conflicts/{id}/resolve",
+    "handler": "resolve_conflict",
+    "file": "crm_app.py",
+    "line": 474
+  },
+  {
+    "method": "GET",
+    "path": "/api/dashboard",
+    "handler": "dashboard",
+    "file": "crm_app.py",
+    "line": 496
+  },
+  {
+    "method": "GET",
+    "path": "/api/audit",
+    "handler": "audit",
+    "file": "crm_app.py",
+    "line": 522
+  },
+  {
+    "method": "GET",
+    "path": "/api/events",
+    "handler": "events",
+    "file": "crm_app.py",
+    "line": 533
+  },
+  {
+    "method": "GET",
+    "path": "/api/clocks",
+    "handler": "clocks",
+    "file": "crm_app.py",
+    "line": 540
+  },
+  {
+    "method": "GET",
+    "path": "/api/teams",
+    "handler": "list_teams",
+    "file": "crm_app.py",
+    "line": 545
+  },
+  {
+    "method": "POST",
+    "path": "/api/teams",
+    "handler": "create_team",
+    "file": "crm_app.py",
+    "line": 550
+  },
+  {
+    "method": "GET",
+    "path": "/api/settings",
+    "handler": "get_settings",
+    "file": "crm_app.py",
+    "line": 562
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/settings",
+    "handler": "save_settings",
+    "file": "crm_app.py",
+    "line": 566
+  },
+  {
+    "method": "POST",
+    "path": "/api/settings/domains",
+    "handler": "add_domain",
+    "file": "crm_app.py",
+    "line": 573
+  },
+  {
+    "method": "POST",
+    "path": "/api/settings/agreements-link",
+    "handler": "link_own_agreements",
+    "file": "crm_app.py",
+    "line": 579
+  },
+  {
+    "method": "POST",
+    "path": "/api/settings/projects",
+    "handler": "add_project",
+    "file": "crm_app.py",
+    "line": 585
+  },
+  {
+    "method": "GET",
+    "path": "/api/dashboard/layout",
+    "handler": "get_layout",
+    "file": "crm_app.py",
+    "line": 593
+  },
+  {
+    "method": "POST",
+    "path": "/api/dashboard/layout",
+    "handler": "save_layout",
+    "file": "crm_app.py",
+    "line": 597
+  },
+  {
+    "method": "GET",
+    "path": "/api/meetings",
+    "handler": "list_meetings",
+    "file": "crm_app.py",
+    "line": 604
+  },
+  {
+    "method": "POST",
+    "path": "/api/meetings",
+    "handler": "create_meeting",
+    "file": "crm_app.py",
+    "line": 608
+  },
+  {
+    "method": "GET",
+    "path": "/api/integrations/status",
+    "handler": "integrations",
+    "file": "crm_app.py",
+    "line": 619
+  },
+  {
+    "method": "POST",
+    "path": "/api/leads/{id}/agreements",
+    "handler": "handoff",
+    "file": "crm_app.py",
+    "line": 624
+  },
+  {
+    "method": "GET",
+    "path": "/",
+    "handler": "index",
+    "file": "crm_app.py",
+    "line": 668
+  },
+  {
+    "method": "GET",
+    "path": "/login",
+    "handler": "index",
+    "file": "crm_app.py",
+    "line": 668
+  },
+  {
+    "method": "GET",
+    "path": "/assets/{path:path}",
+    "handler": "asset",
+    "file": "crm_app.py",
+    "line": 673
+  },
+  {
+    "method": "GET",
+    "path": "/{path:path}",
+    "handler": "public_file",
+    "file": "crm_app.py",
+    "line": 678
+  },
+  {
+    "method": "GET",
+    "path": "/api/clients/{lead_id}/agreements",
+    "handler": "read",
+    "file": "crm_contracts.py",
+    "line": 25
+  },
+  {
+    "method": "POST",
+    "path": "/api/clients/{lead_id}/agreements/sync",
+    "handler": "sync",
+    "file": "crm_contracts.py",
+    "line": 35
+  },
+  {
+    "method": "GET",
+    "path": "/api/leads/{id}/followup-task",
+    "handler": "read",
+    "file": "crm_followups.py",
+    "line": 29
+  },
+  {
+    "method": "POST",
+    "path": "/api/leads/{id}/followup-task",
+    "handler": "schedule",
+    "file": "crm_followups.py",
+    "line": 36
+  },
+  {
+    "method": "GET",
+    "path": "/api/integrations/google/start",
+    "handler": "start",
+    "file": "google_calendar.py",
+    "line": 41
+  },
+  {
+    "method": "GET",
+    "path": "/api/integrations/google/callback",
+    "handler": "callback",
+    "file": "google_calendar.py",
+    "line": 48
+  },
+  {
+    "method": "GET",
+    "path": "/api/integrations/google/status",
+    "handler": "status",
+    "file": "google_calendar.py",
+    "line": 59
+  },
+  {
+    "method": "POST",
+    "path": "/api/integrations/google/disconnect",
+    "handler": "disconnect",
+    "file": "google_calendar.py",
+    "line": 63
+  },
+  {
+    "method": "POST",
+    "path": "/api/meetings/{id}/google",
+    "handler": "schedule",
+    "file": "google_calendar.py",
+    "line": 67
+  },
+  {
+    "method": "POST",
+    "path": "/api/meetings/{id}/sync",
+    "handler": "sync",
+    "file": "google_calendar.py",
+    "line": 87
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sso/status",
+    "handler": "status",
+    "file": "oidc_support.py",
+    "line": 28
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sso/login",
+    "handler": "start",
+    "file": "oidc_support.py",
+    "line": 30
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/sso/callback",
+    "handler": "callback",
+    "file": "oidc_support.py",
+    "line": 38
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/sso/accounts",
+    "handler": "link",
+    "file": "oidc_support.py",
+    "line": 64
+  }
+]

@@ -1,0 +1,113 @@
+TFSC COMPLIANCE — AS BUILT
+Live portal reports 4.0.0; this snapshot additionally includes the October15 CRM
+bridge, independent review gate and OIDC adapter. Version constant was not bumped
+for these additions. Archive/source hash identifies the exact build.
+
+PURPOSE AND NON-NEGOTIABLE OUTPUT REQUIREMENTS
+Generate BAA and/or Services Agreement from practice/provider legal name, address,
+effective dates, selected company, service lines/prices and agreed terms. Output
+editable DOCX plus PDF, original letterhead on each page, Page X of Y, uniformly
+Times New Roman justified body and bold headings 16/14/13 pt, safe text bounds,
+signature positioned on line and a continuation-protecting execution section.
+BAA text uses the supplied approved-source DOCX/JSON with only supported variable
+substitutions. Do not rewrite it merely to improve legal language. Service wording
+is modular; where source wording was supplied, preserve it. Legal/compliance review
+is not replaced by software or historical generated wording.
+
+COMPANIES
+SCRIBE ALIGN LLC: Naeem Abbas, Chief Executive Officer.
+EXTENDED HEALTH SERVICES INC.: Naeem Abbas, Chief Executive Officer.
+24-7 CONSULTANCY LLC: Danish Ather, Chief Operating Officer.
+Exact legal names/addresses/template hashes/body bounds are in entities.py.
+Naeem signature shared by Scribe/EHS. Danish signature is for 24-7 only.
+User-authorized PNGs + JSON crop metadata included in private-assets/signatures.
+Do not publish these assets. They are excluded from Docker build and served only
+through authenticated generation, not static file routes. Install into .data or
+the private volume. A visible signature image can be copied/photographed; there
+is no cryptographic e-signature or technological screenshot prevention here.
+
+SOURCE MAP / ACTUAL ENTRYPOINTS
+portal.py is the authenticated FastAPI app. security.py enforces users/company
+grants/session/CSRF. database.py owns SQLAlchemy Core persistence. worker.py claims
+generation jobs, renders, publishes bytes and records audit/status. launch.py runs
+local API plus supervised worker. Hosted API and worker are separate processes.
+server.py retains validation/composition/folder helpers; don't revive a legacy
+unauthenticated service. Read portal.py as the live API/version authority.
+revised_content.py is active content composer, calling shared content helpers.
+contract_content.py has catalog, fee descriptions, service scopes/responsibilities.
+templates/baa.json and BAA-approved-source.docx are source BAA records;
+templates/service-scopes.json has source-derived supplied service wording.
+document_engine.py patches OOXML to generate editable Word and renderer PDF;
+signature_store.py embeds/crops signature artwork; export_word.ps1 automates Word.
+assets/letterhead*.docx retain the original company letterhead; hash checked.
+index.html/app.js handles form/service state; studio.js guided steps; portal.js
+accounts/history/admin UI. styles.css/tfsc.css/portal.css are current presentation.
+login.html/login.js sign in. reviews.html/reviews.js independent release approval.
+crm_bridge.py owns HMAC endpoints, mapping, review tables and worker/download gates.
+oidc_support.py optional explicit-subject SSO (separate copy from CRM; keep aligned).
+manage.py schema/setup-key/signature-install CLI. migrate_legacy.py imports older
+local records with unknown authors explicitly labeled, not fabricated history.
+
+DATA / PERMISSIONS
+Local SQLite WAL; hosted PostgreSQL. Native tables: users, sessions, clients,
+contracts, documents, audit, jobs, settings, throttle. Added bridge: crm_actor_links,
+crm_client_links, crm_bridge_handoffs, crm_bridge_nonces, agreement_reviews;
+optional OIDC accounts/states. Schema bootstrap create_all has no full migrations.
+User role: own clients/contracts; permitted companies only. Admin: assigned users
+and their scope; may create constrained users. Super Admin: all. A subordinate's
+company rights are intersected with active parent Admin rights. No CRM org_id
+tenant hierarchy is shared here. Never copy CRM role rank into TFSC role behavior.
+Client uniqueness is owner + normalized-name hash, not a canonical global client
+identity. One CRM client may map to owner-specific TFSC client records.
+Contracts immutable revision payload/folder metadata; documents contain full bytes,
+SHA256, size, filename, type and disk path. Download falls back to retained DB bytes
+through existing implementation. Storing large blobs has storage/backup costs.
+
+DOCUMENT WORKFLOW
+Save editable draft -> validate -> queue with Idempotency-Key -> worker claim.
+PostgreSQL uses FOR UPDATE SKIP LOCKED; SQLite uses compare-and-swap claim.
+Five pending jobs per user; lease currently 30 minutes; expired running job fails
+and requires explicit retry, not blind replay of possibly published output.
+Worker rechecks authorization, builds all docs in a staging folder, then records
+blobs and publishes disk copies. Disk and SQL are not one atomic resource; inspect
+crash recovery/orphan cleanup rather than assuming transaction atomicity across both.
+Output root/practice slug/entity key/owner prefix/agreement subfolder/revision files.
+Each generated revision retained. Selected document_types controls BAA/SA/both.
+Windows renderer uses installed activated Word. Linux uses LibreOffice. Page counts
+may differ by renderer/font; install licensed Times New Roman and visually inspect
+target-machine outputs. Embedded PAGE/NUMPAGES fields display Page X of Y.
+Local folder browser can select permitted local paths. Hosted paths are constrained
+to TFSC_OUTPUT_ROOT; it cannot browse a remote browser user's laptop filesystem.
+
+SERVICE STRUCTURE
+19 catalog entries including Personal Injury Collection Services, percentage of
+net collections or FTE. Full exact catalog is attached as SERVICE-CATALOG.json.
+Medical billing includes coding; separate recurring/on-demand lines supported.
+Section1 services, 1.1/1.2 selected scopes; Section2 responsibilities; Section3 fees.
+3.1 initial setup no charge, service-specific subsections/tables follow.
+Credentialing payer rate card; WordPress vs custom website price choice; standalone
+and combined selections. Exact duplicate responsibilities are shared by role;
+semantic de-duplication across all service terms is not a completed legal ontology.
+Only supplied source service scopes are verbatim; other service wording is prior
+draft content pending approved user files. Preserve approved wording, not all prior
+assistant-written prose by default when user provides corrections.
+
+REVIEW GATE
+Enabled if TFSC_REQUIRE_APPROVAL=1, a CRM link exists, or a client has a review.
+Owner submits exact draft; separate administrator approves within scope/company.
+Hash covers payload, templates, assets/fonts, renderer/content source and signature
+bytes/metadata. Changed source/assets invalidates approval. Worker checks before
+render and before release. State submitted -> approved/changes_requested -> queued
+-> issued; superseded older submitted/approved records. Job failures can leave
+queued review metadata inconsistent: reconcile this as a known improvement.
+Immutable asset snapshot/versioning would improve file-change race resistance.
+Review UI shows draft metadata; full document visual approval preview is incomplete.
+
+TEST EVIDENCE AND CAVEATS
+Latest integrated run:47 tests +42 subtests passing (CRM+TFSC), and later five bridge
+tests passed after hash coverage fix. Historical VERIFICATION.txt reports earlier
+TFSC-only PostgreSQL/Docker/Word/LibreOffice checks; those are not a new test of this
+combined CRM stack. Current bridge uses mocked render outputs in automated tests.
+Before live release, rerun actual DOCX/PDF across all3 companies, BAA/SA/both and
+long mixed service sets on the target renderer. Do not claim legal certification,
+50,000 concurrent-user capacity, completed external e-sign/email, or zero flaws.

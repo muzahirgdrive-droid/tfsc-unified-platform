@@ -1,0 +1,68 @@
+PORTABLE SETUP AND CONTINUATION
+
+No paid AI service is required at application runtime. Neither app needs an LLM
+API key to generate agreements or calculate metrics. Python dependencies require
+installation; binaries/node_modules/Windows runtime are not bundled in this handoff.
+Production/client data is deliberately not part of these source handoffs.
+
+WINDOWS, CLEAN LAPTOP (PowerShell, from the shared workspace directory)
+Install Python3.12+ and Node22+. Then:
+  python -m venv .venv
+  .\.venv\Scripts\python.exe -m pip install -r TFSCSalesCRM/requirements.txt -r ScribeAlignContractStudio/requirements.txt -r TFSCSalesCRM/requirements-dev.txt
+CRM frontend is already built. To edit/rebuild:
+  cd TFSCSalesCRM/web
+  npm ci
+  npm run build
+  cd ../..
+Start in separate terminals:
+  .\.venv\Scripts\python.exe TFSCSalesCRM/launch.py
+  .\.venv\Scripts\python.exe ScribeAlignContractStudio/launch.py
+Open http://127.0.0.1:8766 and http://127.0.0.1:8765.
+Each first setup uses its own privately generated .data/setup-key.txt. User creates
+own Super Admin credentials; no preconfigured account/password is provided.
+Install authorized signature files once:
+  .\.venv\Scripts\python.exe ScribeAlignContractStudio/manage.py install-signatures
+Windows PDF generation requires activated desktop Word. For Linux use the included
+LibreOffice Docker setup and licensed Times New Roman fonts. Do not assume fallback
+fonts preserve the already accepted pagination.
+
+TESTS (synthetic temporary databases)
+  .\.venv\Scripts\python.exe -m pytest TFSCSalesCRM/tests ScribeAlignContractStudio/tests -q
+Source contains synthetic test credentials only. Never run tests against production
+database URLs. TFSC optional TEST_DATABASE_URL must target isolated tfsc_test.
+The original worksheet is NOT bundled with this handoff because it contains real
+sales data. Its analysis and intended formulas are included as reference evidence.
+
+VPS
+Use TFSCSalesCRM/DEPLOYMENT.txt and compose.combined.yaml when deploying BOTH.
+Use standalone compose only when intentionally deploying one system. Keep separate
+DNS names, PostgreSQL databases, persistent data volumes and agreement output volume.
+Keep source directories siblings. Set actual domains, distinct DB passwords and
+random HMAC secret privately in .env. Google/OIDC remain optional and unconfigured.
+Do not publish signature assets or include .env in images. Do not use down -v to
+upgrade. Current ZIPs include code/config, not your server provider or credentials.
+
+EXISTING DATA TRANSFER IS A SEPARATE, PRIVATE OPERATION
+These packages do not move existing users, clients, contracts, history or API tokens.
+Do not pretend an empty laptop DB is the old operational database. If data is needed,
+stop writers for a consistent SQLite backup or use SQLite backup API; do not copy a
+live .db alone while ignoring WAL. For PostgreSQL use consistent pg_dump/restore.
+Back up both DBs, TFSC contract output tree, authorized signatures/crop JSON, any
+Google encryption key and server configuration. Treat this archive separately from
+AI-uploadable source. Validate counts, hashes and ownership after restore. Regenerate
+sessions/setup credentials as appropriate, and review old absolute output paths on
+the new OS. Never silently drop or merge old client records.
+
+SOURCE-OF-TRUTH ORDER
+1. User's new corrections and explicit decisions.
+2. Actual current source/runtime behavior in these archives.
+3. This _HANDOFF snapshot, marked implemented vs pending.
+4. Historical docs/roadmaps, which may describe older behavior or future features.
+
+PORTABLE REPACKAGING AFTER CORRECTIONS
+Use python _HANDOFF/REPACKAGE.py from either application. It creates that app's
+new source ZIP beside its directory, excluding databases/.env/runtime caches.
+Rebuild CRM web/dist first. Update handoff notes/inventories to reflect changes.
+The old CRM build_release.py was a prior combined-workspace packaging utility;
+it expects the earlier workspace layout. Use REPACKAGE.py for this two-file handoff.
+The TFSC archive contains private signature assets; keep any successor ZIP private.

@@ -1,0 +1,110 @@
+# Alternative complete stack, not an override. Run only one reverse proxy.
+# Requires the existing TFSC source as sibling ../ScribeAlignContractStudio.
+name: tfsc-sales-and-agreements
+services:
+  crm-database:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tfsc_crm
+      POSTGRES_USER: tfsc_crm
+      POSTGRES_PASSWORD: ${CRM_POSTGRES_PASSWORD:?Set CRM_POSTGRES_PASSWORD}
+    volumes:
+      - crm-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfsc_crm -d tfsc_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  crm:
+    build: {context: .., dockerfile: crm-api/Dockerfile}
+    restart: unless-stopped
+    environment:
+      CRM_MODE: hosted
+      CRM_ORIGIN: https://${CRM_DOMAIN:?Set CRM_DOMAIN}
+      CRM_DATABASE_URL: postgresql+psycopg://tfsc_crm:${CRM_POSTGRES_PASSWORD:?Set CRM_POSTGRES_PASSWORD}@crm-database:5432/tfsc_crm
+      CRM_DATA_DIR: /data
+      CRM_TFSC_URL: https://${TFSC_DOMAIN:?Set TFSC_DOMAIN}
+      CRM_TFSC_INTERNAL_URL: http://agreements:8000
+      CRM_TFSC_SECRET: ${TFSC_CRM_SHARED_SECRET:?Set a random shared bridge secret}
+      CRM_ENCRYPTION_KEY: ${CRM_ENCRYPTION_KEY:-}
+      CRM_GOOGLE_CLIENT_ID: ${CRM_GOOGLE_CLIENT_ID:-}
+      CRM_GOOGLE_CLIENT_SECRET: ${CRM_GOOGLE_CLIENT_SECRET:-}
+      CRM_OIDC_ISSUER: ${CRM_OIDC_ISSUER:-}
+      CRM_OIDC_CLIENT_ID: ${CRM_OIDC_CLIENT_ID:-}
+      CRM_OIDC_CLIENT_SECRET: ${CRM_OIDC_CLIENT_SECRET:-}
+    volumes:
+      - crm-data:/data
+    depends_on:
+      crm-database:
+        condition: service_healthy
+  agreements-database:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tfsc
+      POSTGRES_USER: tfsc
+      POSTGRES_PASSWORD: ${TFSC_POSTGRES_PASSWORD:?Set TFSC_POSTGRES_PASSWORD}
+    volumes:
+      - agreements-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfsc -d tfsc"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  agreements:
+    build: ../agreements
+    image: tfsc-compliance:crm-integrated
+    restart: unless-stopped
+    environment: &agreements-environment
+      TFSC_MODE: hosted
+      TFSC_ORIGIN: https://${TFSC_DOMAIN:?Set TFSC_DOMAIN}
+      DATABASE_URL: postgresql+psycopg://tfsc:${TFSC_POSTGRES_PASSWORD:?Set TFSC_POSTGRES_PASSWORD}@agreements-database:5432/tfsc
+      TFSC_DATA_DIR: /data
+      TFSC_OUTPUT_ROOT: /contracts
+      TFSC_RENDERER: libreoffice
+      TFSC_REQUIRE_APPROVAL: "1"
+      TFSC_CRM_SHARED_SECRET: ${TFSC_CRM_SHARED_SECRET:?Set a random shared bridge secret}
+      TFSC_OIDC_ISSUER: ${TFSC_OIDC_ISSUER:-}
+      TFSC_OIDC_CLIENT_ID: ${TFSC_OIDC_CLIENT_ID:-}
+      TFSC_OIDC_CLIENT_SECRET: ${TFSC_OIDC_CLIENT_SECRET:-}
+    volumes: &agreements-volumes
+      - agreements-data:/data
+      - agreement-files:/contracts
+      - ../ScribeAlignContractStudio/deployment-fonts:/usr/local/share/fonts/tfsc:ro
+    depends_on:
+      agreements-database:
+        condition: service_healthy
+  agreements-worker:
+    image: tfsc-compliance:crm-integrated
+    restart: unless-stopped
+    command: ["python", "worker.py"]
+    environment: *agreements-environment
+    volumes: *agreements-volumes
+    depends_on:
+      agreements-database:
+        condition: service_healthy
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      CRM_DOMAIN: ${CRM_DOMAIN:?Set CRM_DOMAIN}
+      TFSC_DOMAIN: ${TFSC_DOMAIN:?Set TFSC_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.combined:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - crm
+      - agreements
+volumes:
+  crm-postgres:
+  crm-data:
+  agreements-postgres:
+  agreements-data:
+  agreement-files:
+  caddy-data:
+  caddy-config:

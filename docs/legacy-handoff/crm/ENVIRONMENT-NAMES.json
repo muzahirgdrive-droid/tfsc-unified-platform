@@ -1,0 +1,14 @@
+[
+  "'CRM_DATABASE_URL'",
+  "'CRM_DATA_DIR'",
+  "'CRM_DB_POOL_SIZE'",
+  "'CRM_ENCRYPTION_KEY'",
+  "'CRM_GOOGLE_CLIENT_ID'",
+  "'CRM_GOOGLE_CLIENT_SECRET'",
+  "'CRM_MODE'",
+  "'CRM_ORIGIN'",
+  "'CRM_TFSC_INTERNAL_URL'",
+  "'CRM_TFSC_SECRET'",
+  "'CRM_TFSC_URL'",
+  "prefix + '_OIDC_' + k"
+]

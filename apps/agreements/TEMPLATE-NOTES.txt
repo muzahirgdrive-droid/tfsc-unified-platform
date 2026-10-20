@@ -1,0 +1,18 @@
+TFSC Compliance: retained contract sources
+
+The BAA uses the supplied October 6 sample, with variable company, client and date
+fields. Its supplied Georgia governing-law wording is retained.
+
+Services, responsibilities and fees are Sections 1, 2 and 3. The supplied billing,
+credentialing, scribe and virtual assistant wording is retained. Other service
+scopes retain the existing application's wording. Personal Injury Collection is
+available with FTE or percentage of eligible net collections pricing.
+WordPress and custom website projects have separate prices.
+
+The original company letterhead files and supplied signature images are retained.
+Word crops remove blank signature margins without changing the source image.
+The images are placed on signing lines. Visible signatures can still be copied
+or photographed; this application does not create cryptographic signatures.
+
+This release changes application access, storage, history and rendering. It does
+not certify legal compliance or replace approval of the reusable contract wording.

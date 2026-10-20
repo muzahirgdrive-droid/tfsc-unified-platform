@@ -1,0 +1,48 @@
+TECHNICAL REFERENCES AND EVIDENCE
+Reviewed for this architecture on 14 October 2026.
+
+LOCAL PRIMARY EVIDENCE
+1. Sales - Office 2 - Tracking (2).xlsx, supplied by the owner.
+   Read-only workbook XML, cached values, formulas, named ranges, validation and chart references.
+   See WORKBOOK-AUDIT.txt for cell-level provenance, checksum and independent calculation method.
+   No live Google Sheet or Apps Script inspection is claimed.
+
+2. TFSC Compliance v4.0.0 source in outputs/ScribeAlignContractStudio.
+   See TFSC-INTEGRATION-AUDIT.txt for filenames, actual routes and storage model.
+   This planning exercise inspected source, not real client database contents or secret values.
+   Existing verification reports are historical evidence; no new 50,000-user app test was run here.
+
+OFFICIAL INTEGRATION AND PLATFORM REFERENCES
+3. Google Calendar events.insert
+   https://developers.google.com/workspace/calendar/api/v3/reference/events/insert
+   Supports conferenceDataVersion=1 and conference creation; OAuth scopes and invitation/update behavior must be deliberately configured. Creation can have pending conference state. Do not reuse a meeting link by guessing or accidentally invite agents to restricted meetings.
+
+4. Google Calendar incremental synchronization
+   https://developers.google.com/workspace/calendar/api/guides/sync
+   Persist sync tokens, handle pagination and HTTP 410 by rebuilding synchronization state. Sync state is not a replacement for app-level access control.
+
+5. Google OAuth 2.0 for web-server applications
+   https://developers.google.com/identity/protocols/oauth2/web-server
+   Backend authorization flow, state protection and refresh-token handling. Provider consent and actual accounts remain setup requirements.
+
+6. Vonage Business Communications: Click-to-Connect Dial/SMS
+   https://support.vonagebusiness.com/articles/Answer/Click-to-Connect-Dial-SMS?lob=Essentials
+   Product-specific click-to-connect depends on supported integration/extension setup. Confirm the installed Vonage product before selecting an adapter. A generic tel: hyperlink does not prove Vonage-specific integration.
+
+7. PostgreSQL row security policies
+   https://www.postgresql.org/docs/current/ddl-rowsecurity.html
+   RLS policy behavior, default deny when enabled without applicable policies, owner/bypass caveats and FORCE ROW LEVEL SECURITY. Field filtering and business authorization still require application design and tests.
+
+8. IANA Time Zone Database
+   https://www.iana.org/time-zones
+   https://data.iana.org/time-zones/tz-link.html
+   Use maintained timezone data for America/Los_Angeles and all comparison clocks; offsets and daylight saving behavior are not fixed constants.
+
+VISUAL REFERENCE
+9. https://24-7consultancy.pk/
+   Owner-requested design reference. Use the supplied authorized logo and established navy/royal-blue/cyan/white direction. The specification is not a claim of a completed pixel-identical redesign.
+
+DESIGN DECISIONS, NOT EXTERNAL FACTS
+The selected modular architecture, suggested performance targets, 15-minute import window, permissions, privacy defaults, proposed endpoint names and phased delivery are engineering recommendations or explicit interpretations of the owner's request. They are not claims that the current app already implements them. The workload calculations are labeled planning scenarios, not benchmarks.
+
+This package is a software architecture handoff. It does not certify legal compliance, operational security, production scale, or provider integrations. Preserve approved legal text; any future substantive legal change requires its own review.

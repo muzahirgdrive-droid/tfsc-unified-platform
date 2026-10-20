@@ -1,0 +1,13 @@
+MY CORRECTIONS
+Application: CRM / TFSC Compliance / shared integration
+Issue title:
+Role affected:
+Current behavior / steps to reproduce:
+Expected behavior:
+Screenshot or source example:
+Existing data that must be preserved:
+Business rule (ownership, scope, timing, fees, approval or contract wording):
+Priority / acceptance check:
+
+Repeat this block for each correction. Existing wording and layout that I have
+approved must remain unchanged unless I explicitly request a change.

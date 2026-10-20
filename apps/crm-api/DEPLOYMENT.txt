@@ -1,0 +1,104 @@
+TFSC SALES + COMPLIANCE — VPS HANDOFF
+VERSION 1.0.1 UPGRADE
+The user create/edit dialog no longer closes from outside clicks.
+Back up your existing databases and files. Copy the updated application source
+into your existing deployment folders while preserving .env and all volumes.
+From TFSCSalesCRM rebuild and recreate only CRM:
+  docker compose -f compose.combined.yaml up -d --build --no-deps crm
+For a standalone CRM deployment use compose.yaml instead.
+Do not run docker compose down -v. No database migration is needed for this fix.
+Refresh the browser after deployment. Existing pilot/scale limitations still apply.
+
+This document supersedes the older standalone packaging description for the
+integrated bundle. Existing TFSC document-engine notes still apply.
+
+1. Keep TFSCSalesCRM and ScribeAlignContractStudio as sibling folders.
+   Install Docker Engine and Compose on your Linux VPS. Point two DNS names to
+   it, for example sales.example.com and agreements.example.com. Open 80/443
+   only; PostgreSQL and document workers have no public port mappings.
+2. In TFSCSalesCRM copy .env.example to .env. Set both domain names and replace
+   every placeholder password/secret. Use distinct random hexadecimal database
+   passwords, plus a random bridge secret at least 32 characters long. Protect
+   .env with mode 600. Never commit or email production credentials.
+3. Provide correctly licensed Times New Roman fonts in the agreements
+   deployment-fonts folder. Linux fallback fonts can change pagination; verify
+   representative Word/PDF output in the actual renderer before client use.
+4. Run from TFSCSalesCRM:
+      docker compose -f compose.combined.yaml build
+      docker compose -f compose.combined.yaml up -d crm-database agreements-database
+      docker compose -f compose.combined.yaml run --rm agreements python manage.py init
+      docker compose -f compose.combined.yaml run --rm agreements python manage.py setup-key
+      docker compose -f compose.combined.yaml up -d
+   Run only this combined stack OR the standalone compose.yaml, never both
+   reverse proxies on the same 80/443 ports.
+5. Read setup keys privately on the VPS:
+      docker compose -f compose.combined.yaml exec crm cat /data/setup-key.txt
+      docker compose -f compose.combined.yaml exec agreements cat /data/setup-key.txt
+   Open each HTTPS site and create its Super Admin. There is no default login.
+6. The complete private developer ZIP contains the authorized Naeem Abbas and
+   Danish Ather images and crop metadata in private-assets/signatures. Treat this
+   archive as confidential. The folder is excluded from the Docker build and is
+   never served by the application. Copy the assets into the private data volume:
+      docker compose -f compose.combined.yaml exec agreements mkdir -p /data/signatures
+      docker compose -f compose.combined.yaml cp ../ScribeAlignContractStudio/private-assets/signatures/. agreements:/data/signatures/
+   Ensure ownership is UID 10001 (the agreements process), and verify signatures
+   in a test export. Alternatively upload them through authenticated TFSC settings.
+   For a fresh Windows install run: python manage.py install-signatures
+7. Create the actual staff hierarchy. Agents have no private routing or meeting
+   visibility. Assign sales domains/projects through managers or above. A
+   supervisor's routing_view permission controls additional routing visibility.
+
+CONNECT THE TWO SITES
+- Combined Compose supplies the same bridge secret to both apps, an internal
+  transport URL and the correct public Host header. Browsers use the public
+  agreements URL; internal container addresses never go to users.
+- Create an agreements account with only its permitted contracting companies.
+- In CRM user administration set that existing TFSC user UUID (Super Admin only).
+  For the CRM Super Admin's own link use Settings > Agreements account link.
+- In TFSC /reviews, map that CRM user UUID to the same TFSC account. Both sides
+  deliberately require explicit mappings, never a silent email match.
+- Confirm a sale in CRM, use Agreements on its client card, and redeem the code
+  while signed into the mapped TFSC account. Draft services/fees remain editable.
+- Save the complete draft, submit it for independent administrator review, then
+  generate the approved revision. The template/signature/content hash is checked
+  again by the generation worker. A changed draft requires fresh approval.
+- Create a separate approver account: a user cannot approve their own agreement.
+- Refresh Contract history in CRM to store the current authorized status snapshot.
+  Downloads require the TFSC session and company scope. A status of issued means
+  generated/released, not client-signed or legally executed.
+
+GOOGLE AND OPTIONAL SSO
+Google OAuth redirect: https://SALES_HOST/api/integrations/google/callback.
+Configure CRM_GOOGLE_CLIENT_ID, CRM_GOOGLE_CLIENT_SECRET and a Fernet encryption
+key in CRM_ENCRYPTION_KEY. Generate with:
+  python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+Only supervisors and above connect organizer accounts. Back up the encryption
+key separately; losing it makes saved tokens unreadable. Meetings create private
+events with no attendees or invitations. Explicit Sync refreshes provider state.
+Official reference: https://developers.google.com/workspace/calendar/api/v3/reference/events/insert
+
+OIDC is optional. Register a client for each app; callbacks are:
+  https://SALES_HOST/api/auth/sso/callback
+  https://AGREEMENTS_HOST/api/auth/sso/callback
+Set each app's OIDC issuer/client ID/secret. Configure MFA in that provider.
+Super Admin maps the immutable provider subject to an existing app account using
+POST /api/auth/sso/accounts with the normal session and CSRF token. Payload:
+  {"subject":"provider-subject","user_id":"existing-app-user-uuid"}
+No email-based auto-provisioning. New identities receive no access by default.
+
+OPERATIONS AND RELEASE GATE
+- Take consistent PostgreSQL backups of BOTH databases plus both data volumes,
+  agreement-files, signatures, font assets, encryption key and configuration.
+  Use pg_dump with credentials supplied privately, and test restore to an isolated
+  environment. Do not use Docker volume removal as an upgrade procedure.
+- Keep old images and pre-upgrade backups. Add a formal migration/rollback system
+  before changing existing columns or releasing to a large workforce.
+- The current dashboard executes scoped aggregates. Establish daily rollups,
+  background import jobs, queue monitoring, data retention, connection-pool limits,
+  tracing and load tests before expanding toward 10,000–50,000 accounts.
+- Measure p95/p99 latency under realistic concurrent login, search, paste/import,
+  dashboard and document-generation traffic. Account count is not concurrency.
+- Test credential revocation, cross-team isolation, duplicate races, edit deadlines,
+  permission changes during export, DB failure and restoration on PostgreSQL.
+- Docker/HTTPS/live OAuth and full-load validation have not run on the development
+  PC. Do not treat the included Compose files as evidence of a tested VPS rollout.

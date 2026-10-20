@@ -1,0 +1,113 @@
+TFSC SALES CRM — AS BUILT
+Version 1.0.1, October 15, 2026. Implemented pilot; not a production-scale guarantee.
+
+PURPOSE AND REQUIREMENTS
+Replace sales cold-calling spreadsheets for RCM services. Preserve who recorded
+research, who attempted contact first, outcomes, follow-ups, qualification, lead
+ownership and sales attribution. Integrate with a separate agreements website.
+Team size requested: 550 now, potentially 10,000–50,000 accounts. No measured
+end-to-end capacity for that target exists for this CRM build.
+
+SOURCE MAP
+crm_app.py: FastAPI routes, validation, activities/imports, users, leads, dashboard.
+crm_db.py: SQLAlchemy Core tables/engine, seed catalogs, audit insert, policy.
+crm_security.py: roles, recursive reporting scope, DTO field suppression, sessions.
+crm_reporting.py: dated call/connection target revisions, weekday target calendar.
+crm_followups.py: separate group-leader follow-up task coordination.
+crm_contracts.py: signed TFSC status fetch and persisted scoped snapshots.
+google_calendar.py: optional organizer OAuth, encrypted tokens, Meet creation/sync.
+oidc_support.py: optional PKCE/nonce OIDC with immutable subject mapping.
+web/src/App.tsx: main workspace, auth, dashboard, people, sheet, activity and leads.
+web/src/components.tsx: dialogs, accessibility/focus trap, fields, cursor pagination.
+web/src/Profile.tsx, Meetings.tsx, RecordPicker.tsx, FollowupTask.tsx,
+ClientHistory.tsx: specialized features. api.ts: fetch/session CSRF helper.
+web/src/pacific.ts: Pacific civil-time conversion including DST gaps/overlaps.
+web/src/styles.css: responsive UI/design tokens. web/public/assets: logo/fonts.
+web/dist: compiled runnable browser assets. Edit src then rebuild; do not edit dist.
+launch.py/Start.ps1/Stop.ps1: Windows local service. Dockerfile: Node build plus
+Python runtime. compose.combined.yaml: two PostgreSQL DBs, both APIs, TFSC worker,
+Caddy reverse proxy. compose.yaml: standalone CRM stack.
+
+DATA AND SECURITY
+SQLAlchemy Core, SQLite WAL for local pilot, PostgreSQL for hosted mode. Hosted
+mode rejects SQLite and non-HTTPS public origin. create_all is additive bootstrap,
+not a versioned migration system. org_id exists on CRM business tables; catalogs
+and policy are global. Do not advertise complete SaaS multitenancy from org_id alone.
+Tables include users, sessions, settings, domains, projects, teams, memberships,
+activities, leads, ownership claims, conflicts, meetings, audit, imports, outbox,
+handoffs, layouts, throttle, target versions, followup tasks, contract snapshots,
+Google connections/OAuth state, and OIDC accounts/state. See schema inventory.
+Role rank: agent < supervisor < manager < director_admin < super_admin.
+Manager/subordinate scope uses a recursive CTE. Agent sees own activity/lead data.
+Group leader is membership metadata, not a new elevated role: delegated follow-up
+tasks are visible/editable without the right to modify another user's call record.
+Manager+ creates users; supervisor can create groups but not arbitrary user roles.
+Agents NEVER receive sales domain/project/owner metadata in authorized DTOs.
+Supervisor routing visibility needs routing_view; manager+ can see routing.
+Meeting details require supervisor+. TFSC entitlement is separate from sales role.
+Session tokens are hashed in DB; HttpOnly cookies; CSRF header for mutations;
+Host/Origin validation; password hashing; optimistic versions and account checks.
+New temporary passwords require change. No email invitations/recovery service.
+
+ACTIVITY LIFECYCLE
+Research: all four outcomes unset => no first_committed_at, edit_deadline or effort
+credit. Any explicit yes/no starts the window. Called=No starts the window but
+does not earn a call attempt. Connected=Yes requires Called=Yes. Imported conflicts
+are returned for review instead of silently turning into valid outcomes.
+Manual edit window: 60 min. Imported: default 15, admin configurable 10–20 min.
+Timestamp/deadline authoritative on server; unsetting outcomes does not reset it.
+Expired changes require supervisor scope + reason. Soft deletion is supervisor+.
+Compare-and-swap version and deadline in UPDATE prevent stale writes.
+Original import fields are retained as source provenance. Names are preserved;
+software does not invent M.D./LLC credentials. Phone normalization is NANP possible
+number validation, not verified ownership/reachability. Email outer whitespace is
+trimmed and domain lowercased; invalid internal spaces are rejected.
+Pacific business dates use America/Los_Angeles; server timestamps stored as UTC
+epoch. Eight clock cards compare US zones and Pakistan with DST-aware offsets.
+
+LEADS
+follow_up -> strong_follow_up_pending (agent request) ->
+strong_follow_up_confirmed (supervisor) -> qualified_lead -> signed_up.
+meeting is a supported stage in transitions; creating a meeting does not itself
+implement an automatic lead-stage transition. lost/reopen/reverse_sale are audited.
+Qualification inserts a unique org+normalized-phone ownership claim. Original or
+explicit scoped user receives the lead; automatic round-robin is NOT implemented.
+Reassignment requires reason/incentive attribution. Phone/name editing is blocked
+when the activity supports an owned lead. Shared practice switchboards need a more
+careful canonical identity/adjudication model; don't remove uniqueness blindly.
+Duplicate alerts currently compare up to 20 matching activities plus claim lookup.
+Sales celebrations are recent org-wide staff-name messages, without client details.
+
+METRICS
+Exclusive highest-stage score per attempted activity: 10 attempted, 20 connected,
+30 connected plus text/email, 50 confirmed strong follow-up/qualified/meeting,
+100 signed up. Text and email do not double-count. Quality = points/(100*attempts).
+Composite = 50% quality + 25% capped attempts/target + 25% capped connection
+rate/connection target. Defaults 170 calls per weekday and 60% connection target.
+Idle active agents count in team target. Zero attempts shows No activity.
+Target revisions start next Pacific date, preserving targets for past dates.
+Current lead stage can change retrospective quality; this is not event-time scoring.
+Workdays are weekdays, no holiday/leave roster. Historical imported dates can move
+eligibility earlier than account creation. Reports use raw SQL aggregates, not
+rollups/cache. Top 200 leaderboard entries are returned, not full 50,000-row charts.
+
+IMPORT/INTEGRATIONS
+Paste TSV/CSV, Refine then Save up to 1,000 rows. Atomic transaction and owner+key
+idempotency/body hash. XLSX first populated visible data sheet preview up to1,000;
+not a full-workbook migration, not a virtualized editable spreadsheet grid.
+Google OAuth uses encrypted organizer tokens, deterministic event ID, private
+30-min event/Meet link; explicit refresh only, no attendee invitations. Mock tested.
+Vonage currently tel: links through registered OS handler, no verified call events.
+Contracts through shared bridge document; no credential forwarding between sites.
+
+RECENT FIX TO PRESERVE
+v1.0.1: components.Modal has closeOnBackdrop option; People create/edit sets it
+false. Outside clicks retain typed values. Close button/Escape still intentionally
+close. Browser checked both Add and Manage forms. Do not reintroduce dismissal.
+
+USER REQUESTS NOT FULLY MET
+Read KNOWN-ISSUES.csv. Key gaps: enterprise rollups, resumable import pipeline,
+Excel-like grid, historical staff calendar, configurable permissions/custom roles,
+round-robin assignment, shared-number adjudication, durable integration events,
+invitation/recovery workflows, live provider setup, formal migrations, production
+monitoring/backups/load validation. No zero-defect, unlimited-DB or theft-proof claim.

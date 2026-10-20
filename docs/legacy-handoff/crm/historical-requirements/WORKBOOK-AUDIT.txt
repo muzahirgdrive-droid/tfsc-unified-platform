@@ -1,0 +1,114 @@
+SALES WORKBOOK: VERIFIED STRUCTURE AND CALCULATION AUDIT
+Source: Sales - Office 2 - Tracking (2).xlsx
+Location supplied by owner: C:\Users\MuzahirHussain\Downloads\Sales - Office 2 - Tracking (2).xlsx
+Inspection: 14 October 2026; read-only XLSX XML extraction and independent Python calculation.
+Source SHA-256: 278fe1439b6d58e9eca011493cdce62fba74f354e762dbe4b3abf70b75c93f2d
+
+SCOPE AND LIMITS
+This is an audit of the downloaded file, not access to its live Google Sheet. No Google permissions, Apps Script, live edits or external workflows were inspected. The workbook was not modified or recalculated in Excel. Cached dashboard values are explicitly distinguished below from independently derived raw-input metrics. A cell containing a cached error string was counted even when exported as string type rather than Excel error type.
+
+INVENTORY
+25 worksheets: Dashboard, Validations, 13 visible operator/template sheets, and 10 hidden Unassigned sheets. Twelve visible named operator sheets contain business data; the visible sheet named 'o' has no name/phone data. Unassigned 1 through Unassigned 10 also have no name/phone data in this snapshot.
+
+617,185 formula-bearing cells exist, mostly because score/stage formulas are prefilled far beyond actual input. This is not a count of calls. Across operator/template sheets there are 89,914 rows with a nonempty Provider Name or Phone cell, the explicit meaningful-row definition used for this audit. There are 89,585 rows with Call Attempt exactly 'Yes' across all stored dates. These counts describe records, not unique people or verified provider calls.
+
+COLUMN MAP
+A Date: source business date; future app stores provenance separately from server receipt time.
+B Provider Name: person/practice label; preserve original and reviewed normalized display.
+C Phone: raw endpoint; normalize for matching and dialer use, keeping extensions.
+D Email: raw email; trim/validate with review rather than inventing an address.
+E Call Attempt: source Yes/No; future app adds explicit Unset.
+F Connected: source Yes/No; future attempted-call denominator must be consistent.
+G Text Sent: channel outcome.
+H Email Sent: channel outcome.
+I Strong Follow-Up: currently directly editable source flag; future app requires supervisor confirmation.
+J Sign Up: currently source flag; future app separates proposed, confirmed and contract-executed states.
+K # Follow-Ups: source declared count; future app derives actual count from events.
+L Last Follow-up: source date; retain alongside event-derived last activity.
+M Next Follow-up: future scheduled task with explicit timezone.
+N Call Again?: source instruction; future explicit task preference/status.
+O Remarks: free text; render safely, never execute as instructions.
+P Quality %: formula output, not authoritative imported input.
+Q Stage: formula output, not authoritative imported input.
+
+EXACT INTENDED ROW SCORING
+Representative P2 formula:
+IF(E2<>"Yes","",IF(J2="Yes",100,IF(I2="Yes",50,IF(AND(F2="Yes",OR(G2="Yes",H2="Yes")),30,IF(F2="Yes",20,10)))))
+
+Priority: no E=Yes means blank; otherwise Sign Up 100; Strong Follow-Up 50; Connected with Text OR Email 30; Connected 20; Attempted 10. Stages in Q follow the same priority. The highest applicable score replaces earlier stages. The source's explanatory incremental labels must not be interpreted as additional credits after reaching a higher stage.
+
+The source formula can award 50/100 without Connected=Yes, provided Attempt=Yes. Do not silently alter historical source values; mark contradictory/unsupported outcomes for review. The new workflow may have supervisor-confirmed externally sourced leads, but must not invent a connected call for them. New-app scoring uses confirmed milestones and a qualifying activity, a deliberate governance improvement over editable source flags.
+
+SETTINGS AND REFERENCES
+Validations!C7: EOMONTH(TODAY(),-1)+1, cached as 1 October 2026.
+Validations!C8: TODAY(), cached as 14 October 2026.
+Validations!C9 / CallTarget: 170.
+Validations!C10 / ConnTarget: 0.6.
+Validations!C11: NETWORKDAYS(C7,C8), cached 10; no holiday range supplied.
+DailyDate is Dashboard!D18, cached 14 October 2026.
+Roster is Validations!C32:C54; RosterActive is Validations!E32:E54.
+Thresholds: Validations!G24=0.8, G25=0.65, G26=0.5, G27=0.35, G28=0.
+
+Dashboard!P11:
+0.5*P8 + 0.25*MIN(1,P10/CallTarget) + 0.25*MIN(1,P4/ConnTarget)
+P8 is quality, P10 calls/day/reporting rep, P4 connection rate.
+The 50/25/25 weights and capped volume/connection components are intentional source rules.
+
+PERIOD RECONCILIATION: 1 THROUGH 14 OCTOBER 2026
+All numbers below use the same inclusive date boundaries as the stored dashboard formulas.
+
+Metric                                  Stored dashboard        Raw-input reconstruction
+Attempted rows                          17,020                  17,020
+Connected flags                         2,803                   2,803
+Connection rate                         16.4689%                16.4689%
+Strong Follow-Up flags                  27                      27
+Sign Up flags                           1                       1
+Text Sent flags                         12                      12
+Email Sent flags                        not in P7 touch KPI     402
+Rows with Text OR Email                 not in P7 touch KPI     413
+Quality points                          152,380 in T helpers    201,080
+Quality percentage                      8.9530%                 11.8143%
+Composite using old denominators        32.1964%                33.6270%
+
+The reconstructed composite changes only the quality calculation and retains the workbook's original 10 working days / 12 reporting representatives. It is not the new app's attendance-adjusted policy. Both composites remain in the source's Poor band; the numerical distortion still matters.
+
+For 14 October alone, raw inputs contain 2,070 attempted rows and 386 connected flags. These are static snapshot counts, not live provider verification.
+
+ERRORS AND MISSING SCORES
+There are 21 cached #REF! error cells across score/stage columns in the supplied data. Examples:
+- Inaam Ullah Khan!P8695, Q8695, P9099, Q9099, plus other affected rows.
+- Shoaib Ur Rehman!P8049, Q8049, P8064, Q8064.
+- Irfana Wali!P177, Q177, P305, Q305, P922, Q922.
+- Dilam Yar!P901, Q901.
+Shoaib Ur Rehman!P8050/Q8050 also use H8049 as the initial condition instead of that row's Call Attempt field, a separate reference defect.
+
+Among October attempted rows, 897 lack a usable numeric cached quality score (missing/blank or error); 888 are on Kashif Ilyas. One numeric score differs from the canonical ladder. Across all stored dates, 1,062 attempted rows lack a usable numeric cached quality score. These are cached-value findings; no native recalculation was performed.
+
+Dashboard!T22, T30 and T31 are IFERROR-wrapped SUMIFS helpers cached as zero for entire representative totals, while the underlying October attempted rows have independently computed scores. This is why adding only the usable P values (190,170 points) still does not match the dashboard's 152,380. A new backend must surface data-quality issues rather than replace an affected representative's full contribution with zero.
+
+OTHER VERIFIED REPORTING ISSUES
+1. Chart 2 is titled 'Calls by Employee (month-to-date)' but references Dashboard!D22:D44, the daily call count. Chart 1 uses the month-to-date funnel helper range. Chart titles, date filters and query grain must agree.
+2. Dashboard!P7 sums S22:S44. Those helpers count G=Yes only, so the displayed touch metric omits email-only rows. Define and show SMS, email and combined touch metrics separately.
+3. The daily table's Follow-Ups value counts I=Yes (Strong Follow-Up), not all follow-up tasks or K's declared count. The new app must distinguish them.
+4. Connection, strong and sign-up COUNTIFS are not consistently constrained by E=Yes, while quality is. This snapshot has 33 rows across all dates with a downstream Yes flag but no E=Yes, including 32 in October. They are review items or separate channel activity, not automatic attempted-call credit. Across all dates one connected flag has no attempt.
+5. Dashboard!P9 counts representatives with positive monthly calls; it does not use the RosterActive named range as its participation denominator. Treat attendance, active employment, scheduled workdays and 'reported any calls' as different concepts.
+6. Whole-column INDIRECT/COUNTIFS/SUMIFS and many prefilled formulas create spreadsheet overhead. A database should use indexed events and incremental, authorized aggregates instead of translating the spreadsheet into repeated full-table scans.
+
+DUPLICATE AND VALIDATION LIMITATIONS
+The workbook has local conditional-format duplicate rules with misaligned references, for example a provider-name rule using COUNTIF(B:B,B12775)>1 over earlier row ranges. These do not establish cross-agent normalized-phone ownership.
+
+A conservative digits-only pass found 5,917 repeated ten-digit telephone keys, including 3,382 appearing on more than one operator sheet. This pass strips punctuation and a leading 1 from eleven-digit strings and considers only resulting ten-digit keys; it is not a complete phone parser, not telephone validity verification, and not a count of duplicate clients. Use a proper phone parser and reviewed shared-number handling in the actual migration. No raw numbers are included in this package.
+
+The existing phone/email validation does not provide a complete normalization or identity policy. The workbook has no dependable immutable actor IDs, server event timestamps, lock deadlines, exclusive ownership constraints, hierarchical access controls, meeting confidentiality or release approval records. Those are new application requirements, not existing spreadsheet capabilities to preserve.
+
+MIGRATION CONSEQUENCES
+- Import raw business inputs and provenance, never formulas as executable authority.
+- Reconstruct scores from E:J with versioned rules; preserve discrepancies for review.
+- Ask authorized management to map operator sheets to stable accounts; names are not identity keys.
+- Skip empty/formula-only template rows and do not auto-create ten Unassigned users.
+- Reconcile legitimate repeated calls separately from duplicate import rows.
+- Import dates as historical business dates; row order cannot prove who called first.
+- Supervisor-review strong-follow-up/sign-up claims; do not trigger historical celebrations or new external communications.
+- Keep original file unchanged and record its checksum, import ID, sheet, row and transformations.
+
+The sanitized totals are suitable for a developer's architecture review. The original workbook should be supplied privately only when historical import work is authorized and necessary.

@@ -1,0 +1,171 @@
+TFSC COMPLIANCE: FACTUAL INTEGRATION AUDIT AND PROPOSED CRM BOUNDARY
+Reviewed 14 October 2026. This is a source-code review, not a new security certification.
+
+1. VERIFIED BASELINE TO CONTINUE
+
+Source folder: outputs/ScribeAlignContractStudio
+Application: TFSC Compliance 4.0.0 (portal.py), not the older Alpha Bridge integration package.
+The current standalone package is outputs/TFSC-Compliance-Complete-v4.0.0.zip.
+Use the current source and retain existing data. Do not rebuild the contract engine from scratch or revive the legacy unauthenticated HTTP handler.
+
+Code map:
+- portal.py: FastAPI application, authentication endpoints, client history, files, generation, user/company administration.
+- security.py: Argon2 passwords, database-backed sessions, CSRF, role/owner/company checks.
+- database.py: SQLAlchemy Core schema; SQLite WAL for desktop; PostgreSQL for hosted operation.
+- worker.py: database generation queue, PostgreSQL SKIP LOCKED job claim, document creation and retained output bytes.
+- server.py: retained validation and composition helpers. Its VERSION is an older helper constant; portal.py is the live version authority. Its main entry delegates to authenticated launch.py.
+- revised_content.py, contract_content.py, templates/: approved BAA wording, service composition and 19-service catalog.
+- document_engine.py, signature_store.py, entities.py: letterheads, signatures, layout, Word/PDF rendering.
+- index.html, app.js, studio.js, portal.js, styles.css, tfsc.css, portal.css: current interface; login.html/login.js: sign-in.
+- compose.yaml, Dockerfile, Caddyfile, DEPLOYMENT.txt: existing hosted deployment with PostgreSQL, API and a separate render worker.
+- DEVELOPER.txt and VERIFICATION.txt: existing tests and measured checks; inspect rather than claim an unperformed new test run.
+
+Read only application source for this planning task. Real client databases, credentials and signature image contents were not examined.
+
+2. VERIFIED CURRENT DATA MODEL
+
+users: id, email, name, password, role, admin_id, companies JSON, active, reset_required, created.
+sessions: hashed token, user_id, csrf, expiry.
+clients: id, owner_id, name, name_key, address, draft JSON, updated; uniqueness is owner_id plus a hash of normalized name.
+contracts: immutable generated revision id, client_id, owner_id, entity, created, payload snapshot, folder, version, legacy flag.
+documents: id, contract_id, name, kind, agreement type, original path, SHA-256, size and full binary body.
+audit: event id/time, actor id/name, optional client id, action and detail JSON.
+jobs: owner/client, idempotency key, state, payload, lease, attempts, result/error; uniqueness owner_id plus request key.
+settings and throttle: schema/setup metadata and rate limiting.
+
+Important distinction: this is an owner-scoped agreements database. It is not currently a centralized CRM prospect/client registry. The same legal entity can exist under different owners. Client identity is not based on phone, NPI, company registration or a CRM UUID. Never merge records automatically based only on a name match.
+
+3. EXISTING API SURFACE: NOT A PUBLIC CRM INTEGRATION API
+
+GET /api/health
+GET /api/auth/status
+POST /api/auth/setup
+POST /api/auth/login
+GET /api/auth/me
+POST /api/auth/logout
+POST /api/auth/password
+GET /api/config
+GET /api/clients?q=...&page=...
+GET /api/clients/{id}
+POST /api/clients
+GET /api/clients/{id}/history?page=...
+GET /api/clients/{id}/activity?page=...
+GET /files/{id}
+POST /api/preview
+POST /api/generate
+GET /api/jobs
+GET /api/jobs/{id}
+POST /api/folders
+GET /api/users?q=...&page=...
+GET /api/admins?page=...
+POST /api/users
+POST /api/users/{id}
+POST /api/signature
+POST /api/import-legacy
+
+The APIs use a same-origin, HttpOnly session cookie and X-CSRF-Token for mutations. The middleware rejects cross-site mutation requests and limits the configured host/origin. There is no OAuth/OIDC federation, bearer-token service client, CRM handoff route, approval route, signing provider, email sending, calendar integration or outbound event webhook. Do not connect two sites by exposing cookie tokens, weakening CSRF, broadening CORS indiscriminately, or posting one site's HTML form from the other site.
+
+POST /api/generate requires Idempotency-Key (16-64 letters, digits or hyphens); it returns a queued job identifier, generally HTTP 202. Poll GET /api/jobs/{id}. Successful results include contract_id and authenticated /files/{id} links. Generation is limited to five queued/running requests per user. A repeat idempotency key returns the previous job. Worker timeouts require an explicit new generation rather than automatic retry of a possibly published file.
+
+POST /api/clients saves an editable draft and returns id. Payload validation is server.validate(payload, draft=True). Preview/generation use full validation. Core fields:
+- id (optional existing TFSC client UUID, 32 lowercase hex characters)
+- entity (one of the exact three existing company names)
+- client_name, address, client_signatory, client_title, client_email
+- effective_date and baa_effective_date (YYYY-MM-DD)
+- document_types: baa, services, or both
+- services and custom_services arrays
+- provider_address, provider_email, governing_state
+- notice_days, payment_days, cure_days, special_terms
+- output_root and include_signature
+
+Pricing service fields include id, model, rate, quantity, hours, unit, details, milestone1, milestone2 and installment_percent as applicable. Credentialing rate_card uses government_rate and commercial_rate. Website development uses website_kind=wordpress or custom. Reuse the actual catalog/validators; never accept CRM-supplied contract wording as trusted boilerplate. Current validation strips unknown fields, so simply adding crm_client_id to the current JSON will NOT establish a durable CRM link.
+
+4. CURRENT PERMISSIONS AND COMPATIBILITY GAPS
+
+Exactly three agreement roles exist:
+- super_admin: all records and company permissions, signature administration.
+- admin: own records and direct assigned users' records; creates users within own company grants.
+- user: own records and granted contracting companies; active parent and parent's company permissions also apply.
+
+This is a two-level admin-to-user hierarchy, not Director > Manager > Supervisor > Agent. No group-leader role, flexible scoped capability grants, project assignments, photos or historical team memberships exist. Do not force CRM hierarchy into users.admin_id or equate a sales Supervisor with agreement Admin. Each application needs its own independently assigned entitlement and permissions.
+
+The exact existing contracting companies in entities.py are:
+- SCRIBE ALIGN LLC (key scribe), Naeem Abbas, Chief Executive Officer.
+- EXTENDED HEALTH SERVICES INC. (key ehs), Naeem Abbas, Chief Executive Officer.
+- 24-7 CONSULTANCY LLC (key 24-7), Danish Ather, Chief Operating Officer.
+
+Default contracting company is SCRIBE ALIGN LLC. CRM sales domains are a separate configurable catalog. The user's nine sales domains include six businesses with no current contract template/letterhead/signatory setup. A sales domain assignment must not silently grant contract generation or automatically become a new legal entity. Maintain an explicit nullable mapping sales_domain_id -> permitted TFSC legal_entity_id. An unmapped domain requires authorized selection of a supported contracting entity or future approved entity configuration, never substitution by guessing.
+
+The current client list and client audit access start with owner scope; document downloads/history also apply company scope. CRM hierarchy, projects and field confidentiality are not enforced by these endpoints. New integration DTOs and policies must prevent an agent, API caller, notification payload, search index, export or browser bootstrap JSON from seeing restricted project/domain/meeting information.
+
+Current app.js today() uses the browser's local date. The new CRM must instead use America/Los_Angeles business dates from a server-controlled clock. Agreement date behavior should use explicit date-only handoff fields and offer the existing authorized custom-date editing. No PST fixed-offset arithmetic; DST must remain correct.
+
+5. PRESERVE THESE AGREEMENTS BEHAVIORS
+
+- Supplied approved BAA text and the current service-specific composition; no unauthorized legal rewrites.
+- Exact original company letterheads, signatory mapping and approved signature placement.
+- Times New Roman body, justification, H1/H2/H3 sizes 16/14/13, approved heading colors, margins and page breaks.
+- Page X of Y, correct total fields and separate controlled execution page.
+- BAA alone, SA alone or both; client/date substitution; custom BAA effective date.
+- All 19 service IDs: medical_billing, wc_collection, personal_injury_collection, medical_coding, prior_auth, virtual_assistant, medical_scribe, ar_denials, rcm_consultancy, digital_marketing, telemarketing, credentialing, state_licensing, compliance_training, website_development, consultancy, mips_consultancy, coding_consultancy, other.
+- Personal Injury Collection FTE or percentage of eligible net collections; credentialing government/commercial rate card; WordPress/custom website pricing choice.
+- Editable DOCX and PDF from one immutable revision; file bytes in database and configured output folder; SHA-256 checks; authenticated downloads; historical versions.
+- Existing records, IDs and revision payloads must migrate without loss or retroactive content changes.
+- Windows Word renderer and Linux LibreOffice renderer are distinct; visual regression checks are required with licensed target fonts. File sharing cannot prevent a recipient from taking a photograph of a visible signature.
+
+6. RECOMMENDED SEPARATE-SITE ARCHITECTURE (TO IMPLEMENT, NOT ALREADY PRESENT)
+
+Run Sales CRM and TFSC Compliance as separate web applications on separate origins. Use a shared standards-based identity authority with separate OIDC clients, server-side application sessions, Authorization Code + PKCE, state/nonce validation, and exact redirect allowlists. Bind identities with immutable issuer+subject, not email alone. Do not share passwords or broad domain cookies. Migration must explicitly link existing TFSC accounts and preserve their ownership and history. A CRM-only user must have no agreement access; a contracts-only user must receive no sales data. A user may receive both through explicit assignment.
+
+Use PostgreSQL for the target deployment. Each service owns its schema and migrations. Share identity identifiers and stable business references through authenticated service APIs/events; never grant the CRM broad direct writes to TFSC tables. A modular CRM backend and the existing agreement service are sufficient initially; do not create many microservices merely for scale claims.
+
+The CRM owns canonical prospect/practice/contact IDs, call/activity history, assignments, pipeline, sales domain/project references and signed-up client status. TFSC owns agreement drafts/revisions, review state, final artifact manifests and rendering. Introduce an explicit link table mapping CRM canonical client ID and opportunity ID to TFSC client/agreement request IDs. TFSC's current owner+name rule is not a canonical cross-application key. Plan an additive migration and reviewed duplicate reconciliation; do not repurpose or overwrite existing IDs.
+
+Cross-site handoff:
+1. An authorized Supervisor or higher marks the opportunity signed_up and selects Proceed to agreements. Sign-up is a sales milestone, not proof that a legal agreement has been executed.
+2. CRM verifies current scope, client identity, explicit agreement entitlement and selected legal entity; it creates a versioned handoff snapshot with an idempotency key and a correlation ID.
+3. CRM backend calls a new authenticated internal TFSC handoff endpoint with a narrowly scoped service identity and verifiable initiating-user context. TFSC independently checks current local entitlements and company permissions; it does not trust a role string in a request.
+4. TFSC validates/maps CRM identity and creates or reopens the appropriate editable draft. It returns an opaque, short-lived, single-use handoff reference scoped to the intended user. Redirect the browser to TFSC; authenticate there and resolve the reference server-side. Never put names, addresses, phone numbers, tokens with reusable privileges or meeting URLs in the query string.
+5. The authorized user reviews legal client details, explicit dates, services and fees in TFSC. The source CRM snapshot remains auditable. Subsequent CRM changes do not rewrite issued agreements.
+6. TFSC reports approved, generated, sent and executed milestones separately via authenticated events. CRM displays permitted summaries; download access remains checked at TFSC.
+
+Example NEW endpoint names, to design and test rather than assume exist:
+POST /api/integrations/v1/crm/handoffs
+GET /api/integrations/v1/crm/handoffs/{id}/status
+POST /api/agreement-requests/{id}/submit-review
+POST /api/agreement-requests/{id}/approve
+POST /api/agreement-requests/{id}/reject
+POST /api/agreement-requests/{id}/issue
+POST /api/integrations/v1/events (CRM receiver)
+
+Use a versioned request schema containing event/request IDs, canonical client ID, opportunity ID, source revision, selected legal entity, approved editable client fields, selected service IDs/pricing inputs, initiating identity reference and schema version. The server must decide tenant, permission scope, storage root and signatory; do not take those as unchecked browser privileges. Project/domain metadata is only sent when necessary and only to entitled services/users.
+
+7. AGREEMENT APPROVAL LOCK
+
+Add an explicit agreement request/revision state machine:
+draft -> submitted_for_review -> approved -> issued/sent -> executed,
+with rejected/changes_requested, superseded, cancelled and failed states where appropriate.
+
+Keep sales signed_up, contract approved, contract sent and contract executed distinct. A manually confirmed signature requires evidence and an authorized actor; do not mark executed merely because PDF generation succeeded or a client downloaded it.
+
+Before final export or sending, freeze a canonical payload snapshot and content hash including client details, effective dates, selected services/prices, special terms, template version, legal entity and signature policy. Approval binds to that exact version/hash and approver. Any material edit invalidates the old approval and returns the new revision to review. The final issue operation rechecks current permissions and approved hash inside a transaction, then queues exactly that immutable snapshot.
+
+Set approve/issue capabilities explicitly. A Supervisor may approve within assigned scope only when granted; a contracts-only user may draft without seeing sales activity. Default to a separate approver for a drafter's own request unless an authorized business setting permits self-approval with an audit reason. Super Admin overrides are explicit and recorded.
+
+Enforce the lock on the server across new APIs AND the existing POST /api/generate and GET /files/{id} paths. Adding a disabled Send button is insufficient. Internal draft previews may remain available to authorized reviewers; their status must be unmistakable and they must not carry a final authorized signature before approval. Preserve final-document formatting. Restrict final download/export according to issue policy, as email-free manual sending otherwise bypasses a send-only gate.
+
+There is currently no send or e-sign service. Introduce a provider adapter and safe development stub, with explicit configuration and user authorization before actual client communication. Do not label a stub as a working email or signing integration. Repeated issuance/webhook deliveries must not send twice.
+
+8. RELIABLE EVENT AND AUDIT DESIGN
+
+Persist an outbox event in the same transaction as each business transition. Deliver asynchronously with retry/backoff. Receiver stores an inbox event ID for deduplication, validates service authentication/signature and timestamp, checks schema versions, and handles out-of-order revision events. A redelivery must never create a second client, agreement, signature request or celebration. Record correlation IDs across CRM audit, TFSC audit, job and artifact manifest.
+
+Audit immutable events with actor identity, role/capability at action, UTC timestamp, Pacific business date, object ID, action, before/after references, reason, source and correlation ID. Do not expose broad audit payloads to agents. The current TFSC audit is append-only through API convention, not cryptographically tamper-proof; database administrators control its contents. Retention, restricted audit writer roles and integrity verification need an explicit operations design.
+
+9. SCALE: VERIFIED LIMITS AND REQUIRED NEW WORK
+
+Existing source provides indexed owner-based queries, offset pagination, a durable queue, idempotent enqueue, per-user pending limits and PostgreSQL worker claims. The shipped verification report records 10,000 user rows, 9,999 clients and a local database-query benchmark. This does not establish 50,000-user CRM capacity, 50,000 simultaneous users or unlimited storage. Do not cite that benchmark as a full system load test.
+
+New work should include reviewed schema migrations, load profiles with realistic daily activity and imports, cursor pagination, compound indexes derived from actual queries, pooled connections within a budget, bounded bulk imports, asynchronous normalization/duplicate checks, incremental dashboard aggregates, scoped event delivery, independent render queues, resource limits, observability and restore drills. Retain database copies of contract files as requested, but avoid loading BLOBs for lists/analytics. Plan artifact growth and retention, streaming downloads and database storage/backup costs explicitly.
+
+Test cross-application identity revocation, contracts-only and sales-only isolation, company/domain separation, restricted projects absent from agent responses, supervisor scope, self-approval policy, edited-after-approval rejection, duplicate handoff replay, event ordering, stale permissions at generation time, database/file consistency, preserved old contracts, and regression of all three letterheads. Add measured production-like concurrency targets; do not promise zero flaws or no database limits.

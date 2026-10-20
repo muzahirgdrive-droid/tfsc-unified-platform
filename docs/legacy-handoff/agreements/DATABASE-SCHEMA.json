@@ -1,0 +1,101 @@
+{
+  "note": "Source Table expressions; identity() helper contributes id/org_id. Includes conditional provider tables.",
+  "tables": [
+    {
+      "table": "crm_actor_links",
+      "file": "crm_bridge.py",
+      "line": 12,
+      "definition": "Table('crm_actor_links', db.meta, Column('crm_actor_id', String(64), primary_key=True), Column('user_id', String(32), ForeignKey('users.id'), nullable=False), Column('created', Float, nullable=False))"
+    },
+    {
+      "table": "crm_bridge_nonces",
+      "file": "crm_bridge.py",
+      "line": 13,
+      "definition": "Table('crm_bridge_nonces', db.meta, Column('nonce', String(100), primary_key=True), Column('created', Float, nullable=False))"
+    },
+    {
+      "table": "crm_client_links",
+      "file": "crm_bridge.py",
+      "line": 14,
+      "definition": "Table('crm_client_links', db.meta, Column('id', String(32), primary_key=True), Column('crm_client_id', String(64), nullable=False), Column('owner_id', String(32), ForeignKey('users.id'), nullable=False), Column('client_id', String(32), ForeignKey('clients.id'), nullable=False), UniqueConstraint('crm_client_id', 'owner_id', name='uq_crm_client_mapping'))"
+    },
+    {
+      "table": "crm_bridge_handoffs",
+      "file": "crm_bridge.py",
+      "line": 15,
+      "definition": "Table('crm_bridge_handoffs', db.meta, Column('id', String(32), primary_key=True), Column('owner_id', String(32), ForeignKey('users.id'), nullable=False), Column('request_key', String(80), nullable=False), Column('body_hash', String(64), nullable=False), Column('client_id', String(32), ForeignKey('clients.id'), nullable=False), Column('token_hash', String(64), nullable=False), Column('expires', Float, nullable=False), Column('redeemed', Float), Column('created', Float, nullable=False), UniqueConstraint('owner_id', 'request_key', name='uq_crm_handoff_key'))"
+    },
+    {
+      "table": "agreement_reviews",
+      "file": "crm_bridge.py",
+      "line": 16,
+      "definition": "Table('agreement_reviews', db.meta, Column('id', String(32), primary_key=True), Column('owner_id', String(32), ForeignKey('users.id'), nullable=False), Column('client_id', String(32), ForeignKey('clients.id'), nullable=False), Column('entity', String(100), nullable=False), Column('payload', JSON, nullable=False), Column('payload_hash', String(64), nullable=False), Column('assets_hash', String(64), nullable=False), Column('state', String(30), nullable=False), Column('version', Integer, nullable=False), Column('approver_id', String(32), ForeignKey('users.id')), Column('reason', Text), Column('job_id', String(32), ForeignKey('jobs.id')), Column('manifest', JSON), Column('created', Float, nullable=False), Column('updated', Float, nullable=False))"
+    },
+    {
+      "table": "users",
+      "file": "database.py",
+      "line": 14,
+      "definition": "Table('users', meta, Column('id', String(32), primary_key=True), Column('email', String(200), unique=True, nullable=False), Column('name', String(150), nullable=False), Column('password', Text, nullable=False), Column('role', String(20), nullable=False), Column('admin_id', String(32), ForeignKey('users.id'), index=True), Column('companies', JSON, nullable=False), Column('active', Boolean, nullable=False, default=True), Column('reset_required', Boolean, nullable=False, default=False), Column('created', Float, nullable=False))"
+    },
+    {
+      "table": "sessions",
+      "file": "database.py",
+      "line": 20,
+      "definition": "Table('sessions', meta, Column('token', String(64), primary_key=True), Column('user_id', String(32), ForeignKey('users.id'), nullable=False, index=True), Column('csrf', String(64), nullable=False), Column('expires', Float, nullable=False, index=True))"
+    },
+    {
+      "table": "clients",
+      "file": "database.py",
+      "line": 23,
+      "definition": "Table('clients', meta, Column('id', String(32), primary_key=True), Column('owner_id', String(32), ForeignKey('users.id'), nullable=False), Column('name', String(200), nullable=False), Column('name_key', String(64), nullable=False), Column('address', Text, nullable=False), Column('draft', JSON, nullable=False), Column('updated', Float, nullable=False), UniqueConstraint('owner_id', 'name_key', name='uq_client_owner_name'))"
+    },
+    {
+      "table": "contracts",
+      "file": "database.py",
+      "line": 28,
+      "definition": "Table('contracts', meta, Column('id', String(64), primary_key=True), Column('client_id', String(32), ForeignKey('clients.id'), nullable=False), Column('owner_id', String(32), ForeignKey('users.id'), nullable=False), Column('entity', String(100), nullable=False), Column('created', Float, nullable=False), Column('payload', JSON, nullable=False), Column('folder', Text, nullable=False), Column('version', String(40), nullable=False), Column('legacy', Boolean, nullable=False, default=False))"
+    },
+    {
+      "table": "documents",
+      "file": "database.py",
+      "line": 33,
+      "definition": "Table('documents', meta, Column('id', String(32), primary_key=True), Column('contract_id', String(64), ForeignKey('contracts.id'), nullable=False, index=True), Column('name', String(200), nullable=False), Column('kind', String(20), nullable=False), Column('agreement', String(20), nullable=False), Column('path', Text, nullable=False), Column('sha256', String(64), nullable=False), Column('size', Integer, nullable=False), Column('body', LargeBinary, nullable=False))"
+    },
+    {
+      "table": "audit",
+      "file": "database.py",
+      "line": 38,
+      "definition": "Table('audit', meta, Column('id', String(32), primary_key=True), Column('created', Float, nullable=False), Column('actor_id', String(32), ForeignKey('users.id'), nullable=True), Column('actor_name', String(150), nullable=False), Column('client_id', String(32), ForeignKey('clients.id'), nullable=True), Column('action', String(80), nullable=False), Column('detail', JSON, nullable=False))"
+    },
+    {
+      "table": "jobs",
+      "file": "database.py",
+      "line": 42,
+      "definition": "Table('jobs', meta, Column('id', String(32), primary_key=True), Column('owner_id', String(32), ForeignKey('users.id'), nullable=False), Column('client_id', String(32), ForeignKey('clients.id'), nullable=False), Column('key', String(64), nullable=False), Column('state', String(20), nullable=False), Column('payload', JSON, nullable=False), Column('created', Float, nullable=False), Column('updated', Float, nullable=False), Column('lease', String(32)), Column('lease_until', Float), Column('attempts', Integer, nullable=False, default=0), Column('result', JSON), Column('error', Text), UniqueConstraint('owner_id', 'key', name='uq_job_request'))"
+    },
+    {
+      "table": "throttle",
+      "file": "database.py",
+      "line": 48,
+      "definition": "Table('throttle', meta, Column('key', String(64), primary_key=True), Column('count', Integer, nullable=False), Column('until', Float, nullable=False))"
+    },
+    {
+      "table": "settings",
+      "file": "database.py",
+      "line": 49,
+      "definition": "Table('settings', meta, Column('key', String(60), primary_key=True), Column('value', JSON, nullable=False))"
+    },
+    {
+      "table": "oidc_accounts",
+      "file": "oidc_support.py",
+      "line": 13,
+      "definition": "Table('oidc_accounts', db.meta, Column('issuer', String(500), primary_key=True), Column('subject', String(250), primary_key=True), Column('user_id', String(32), ForeignKey(db.users.c.id), nullable=False))"
+    },
+    {
+      "table": "oidc_states",
+      "file": "oidc_support.py",
+      "line": 14,
+      "definition": "Table('oidc_states', db.meta, Column('state', String(64), primary_key=True), Column('verifier', String(100), nullable=False), Column('nonce', String(100), nullable=False), Column('expires', Float, nullable=False))"
+    }
+  ]
+}

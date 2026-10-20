@@ -1,0 +1,10 @@
+{$CRM_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy crm:8000
+    header Strict-Transport-Security "max-age=31536000"
+}
+{$TFSC_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy agreements:8000
+    header Strict-Transport-Security "max-age=31536000"
+}

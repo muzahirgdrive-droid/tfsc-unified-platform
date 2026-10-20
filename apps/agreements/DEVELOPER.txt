@@ -1,0 +1,41 @@
+TFSC COMPLIANCE 4.0.0: COMPLETE APPLICATION
+
+Frontend: index.html, app.js, studio.js, portal.js, styles.css, tfsc.css, portal.css.
+Account entry: login.html and login.js. All resources are local; no frontend build.
+API: FastAPI portal.py; session/role/company controls in security.py.
+Persistence: SQLAlchemy database.py; SQLite WAL locally, PostgreSQL on VPS.
+Generation: worker.py claims durable jobs separately from HTTP requests.
+Document composition: server.py helper functions, contract_content.py,
+revised_content.py and templates/. The old server entry point now launches the
+authenticated application. Do not restore its old unauthenticated HTTP handler.
+Rendering: document_engine.py, signature_store.py, entities.py and assets/.
+Windows uses activated desktop Word; Docker uses LibreOffice.
+Start/stop: launch.py, Start.ps1, Stop.ps1. Stop finishes the current export first.
+
+FIRST SETUP
+Read DEPLOYMENT.txt. The first Super Admin requires a private generated setup key.
+There is no seeded account/password in the package. Existing local records can be
+imported by the first Super Admin with the history screen's import button.
+
+TESTS
+Windows: runtime\python.exe -m unittest discover -s tests -v
+Linux: python -m unittest discover -s tests -v
+For the PostgreSQL test suite, set TEST_DATABASE_URL to an isolated database named
+tfsc_test. The tests DROP its tables. Never use a production database for tests.
+Expected simulated renderer-failure logs verify rollback behavior.
+
+ARCHITECTURE
+User rows are owned by an Admin where assigned. Client and contract rows have
+separate owner IDs. Every protected API checks current role, company permissions
+and account status. Password reset revokes sessions and requires a new password.
+Document rows contain the full bytes, file hash and original output path.
+Authenticated downloads read database copies. Contract revisions are immutable.
+Lists are paginated; pending requests are limited per user; request keys prevent
+duplicate submissions. PostgreSQL queue claims use SKIP LOCKED.
+
+Deployment uses a private Docker network. Only Caddy exposes ports 80/443. The
+API trusts proxy headers on that private network; do not expose port 8000 directly.
+Add reviewed schema migrations for later schema versions. Do not modify live
+production data using the test fixtures. Back up database and files together.
+
+See VERIFICATION.txt for measured checks and capacity limitations.

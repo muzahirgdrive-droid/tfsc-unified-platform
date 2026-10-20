@@ -1,0 +1,189 @@
+[
+  {
+    "id": "medical_billing",
+    "name": "Medical Billing, Including Coding",
+    "category": "recurring",
+    "models": [
+      "percentage",
+      "fte"
+    ],
+    "description": "Claim preparation, coding review, submission, payment posting and ordinary payer follow-up."
+  },
+  {
+    "id": "wc_collection",
+    "name": "WC Collection and Litigation Support",
+    "category": "recurring",
+    "models": [
+      "percentage"
+    ],
+    "description": "Administrative workers' compensation collection and support for Client's retained counsel."
+  },
+  {
+    "id": "personal_injury_collection",
+    "name": "Personal Injury Collection Services",
+    "category": "recurring",
+    "models": [
+      "fte",
+      "percentage"
+    ],
+    "description": "Assigned personal injury medical receivable follow-up, attorney and insurer coordination, reconciliation and collection reporting."
+  },
+  {
+    "id": "medical_coding",
+    "name": "Medical Coding Consultancy",
+    "category": "recurring",
+    "models": [
+      "consultancy"
+    ],
+    "description": "Documentation-based code review, coding guidance and education."
+  },
+  {
+    "id": "prior_auth",
+    "name": "Prior Authorizations and Verification of Benefits",
+    "category": "recurring",
+    "models": [
+      "unit",
+      "fte",
+      "pte"
+    ],
+    "description": "Benefit verification, authorization submissions and status tracking."
+  },
+  {
+    "id": "virtual_assistant",
+    "name": "Virtual Assistant Services",
+    "category": "recurring",
+    "models": [
+      "fte",
+      "pte"
+    ],
+    "description": "Nonclinical scheduling, communication and administrative assistance."
+  },
+  {
+    "id": "medical_scribe",
+    "name": "Virtual Live or Offline Medical Scribe",
+    "category": "recurring",
+    "models": [
+      "fte",
+      "pte"
+    ],
+    "description": "Encounter documentation support subject to clinician review and authentication."
+  },
+  {
+    "id": "ar_denials",
+    "name": "AR and Denial Management",
+    "category": "recurring",
+    "models": [
+      "fte",
+      "pte"
+    ],
+    "description": "Assigned receivable follow-up, denial analysis and administrative appeals."
+  },
+  {
+    "id": "rcm_consultancy",
+    "name": "RCM Consultancy",
+    "category": "recurring",
+    "models": [
+      "fte",
+      "pte"
+    ],
+    "description": "Revenue cycle assessment, workflow recommendations and agreed implementation assistance."
+  },
+  {
+    "id": "digital_marketing",
+    "name": "Digital Marketing",
+    "category": "recurring",
+    "models": [
+      "fixed"
+    ],
+    "description": "Approved campaign planning, content and performance reporting."
+  },
+  {
+    "id": "telemarketing",
+    "name": "Telemarketing",
+    "category": "recurring",
+    "models": [
+      "fixed"
+    ],
+    "description": "Approved outreach campaigns with consent and suppression controls."
+  },
+  {
+    "id": "credentialing",
+    "name": "Credentialing and Enrollment",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "Defined provider and payer applications, follow-up and deficiency coordination."
+  },
+  {
+    "id": "state_licensing",
+    "name": "State Licensing Services",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "Administrative preparation and tracking of identified licensing applications."
+  },
+  {
+    "id": "compliance_training",
+    "name": "Compliance Training",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "Defined training materials, instruction and attendance documentation."
+  },
+  {
+    "id": "website_development",
+    "name": "Website Development",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "An agreed website specification, development, review and handover."
+  },
+  {
+    "id": "consultancy",
+    "name": "Consultancy Services",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "A defined advisory assessment and written recommendations."
+  },
+  {
+    "id": "mips_consultancy",
+    "name": "MIPS Consultancy",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "Performance year planning, data checks and authorized submission support."
+  },
+  {
+    "id": "coding_consultancy",
+    "name": "Coding Consultancy",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "A defined coding review sample, findings and education."
+  },
+  {
+    "id": "other",
+    "name": "Other Services",
+    "category": "on_demand",
+    "models": [
+      "one_time",
+      "two_installments"
+    ],
+    "description": "A separately described administrative or advisory project."
+  }
+]

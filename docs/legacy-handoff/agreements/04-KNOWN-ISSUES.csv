@@ -1,0 +1,15 @@
+ID,Evidence status,Priority,Location,Issue / limitation,Next action
+TFSC-01,confirmed gap,high,database.py,create_all bootstrap is not a migration/rollback framework.,Introduce versioned schema changes without losing stored contract bytes or history.
+TFSC-02,confirmed behavior,high,database.clients; crm_bridge.links,Client identity is owner/name hash; same client may exist under multiple owners.,Define canonical client identity/mapping before merger; never name-only merge.
+TFSC-03,audit candidate,high,worker.process,File publication and DB commit are separate resources; crash can leave orphan files.,Add recovery/reconciliation and failure injection tests for each publication boundary.
+TFSC-04,confirmed gap,medium,crm_bridge.py; worker.py,Failed jobs may leave review state queued; no dedicated failed-review reconciliation.,Propagate failure explicitly and permit safe reviewed retries with clear UI.
+TFSC-05,audit candidate,high,asset_hash; document_engine,Hash checks do not freeze asset bytes for the entire render; file-change races deserve review.,Render from immutable versioned asset snapshots and bind approvals to exact artifacts.
+TFSC-06,confirmed gap,medium,reviews.html/js,"Review UI is primarily metadata, not a full paginated legal-document proof.",Provide unsigned/watermarked preview bound to the submitted revision.
+TFSC-07,confirmed gap,medium,reviews UI/API,First100 reviews/first50 client selection; pagination/filtering incomplete.,Add scoped cursor pagination and search without exposing other owners.
+TFSC-08,confirmed limitation,high,templates/revised_content,Only supplied service scopes are exact source text; other drafting needs owner/legal approval.,Request missing approved clauses only when necessary; never label generated prose certified.
+TFSC-09,deployment requirement,high,document_engine.py,Word and LibreOffice/fonts can paginate differently.,Install licensed Times New Roman; visually verify all entities and long combined contracts.
+TFSC-10,confirmed limitation,medium,signature_store.py,Signature images can be copied and are not electronic execution proof.,Use an actual e-sign provider if identity/tamper evidence is required.
+TFSC-11,deployment requirement,high,folders/output_path,Hosted server cannot choose arbitrary folder on browser user laptop.,Keep managed server roots plus explicit downloads; distinguish desktop/browser filesystem.
+TFSC-12,confirmed gap,high,crm_bridge.py; oidc_support.py,Added bridge/SSO not fully production load/provider tested; old version docs conflict.,"Maintain shared API contract, fix versioning and test current integrated deployment."
+TFSC-13,audit candidate,medium,jobs lease and document blob storage,"30-minute lease, no heartbeat; large blobs/database backup costs need measurement.",Benchmark renderer/queue/storage and design retry/lease/retention policies.
+TFSC-14,confirmed gap,medium,communications,No email dispatch or client e-signature provider configured.,Design explicit authorized delivery/execution lifecycle; issued is not client-signed.

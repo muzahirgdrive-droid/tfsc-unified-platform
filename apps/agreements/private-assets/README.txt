@@ -1,0 +1,1 @@
+Private user-authorized signature images and crop metadata. Never publish as static assets. Run python manage.py install-signatures on a fresh local install; Docker setup instructions are in _HANDOFF/05-SETUP-AND-DATA.txt and companion CRM DEPLOYMENT.txt.

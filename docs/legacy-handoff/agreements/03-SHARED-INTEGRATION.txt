@@ -1,0 +1,77 @@
+TWO SYSTEMS, ONE BUSINESS WORKFLOW — CURRENT SOURCE SNAPSHOT, OCTOBER 15, 2026
+
+These are separate applications, separate sites, separate databases, separate
+authorization models. Extract BOTH archives into the same parent directory:
+  workspace/TFSCSalesCRM
+  workspace/ScribeAlignContractStudio
+Keep those directory names: combined Compose refers to the sibling directory.
+You do not need the old conversation to understand the included handoff.
+
+CRM API/UI: FastAPI + React/TypeScript/Vite; port 8766 locally.
+Agreements API/UI: FastAPI + HTML/CSS/JavaScript; port 8765 locally.
+CRM users: sales_agent, supervisor, manager, director_admin, super_admin.
+TFSC users: user, admin, super_admin; separate company grants.
+Sales-domain assignment is NOT an agreement-company permission.
+Each app has a session cookie, Argon2 password hashes and CSRF checks. Optional
+OIDC uses explicit issuer/subject mapping, not email matching. It is unconfigured
+without real provider settings. No existing sessions or secrets are in these ZIPs.
+
+CURRENT BRIDGE, STEP BY STEP
+1. Supervisor confirms a qualified lead as a successful sale in CRM.
+2. Super Admin explicitly links the CRM account to an existing TFSC user UUID.
+   TFSC Super Admin separately maps that CRM actor UUID to the TFSC account.
+3. CRM POST /api/leads/{id}/agreements checks role, scope, signed_up state and
+   entitlement. It builds a client draft with one of the three legal entities.
+4. Server-to-server POST /api/integrations/v1/crm/handoffs is HMAC authenticated.
+   TFSC checks account activity, its company grant, idempotency and replay nonce.
+5. TFSC saves an editable draft and returns a single-use token valid for 10 minutes.
+   The mapped user signs into TFSC and redeems it at POST /api/handoffs/redeem.
+6. The owner completes services and pricing in TFSC, saves the draft and submits
+   POST /api/reviews/submit. An independent, authorized administrator approves
+   the exact content and template/signature hash through /reviews/{id}/decision.
+7. The approved revision enters the existing document queue. The worker checks
+   approval and permissions before rendering and before publication; creates
+   Word/PDF; stores identical bytes in the TFSC database and output folders.
+8. CRM explicitly synchronizes POST /api/clients/{id}/agreements/sync. TFSC's
+   signed /api/integrations/v1/crm/status supplies scoped review/file metadata.
+   CRM stores an actor-specific snapshot; files are downloaded from TFSC at
+   /files/{id} after TFSC authorization. CRM does not duplicate contract blobs.
+
+SIGNING CONTRACT
+Secret: CRM_TFSC_SECRET == TFSC_CRM_SHARED_SECRET, at least 32 random characters.
+Headers: X-TFSC-Timestamp (Unix seconds), X-TFSC-Nonce (new URL-safe nonce),
+X-TFSC-Signature (hex HMAC-SHA256). Canonical message is five newline-separated
+strings: timestamp, nonce, uppercase HTTP method, request path, SHA256(raw body).
+No query string is part of the current signature. Timestamp tolerance is 300 sec.
+Content-Type application/json; signature covers exact bytes, not reserialized JSON.
+The receiver consumes the nonce within its transaction. Use a new nonce on retry
+and the same business idempotency key/body. Same-key handoff retries issue a fresh
+redemption token. Never place session cookies or credentials in cross-site URLs.
+CRM_TFSC_URL is the public browser URL. CRM_TFSC_INTERNAL_URL optionally specifies
+container transport; the request Host still matches the public TFSC origin.
+
+HANDOFF BODY (synthetic structural example; services use the actual TFSC catalog)
+{"idempotency_key":"unique-request-key","crm_client_id":"lead-uuid",
+ "crm_actor_id":"mapped-crm-user-uuid","entity":"SCRIBE ALIGN LLC",
+ "client":{"client_name":"Example Practice, LLC","address":"Example address",
+ "client_email":"contact@example.test","client_signatory":"","client_title":""},
+ "services":[],"document_types":["baa"],"effective_date":"2026-10-15"}
+Response: handoff_id, tfsc_client_id, redeem_token, redeem_url. CRM adds the public
+agreements_url. Never log or publish the redemption token.
+
+CURRENT BOUNDARIES / GAPS
+This is an implemented pilot, not the entire requested enterprise architecture.
+No durable bidirectional delivery/inbox/outbox worker; synchronization is manual.
+No external email delivery or electronic signature platform is configured.
+Issued means released/generated, not signed by a client or legally executed.
+Do not bypass review to make an integration appear successful. Do not infer a
+signature image is a cryptographic signature. Do not claim data cannot be copied.
+Review integration and authorization under concurrent revocation, mapping changes,
+retries and expired tokens before production. Keep contract bytes authoritative
+in TFSC and do not silently merge clients by name or phone.
+
+HISTORICAL DOCUMENT WARNING
+Older documents mention Alpha Bridge, Jupiter, standard-library-only Python,
+bundled runtimes, or no CRM bridge. These are HISTORICAL. The source snapshot and
+this handoff supersede those descriptions. The original architecture documents
+are requirements/roadmap, not evidence that all proposed features are delivered.

@@ -1,0 +1,56 @@
+name: tfsc-sales-crm
+services:
+  database:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tfsc_crm
+      POSTGRES_USER: tfsc_crm
+      POSTGRES_PASSWORD: ${CRM_POSTGRES_PASSWORD:?Set CRM_POSTGRES_PASSWORD in .env}
+    volumes:
+      - crm-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfsc_crm -d tfsc_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  crm:
+    build: {context: .., dockerfile: crm-api/Dockerfile}
+    restart: unless-stopped
+    environment:
+      CRM_MODE: hosted
+      CRM_ORIGIN: https://${CRM_DOMAIN:?Set CRM_DOMAIN in .env}
+      CRM_DATABASE_URL: postgresql+psycopg://tfsc_crm:${CRM_POSTGRES_PASSWORD:?Set CRM_POSTGRES_PASSWORD in .env}@database:5432/tfsc_crm
+      CRM_DATA_DIR: /data
+      CRM_TFSC_URL: ${CRM_TFSC_URL:-http://127.0.0.1:8765}
+      CRM_TFSC_SECRET: ${TFSC_CRM_SHARED_SECRET:-}
+      CRM_ENCRYPTION_KEY: ${CRM_ENCRYPTION_KEY:-}
+      CRM_GOOGLE_CLIENT_ID: ${CRM_GOOGLE_CLIENT_ID:-}
+      CRM_GOOGLE_CLIENT_SECRET: ${CRM_GOOGLE_CLIENT_SECRET:-}
+      CRM_OIDC_ISSUER: ${CRM_OIDC_ISSUER:-}
+      CRM_OIDC_CLIENT_ID: ${CRM_OIDC_CLIENT_ID:-}
+      CRM_OIDC_CLIENT_SECRET: ${CRM_OIDC_CLIENT_SECRET:-}
+    volumes:
+      - crm-data:/data
+    depends_on:
+      database:
+        condition: service_healthy
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      CRM_DOMAIN: ${CRM_DOMAIN:?Set CRM_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - crm
+volumes:
+  crm-postgres:
+  crm-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,394 @@
+{
+  "schema_version": "planning-1.0",
+  "status": "Proposed configuration; review and apply through migrations, not a production database dump.",
+  "product": {
+    "sales": "TFSC Sales CRM",
+    "agreements": "TFSC Compliance",
+    "separate_sites": true
+  },
+  "roles": [
+    "super_admin",
+    "director_admin",
+    "manager",
+    "supervisor",
+    "sales_agent"
+  ],
+  "group_leader": {
+    "is_admin_role": false,
+    "delegation": "scoped_followup_coordination",
+    "may_unlock": false,
+    "may_qualify": false,
+    "may_view_meetings": false
+  },
+  "domain_default": "scribe_align",
+  "project_default": null,
+  "sales_domains": [
+    {
+      "id": "scribe_align",
+      "name": "Scribe Align LLC",
+      "suggested_existing_tfsc_entity": "SCRIBE ALIGN LLC",
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "extended_health",
+      "name": "Extended Health Services Inc.",
+      "suggested_existing_tfsc_entity": "EXTENDED HEALTH SERVICES INC.",
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "mb_consultancy",
+      "name": "MB Consultancy LLC",
+      "suggested_existing_tfsc_entity": null,
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "24_7_consultancy",
+      "name": "24-7 Consultancy LLC",
+      "suggested_existing_tfsc_entity": "24-7 CONSULTANCY LLC",
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "wisemed",
+      "name": "Wisemed Solutions",
+      "suggested_existing_tfsc_entity": null,
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "clinic_heroes",
+      "name": "Clinic Heroes",
+      "suggested_existing_tfsc_entity": null,
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "quantum_medical",
+      "name": "Quantum Medical Services",
+      "suggested_existing_tfsc_entity": null,
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "mrx",
+      "name": "MRX",
+      "suggested_existing_tfsc_entity": null,
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    },
+    {
+      "id": "house_of_rcm",
+      "name": "House of RCM",
+      "suggested_existing_tfsc_entity": null,
+      "mapping_requires_authorized_confirmation": true,
+      "active": true
+    }
+  ],
+  "projects": [
+    {
+      "id": "P0000",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0001",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0004",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0005",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0006",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0007",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0008",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0009",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0010",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0011",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0012",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0013",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0014",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0016",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0017",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0018",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0020",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0021",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0022",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0023",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0024",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0025",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0026",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0027",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0028",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0029",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0030",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    },
+    {
+      "id": "P0031",
+      "owner_id": null,
+      "domain_id": null,
+      "status": "pending_configuration"
+    }
+  ],
+  "routing_metadata": {
+    "agent_visibility": "never",
+    "group_leader_visibility": "never",
+    "supervisor_requires": "routing_metadata.view grant from manager or above within scope",
+    "catalog_managers": [
+      "super_admin",
+      "director_admin"
+    ]
+  },
+  "agreement_entitlement": {
+    "default": "none",
+    "independent_from_crm_role": true,
+    "independent_company_grants": true
+  },
+  "time": {
+    "operational_zone": "America/Los_Angeles",
+    "stored_instant_zone": "UTC",
+    "clock_zones": [
+      "America/New_York",
+      "America/Chicago",
+      "America/Denver",
+      "America/Phoenix",
+      "America/Los_Angeles",
+      "America/Anchorage",
+      "Pacific/Honolulu",
+      "Asia/Karachi"
+    ],
+    "server_authoritative": true
+  },
+  "activity": {
+    "outcome_values": [
+      "unset",
+      "yes",
+      "no"
+    ],
+    "research_starts_lock": false,
+    "first_outcome_starts_lock": true,
+    "called_no_attempt_credit": 0,
+    "manual_edit_minutes": 60,
+    "import_edit_minutes": 15,
+    "import_edit_config_min": 10,
+    "import_edit_config_max": 20,
+    "edits_reset_deadline": false,
+    "supervisor_correction_requires_reason": true
+  },
+  "scoring": {
+    "policy_version": "1.0",
+    "daily_attempt_target": 170,
+    "connection_target": 0.6,
+    "eligibility": "called=yes, valid nonreversed activity",
+    "score_type": "exclusive_highest_stage",
+    "priority": [
+      {
+        "stage": "confirmed_sign_up",
+        "points": 100
+      },
+      {
+        "stage": "confirmed_strong_follow_up",
+        "points": 50
+      },
+      {
+        "stage": "connected_with_text_or_email",
+        "points": 30
+      },
+      {
+        "stage": "connected",
+        "points": 20
+      },
+      {
+        "stage": "attempted",
+        "points": 10
+      }
+    ],
+    "weights": {
+      "quality": 0.5,
+      "volume_attainment": 0.25,
+      "connection_attainment": 0.25
+    },
+    "attainment_cap": 1.0,
+    "zero_attempt_display": "No activity",
+    "bands": [
+      {
+        "minimum": 0.8,
+        "label": "Extraordinary"
+      },
+      {
+        "minimum": 0.65,
+        "label": "Satisfactory"
+      },
+      {
+        "minimum": 0.5,
+        "label": "Average"
+      },
+      {
+        "minimum": 0.35,
+        "label": "Below Average"
+      },
+      {
+        "minimum": 0.0,
+        "label": "Poor"
+      }
+    ],
+    "milestone_credit": "once on qualifying activity; supervisor confirmation; original caller and assigned owner kept separately"
+  },
+  "providers": {
+    "google_calendar": {
+      "enabled": false,
+      "mode": "unconfigured"
+    },
+    "vonage": {
+      "enabled": false,
+      "product": null
+    },
+    "email": {
+      "enabled": false
+    },
+    "esign": {
+      "enabled": false
+    }
+  },
+  "release_policy": {
+    "independent_approver_default": true,
+    "draft_signature_included": false,
+    "final_release_requires_exact_approved_revision": true
+  },
+  "retention": {
+    "automatic_delete_enabled": false,
+    "policy_requires_configuration": true
+  },
+  "notes": [
+    "Project owners, domain relationships and staff mappings were not supplied. Do not invent them.",
+    "Sales domain names do not create new TFSC legal entities.",
+    "All numeric performance gates are proposed targets, not measured guarantees."
+  ]
+}

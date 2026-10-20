@@ -1,0 +1,10 @@
+.data
+runtime
+__pycache__
+**/__pycache__
+examples
+*.zip
+*.log
+.env
+tests
+private-assets
