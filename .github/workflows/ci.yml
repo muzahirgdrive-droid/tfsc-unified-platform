@@ -76,6 +76,46 @@ jobs:
         working-directory: packages/bridge-contract/ts
         run: npm ci && npm test
 
+  e2e:
+    # Browser acceptance flows (§26): desktop + mobile, CRM + TFSC Agreements (LibreOffice renderer), axe, dashboard snapshots.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_PASSWORD: postgres, POSTGRES_DB: crm_test}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      E2E_ADMIN_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/crm_test
+      E2E_PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - name: Install (Python)
+        run: |
+          pip install -r apps/crm-api/requirements-dev.txt -r apps/agreements/requirements.txt
+          pip install -e packages/refine/python -e packages/bridge-contract/python
+      - name: LibreOffice (TFSC document renderer)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer
+      - uses: actions/setup-node@v4
+        with: {node-version: "22", cache: npm, cache-dependency-path: apps/crm-web/package-lock.json}
+      - name: Build CRM web + browser
+        working-directory: apps/crm-web
+        run: npm ci && npm run build && npx playwright install --with-deps chromium
+      - name: Playwright E2E
+        working-directory: apps/crm-web
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            apps/crm-web/playwright-report
+            apps/crm-web/test-results
+          retention-days: 7
+
   infra:
     runs-on: ubuntu-latest
     steps:

@@ -14,7 +14,7 @@ test('password sign-in lands on the home screen; a wrong password is refused', a
   await page.fill('#password', PW);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((u) => u.pathname === '/');
-  await expect(page.getByText(NAMES.agent3.split(' ')[0]!).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: new RegExp(`^Good (morning|afternoon|evening), ${NAMES.agent3.split(' ')[0]}\\.$`) })).toBeVisible();
 });
 
 test('login page has no serious accessibility violations', async ({ page }) => {
@@ -23,11 +23,14 @@ test('login page has no serious accessibility violations', async ({ page }) => {
   expect(serious(await new AxeBuilder({ page }).analyze())).toEqual([]);
 });
 
-for (const [who, path] of [['agent1', '/'], ['agent1', '/sheet'], ['sup', '/'], ['sup', '/leads'], ['super', '/security']] as const) {
+const SCREENS = [['agent1', '/'], ['agent1', '/my-work'], ['agent1', '/sheet'], ['agent1', '/followups'], ['sup', '/'], ['sup', '/leads'],
+  ['sup', '/strong'], ['sup', '/flags'], ['sup', '/clients'], ['super', '/security']] as const;
+for (const [who, path] of SCREENS) {
   test(`${path} as ${who} has no serious accessibility violations`, async ({ as }) => {
     const page = await as(who);
     await page.goto(path);
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible(); // (no networkidle: the live event stream stays open)
+    await page.waitForTimeout(1500);
     expect(serious(await new AxeBuilder({ page }).analyze())).toEqual([]);
   });
 }

@@ -48,12 +48,15 @@ test('paste 200 rows, refine, save 197 and keep 3 red rows with reasons', async 
     }
     await expect(page.getByPlaceholder('Provider Name').first()).toHaveValue('bad number clinic');
   } else {
-    await expect(page.getByRole('gridcell', { name: 'bad number clinic' })).toBeVisible();
-    await expect(page.getByRole('gridcell', { name: 'contradiction care' })).toBeVisible();
-    const status = page.getByRole('gridcell', { name: /^Not saved · / });
-    await page.getByTestId('data-grid-canvas').hover();
+    // Glide draws on a canvas and mirrors the visible cells into a hidden accessible table: check that table
+    const cells = page.locator('[data-testid^="glide-cell-"]');
+    await expect(cells.filter({ hasText: /^bad number clinic$/ })).toHaveCount(1);
+    await expect(cells.filter({ hasText: /^contradiction care$/ })).toHaveCount(1);
+    const box = (await page.getByTestId('data-grid-canvas').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + 60);
     await page.mouse.wheel(4000, 0); // the Status column is at the far right
-    await expect(status).toHaveCount(3);
-    await expect(status.first()).toContainText('Phone must have 10 digits');
+    await expect(cells.filter({ hasText: /^Not saved · / })).toHaveText([
+      'Not saved · Phone must have 10 digits (U.S.).', 'Not saved · Provider or practice name is required.', 'Not saved · Connected requires Called = Yes.',
+    ]);
   }
 });

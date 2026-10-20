@@ -18,7 +18,8 @@ test('toggle lock countdown', async ({ as, api }) => {
   await form.locator('#q-phone').fill(await agent.freshPhone());
   await form.getByRole('button', { name: /^Save/ }).click();
   const researchRow = page.locator('li').filter({ hasText: research });
-  await expect(researchRow.getByText('Data hunting')).toBeVisible();
+  await expect(researchRow.getByText('Data hunting', { exact: true })).toBeVisible(); // no timer
+  await expect(researchRow.getByText('0 pts · Data hunting')).toBeVisible(); // no points
 
   const before = await attempts(page);
   const name = practice('timer clinic');
@@ -46,6 +47,6 @@ test('toggle lock countdown', async ({ as, api }) => {
   const after = await agent.get<{ edit_deadline: string }>(`/api/activities/${id.id}`);
   expect(after.edit_deadline).toBe(id.edit_deadline); // deadline unchanged
 
-  await page.clock.fastForward('61:00');
+  await page.clock.fastForward(61 * 60_000);
   await expect(row.getByText('Locked')).toBeVisible();
 });
