@@ -117,8 +117,11 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        integrations/keycloak.py (sso.* outbox topics), realm provisioner client + SMTP_*, Mailpit (--profile trial),
        TFSC SSO fixes (identity link, Lax cookie, reset_required, back-channel URL). Re-run the trial: infra/README.md
        "invitation, recovery and TFSC SSO trial". Trial env lives only in the scratchpad (secrets; never committed).
-4. [ ] Files: S3-compatible object storage (MinIO) with presigned short-lived URLs + AV scan on upload (§4.2);
-       audit anchors shipped to an object-lock bucket (V2-D04). Client file storage stays deferred (§13).
+4. [x] Files: S3-compatible object storage (MinIO) with presigned short-lived URLs + AV scan on upload (§4.2);
+       audit anchors shipped to an object-lock bucket (V2-D04). Client file storage stays deferred (§13). Commit 084cdd7:
+       storage.py (db|s3), security/antivirus.py (clamd INSTREAM), anchors to object-lock bucket + version-aware verify,
+       migration 0006; compose objects (RustFS: MinIO publishes no images any more) + objects-init + clamav; Helm
+       files.* + storage-init job + clamav. Local S3 tests: CRM_TEST_S3_ENDPOINT (RustFS container).
 5. [ ] Observability: structured JSON logs, OpenTelemetry traces (OTLP), Sentry (API + web) when configured,
        Prometheus + Grafana dashboards in compose (§4.2)
 6. [ ] Backups: pgBackRest (encrypted, PITR) in compose + automated restore test into an isolated database (§4.2)

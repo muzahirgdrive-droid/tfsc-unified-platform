@@ -113,3 +113,8 @@ start doing all the work from where you stop with all the chat history as well."
   compose stack found four real bugs (CRM-sent identity never linked; Strict session cookie dropped after the IdP and
   after the CRM's Open Agreements link; reset_required kept after SSO; no back-channel URL), all fixed. Full flow
   re-run green on a fresh stack with the committed scripts. Tests: v2 164, agreements 44 (+42 subtests), E2E 49.
+- CI: runs 31-34 failed only in the security job (8 new Pillow CVEs); fixed by Pillow 13.0.0 (1d5bebc), run 35 green.
+- P8.4 done (084cdd7). Object storage with presigned downloads and SHA-256-checked reads; ClamAV scan of every upload
+  (real clamd refused EICAR, also inside a ZIP); daily anchors in an object-lock bucket with COMPLIANCE retention,
+  verified version by version (forged versions and delete markers are caught). RustFS instead of MinIO (MinIO's
+  Docker Hub repository no longer exists). Tests: v2 170 with S3 (167 + skips without).
