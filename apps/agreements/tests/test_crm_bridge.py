@@ -40,6 +40,20 @@ class BridgeTests(unittest.TestCase):
   self.assertIsNotNone(result)
   review=self.api.get('/api/reviews').json()['reviews'][0];self.assertEqual(review['state'],'issued');self.assertEqual(len(review['manifest']),4)
   self.assertEqual(self.api.get(result['files'][0]['url']).status_code,200)
+ def test_failed_generation_hands_the_approval_back_for_an_explicit_retry(self):
+  cid,r=self.submitted();self.approve(r);self.login(self.u1)
+  self.assertEqual(self.post('/api/reviews/'+r['id']+'/generate',{},**{'Idempotency-Key':db.uid()}).status_code,202)
+  job=worker.claim()
+  with patch.object(worker,'generate_docx',side_effect=RuntimeError('renderer crashed')):self.assertIsNone(worker.process(job))
+  review=self.api.get('/api/reviews').json()['reviews'][0];self.assertEqual((review['state'],review['job_id']),('approved',None))
+  with db.engine.connect() as c:self.assertEqual(c.execute(select(db.jobs.c.state,db.jobs.c.error).where(db.jobs.c.id==job['id'])).one()[0],'failed')
+  retry=self.post('/api/reviews/'+r['id']+'/generate',{},**{'Idempotency-Key':db.uid()});self.assertEqual(retry.status_code,202,retry.text)
+ def test_abandoned_generation_lease_also_hands_the_approval_back(self):
+  cid,r=self.submitted();self.approve(r);self.login(self.u1)
+  self.post('/api/reviews/'+r['id']+'/generate',{},**{'Idempotency-Key':db.uid()});job=worker.claim()
+  with db.engine.begin() as c:c.execute(db.jobs.update().where(db.jobs.c.id==job['id']).values(lease_until=time.time()-1))
+  self.assertIsNone(worker.claim())  # the expired job is failed, nothing else is queued
+  self.assertEqual(self.api.get('/api/reviews').json()['reviews'][0]['state'],'approved')
  def test_changed_content_cannot_reuse_approval(self):
   cid,r=self.submitted();self.approve(r);self.login(self.u1);p=self.payload();p.update(id=cid,special_terms='Changed after approval.')
   response=self.post('/api/generate',p,**{'Idempotency-Key':db.uid()});self.assertEqual(response.status_code,409,response.text)

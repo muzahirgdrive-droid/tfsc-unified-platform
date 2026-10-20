@@ -56,6 +56,10 @@ def finish_worker(c,job,files):
  c.execute(reviews.update().where(reviews.c.job_id==job['id']).values(state='issued',manifest=[{'id':f['id'],'sha256':f['sha256'],'name':f['name']} for f in files],updated=time.time()))
  r=c.execute(select(reviews).where(reviews.c.job_id==job['id'])).mappings().first()
  if r:events.emit(c,r['client_id'],'agreement.issued','issued',dict(r),files)
+def release_failed(c,job_ids):
+ # A failed or abandoned generation hands the approval back (state 'approved') so the owner can retry explicitly;
+ # the failure stays in the job record and the audit log. Without this the review stayed 'queued' for good.
+ if job_ids:c.execute(reviews.update().where(reviews.c.job_id.in_(list(job_ids)),reviews.c.state=='queued').values(state='approved',job_id=None,version=reviews.c.version+1,updated=time.time()))
 def check_download(c,document):
  # Legacy finalized documents have no review link. New reviewed artifacts must match their released manifest.
  row=c.execute(select(reviews).where(reviews.c.job_id==document['contract_id'].removeprefix('TFSC-').lower())).mappings().first()

@@ -13,7 +13,9 @@ def claim():
     now=time.time()
     with db.engine.begin() as c:
         # Expired jobs require an explicit retry; never duplicate a possibly active export.
+        expired=[r[0] for r in c.execute(select(db.jobs.c.id).where(db.jobs.c.state=='running',db.jobs.c.lease_until<now))]
         c.execute(db.jobs.update().where(db.jobs.c.state=='running',db.jobs.c.lease_until<now).values(state='failed',error='Worker stopped before completing this job. Review history and generate a new revision.',updated=now))
+        crm_bridge.release_failed(c,expired)
         query=select(db.jobs).where(db.jobs.c.state=='queued').order_by(db.jobs.c.created).limit(1)
         if c.dialect.name=='postgresql':query=query.with_for_update(skip_locked=True)
         row=c.execute(query).mappings().first()
@@ -79,6 +81,7 @@ def process(job):
         message=str(getattr(exc,'detail',exc))[:1500]
         with db.engine.begin() as c:
             c.execute(db.jobs.update().where(db.jobs.c.id==job['id'],db.jobs.c.lease==job['lease']).values(state='failed',error=message,updated=time.time()))
+            crm_bridge.release_failed(c,[job['id']])
             user=c.execute(select(db.users).where(db.users.c.id==job['owner_id'])).mappings().first()
             db.log(c,user,'contract.failed',job['client_id'],{'job_id':job['id'],'reason':message})
         logging.exception('Generation failed: %s',job['id'])
