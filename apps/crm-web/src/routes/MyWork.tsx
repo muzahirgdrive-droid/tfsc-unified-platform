@@ -106,6 +106,10 @@ function EditDialog({ a, onClose }: { a: Act; onClose: () => void }) {
 }
 
 export function ActivityRow({ a, onEdit, onStrong, onDelete }: { a: Act; onEdit: () => void; onStrong: () => void; onDelete?: () => void }) {
+  const { me } = useAuth();
+  useTick(1000);
+  // An agent's row locks the moment its countdown ends; supervisors can still edit locked rows (with a reason).
+  const lockedForMe = rankOf(me) < 1 && !!a.edit_deadline && new Date(a.edit_deadline).getTime() <= Date.now();
   const out = (v: Tri | undefined, l: string) => v === null || v === undefined ? null : <span className={cn('chip', v ? 'bg-success-bg text-success' : 'bg-danger-bg text-danger')}>{l} {v ? '✓' : '✕'}</span>;
   return (
     <li className="flex flex-col gap-2 border-t border-line py-3 sm:flex-row sm:items-center">
@@ -117,7 +121,7 @@ export function ActivityRow({ a, onEdit, onStrong, onDelete }: { a: Act; onEdit:
       <div className="flex flex-wrap items-center gap-1.5">{out(a.called, 'Called')}{out(a.connected, 'Conn')}{out(a.text_sent, 'Text')}{out(a.email_sent, 'Email')}
         <span className="chip bg-royal/10 text-royal" title="Score ladder points">{a.points} pts · {a.stage}</span></div>
       <div className="flex gap-1">
-        {a.can_edit && <button className="btn-ghost h-8 px-2" onClick={onEdit} aria-label="Edit"><Pencil size={15} /></button>}
+        {a.can_edit && !lockedForMe && <button className="btn-ghost h-8 px-2" onClick={onEdit} aria-label="Edit"><Pencil size={15} /></button>}
         {a.called === true && a.state !== 'deleted' && !a.conflict && <button className="btn-ghost h-8 px-2" onClick={onStrong} aria-label="Request strong follow-up" title="Request strong follow-up"><Star size={15} /></button>}
         {onDelete && <button className="btn-ghost h-8 px-2 text-danger" onClick={onDelete} aria-label="Delete"><Trash2 size={15} /></button>}
       </div>

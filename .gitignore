@@ -172,3 +172,4 @@ apps/crm-web/e2e/.stack.json
 apps/crm-web/e2e/.auth/
 apps/crm-web/test-results/
 apps/crm-web/playwright-report/
+.coverage

@@ -5,5 +5,5 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {"test": "vitest run", "typecheck": "tsc --noEmit"},
-  "devDependencies": {"typescript": "5.9.3", "vitest": "3.2.4", "@types/node": "22.18.8"}
+  "devDependencies": {"typescript": "5.9.3", "vite": "7.3.7", "vitest": "4.1.11", "@types/node": "22.18.8"}
 }

@@ -49,4 +49,5 @@ test('toggle lock countdown', async ({ as, api }) => {
 
   await page.clock.fastForward(61 * 60_000);
   await expect(row.getByText('Locked')).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0); // gone at once, not at the next refresh
 });
