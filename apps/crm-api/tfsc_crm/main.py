@@ -17,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from . import observability
 from .config import get_settings
 from .domain.activities import RowRejected
 
@@ -60,7 +61,8 @@ def create_app() -> FastAPI:
     async def boundary(request: Request, call_next):
         started = time.perf_counter()
         rid = request.headers.get('x-request-id') or uuid.uuid4().hex
-        if request.headers.get('host', '') not in allowed_hosts:
+        # /metrics is scraped by pod/service address and guarded by its bearer token instead of the Host check.
+        if request.headers.get('host', '') not in allowed_hosts and request.url.path != '/metrics':
             return JSONResponse({'error': 'Invalid application host.'}, 403)
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
             origin = request.headers.get('origin')
@@ -83,7 +85,20 @@ def create_app() -> FastAPI:
         })
         if s.hosted:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        route = request.scope.get('route')
+        observability.observe(request.method, getattr(route, 'path', 'unmatched'), response.status_code, time.perf_counter() - started)
         return response
+
+    @app.get('/metrics', include_in_schema=False)
+    def metrics(request: Request):
+        import secrets as _secrets
+
+        from fastapi.responses import PlainTextResponse
+        token = get_settings().metrics_token
+        auth = request.headers.get('authorization', '')
+        if not token or not _secrets.compare_digest(auth, f'Bearer {token}'):
+            return JSONResponse({'error': 'Not found.'}, 404)
+        return PlainTextResponse(observability.render(observability.gauges()), media_type='text/plain; version=0.0.4')
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, e: HTTPException):

@@ -47,7 +47,7 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 | P4 Meetings & Celebration | done | meetings UI, celebration overlay (SSE, confetti without worker for CSP), Wall of Fame |
 | P5 Dashboards | done | dashboards + legacy workbook import with §20.5 reconciliation (acceptance 18; see runbook) |
 | P6 Agreements v2 | done | backend both apps + CRM pre-flight/client profile UI; E2E acceptance 12-13 green with real LibreOffice |
-| P7 Hardening & Scale | in progress | P7a done (security center, offboarding, exports, SLA, audit anchors, scheduler); P7b/P7c pending |
+| P7 Hardening & Scale | in progress | P7a + P7b done; P7c (k6 + PERFORMANCE.md) pending |
 
 ## P0 checklist
 - [x] Unpack both handoffs into monorepo (`apps/crm-api`, `apps/crm-web`, `apps/agreements`)
@@ -69,7 +69,7 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 - [x] Authz matrix tests (every OpenAPI op classified) + agent leak scan + RLS isolation test — `tests_v2/test_security.py`
 - [x] Acceptance 1-10, 14, 15 as API tests (`tests_v2/test_api_capture.py`, `test_api_pipeline.py`) — 52 v2 tests green
 - [x] Bridge contract package (`packages/bridge-contract`, Py + TS)
-- [ ] Keycloak realm export + OIDC (`infra/keycloak`) — moved to P7
+- [x] Keycloak realm export + OIDC (`infra/keycloak`, `security/oidc.py`) — done in P7b
 - [x] design system + app shell + world clock (crm-web v2)
 - [x] OpenAPI → TS client generation (`tools/export_openapi.py` → `apps/crm-api/openapi.json` → `npm run gen:api`; CI fails on drift)
 
@@ -84,8 +84,10 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 5. [x] P7a: Security Center (`routes_security.py`, Security page tabs), one-click offboarding, approval-logged AES-ZIP exports
        (watermark, formula-safe, password shown once), red-flag SLA + overdue follow-up escalation, audit content verification +
        daily anchors, scheduler (`workers/scheduler.py`, idempotent `job_runs`), migration 0004, models-vs-migrations test
-6. [ ] P7b: OIDC/Keycloak login (+MFA claim for Supervisor+), Keycloak realm export, Dockerfile -> `tfsc_crm.main:app`,
-       compose/Helm, agreements Alembic baseline, backups/restore runbook + drill, THREAT-MODEL.md, /metrics
+6. [x] P7b: OIDC/Keycloak SSO (+TOTP for Supervisor+, verified in a real browser against Keycloak 26), realm export,
+       images from repo root (CRM runs `tfsc_crm.main:app`), `infra/compose` (verified up locally), Helm chart (lint +
+       kubeconform clean; not run on a live cluster), Agreements Alembic baseline, restore drill (`tools/restore_drill.py`),
+       THREAT-MODEL.md, runbooks (backups/PITR, cutover, legacy import), token-protected `/metrics`
 7. [ ] P7c: k6 load tests + docs/PERFORMANCE.md (measured numbers only)
 8. [ ] Playwright E2E acceptance flows (beyond screenshots); regenerate both _HANDOFF zips (§29)
 
@@ -138,3 +140,12 @@ default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
 - Offboarding moves active leads to the user's manager as audited reassignments with the departing owner keeping 100%
   attribution of past work; TFSC revocation goes through the outbox (retried until delivered).
 - Scheduler runs in-process only in `CRM_MODE=local`; hosted deployments run `python -m tfsc_crm.workers.scheduler`.
+- SSO: no auto-provisioning (CRM accounts are created by managers); first SSO sign-in links by verified email; an unused
+  temporary local password is removed at first SSO sign-in. Supervisor+ need `amr` with an MFA method or `acr` in
+  CRM_OIDC_MFA_ACR; Keycloak realm provides `amr: ["pwd","otp"]` via the AMR mapper.
+- Containers: build context = repo root (packages/ needed); optional BuildKit secret `build_ca` for TLS-inspecting proxies.
+  In this sandbox Docker Hub rate-limits pulls; base images were pulled from mirror.gcr.io and tagged locally.
+- Service-to-service calls use internal URLs (CRM_TFSC_INTERNAL_URL, TFSC_CRM_INTERNAL_URL, CRM_OIDC_INTERNAL_URL)
+  while sending the public Host header, so both apps keep strict Host allow-lists.
+- `/metrics` exists only when CRM_METRICS_TOKEN is set; bearer-protected; exempt from the Host check (scraped by pod IP).
+- Agreements now migrates with Alembic at start-up (`migrate.py`); pre-Alembic installs are stamped after create_all.

@@ -75,3 +75,26 @@ jobs:
         if: hashFiles('packages/bridge-contract/ts/package.json') != ''
         working-directory: packages/bridge-contract/ts
         run: npm ci && npm test
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Helm lint + schema validation
+        run: |
+          docker run --rm -v "$PWD/infra/helm:/charts" alpine/helm:3.16.4 lint /charts/tfsc-platform
+          docker run --rm -v "$PWD/infra/helm:/charts" alpine/helm:3.16.4 template t /charts/tfsc-platform > rendered.yaml
+          docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -kubernetes-version 1.30.0 - < rendered.yaml
+      - name: Compose file is valid
+        working-directory: infra/compose
+        run: cp .env.example .env && sed -i 's/=$/=ci-placeholder/' .env && docker compose --env-file .env config -q
+      - name: Build images
+        run: |
+          docker build -f apps/crm-api/Dockerfile -t tfsc-crm:ci .
+          docker build -f apps/agreements/Dockerfile -t tfsc-agreements:ci .
+      - name: No private data in images
+        run: |
+          for img in tfsc-crm:ci tfsc-agreements:ci; do
+            if docker run --rm --entrypoint sh $img -c 'find / -xdev \( -name "*.xlsx" -o -path "*private-assets*" -o -name ".env" \) 2>/dev/null | grep -v /proc' | grep .; then
+              echo "private data found in $img"; exit 1; fi
+          done

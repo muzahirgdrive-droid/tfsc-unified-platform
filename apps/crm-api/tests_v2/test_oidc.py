@@ -143,3 +143,19 @@ def test_sso_disabled_by_default(ws):
     c = TestClient(ws['app'], base_url='http://testserver')
     assert c.get('/api/auth/oidc/start', follow_redirects=False).status_code == 404
     assert c.get('/api/auth/status').json()['oidc'] is False
+
+
+def test_sso_removes_an_unused_temporary_password(ws, idp):
+    from sqlalchemy import text
+
+    from tfsc_crm.db.session import system_tx
+    r = ws['manager'].post('/api/users', json={'first_name': 'Temp', 'last_name': 'Pass', 'email': 'temp-sso@crm.test', 'crm_role': 'sales_agent',
+                                               'manager_id': ws['sup'].id, 'temporary_password': 'Temporary-password-2026!'})
+    assert r.status_code == 200, r.text
+    c, q = _begin(ws['app'])
+    idp['claims'] = _claims(q, sub='kc-temp', email='temp-sso@crm.test')
+    assert _sso_error(_callback(c, q)) is None
+    assert c.get('/api/auth/me').json()['user']['reset_required'] is False
+    with system_tx() as conn:
+        row = conn.execute(text("SELECT password_hash IS NULL, reset_required FROM users WHERE email = 'temp-sso@crm.test'")).one()
+    assert tuple(row) == (True, False)

@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # TFSC Agreements portal. Build context: repository root (it needs packages/bridge-contract).
 #   docker build -f apps/agreements/Dockerfile -t tfsc-agreements:4 .
 # Private signature images are never part of the image (.dockerignore); install them on the server

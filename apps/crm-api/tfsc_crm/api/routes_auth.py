@@ -169,11 +169,16 @@ def oidc_callback(request: Request, code: str | None = None, state: str | None =
         return fail('inactive', u)
     if (u['mfa_required'] or u['crm_role'] in ('supervisor', 'manager', 'director_admin', 'super_admin')) and not oidc.mfa_satisfied(claims):
         return fail('mfa_required', u, f"acr={claims.get('acr')} amr={claims.get('amr')}")
+    if u['reset_required']:
+        # A temporary password was never used: with SSO it is not needed, so remove it rather than force a change.
+        with system_tx() as c:
+            c.execute(update(m.users).where(m.users.c.id == u['id']).values(password_hash=None, reset_required=False))
+        u.update(password_hash=None, reset_required=False)
     resp = RedirectResponse(next_path, status_code=302)
     _session(request, resp, u)
     resp.delete_cookie(oidc.COOKIE, path='/api/auth/oidc')
     with tx(u['org_id'], u['id']) as c:
-        audit.record(c, u['org_id'], u['id'], 'auth.login', 'user', u['id'], None, {'method': 'oidc', 'acr': claims.get('acr')},
+        audit.record(c, u['org_id'], u['id'], 'auth.login', 'user', u['id'], None, {'method': 'oidc', 'acr': claims.get('acr'), 'amr': claims.get('amr')},
                      ip=client_ip(request), ua=request.headers.get('user-agent'))
     return resp
 

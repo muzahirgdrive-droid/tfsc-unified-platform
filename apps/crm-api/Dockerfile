@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # TFSC Sales CRM v2: API + compiled web app in one image. Build context: repository root.
 #   docker build -f apps/crm-api/Dockerfile -t tfsc-crm:2 .
 # The same image runs the API (default), the outbox dispatcher and the scheduler (see infra/compose).

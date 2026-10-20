@@ -58,3 +58,11 @@ start doing all the work from where you stop with all the chat history as well."
 - P7a: Security Center (overview, audit browse + verify with content hashes and daily anchors, sessions with remote end,
   dead-letter retry), one-click offboarding, approval-logged encrypted exports, SLA escalations, scheduler with idempotent
   job runs, migration 0004 and a models-vs-migrations drift test. Tests: v2 121, pilot 17, refine+bridge 306, agreements 37.
+
+## 2026-10-20 — Session 1, continued (after a worker restart; auto-resume fired at 06:48Z and 09:49Z)
+- P7b: CRM OIDC sign-in (PKCE, JWKS-validated tokens, MFA for Supervisor+), Keycloak realm export, container images
+  from the repo root, compose stack, Helm chart, Agreements Alembic baseline, restore drill, threat model, runbooks,
+  `/metrics`. Verified on a local compose stack: all services healthy, real-browser SSO for an agent (password) and a
+  supervisor (password + TOTP), unknown accounts refused, signed CRM ↔ TFSC call through internal URLs.
+- Found and fixed while running the real stack: alembic and redis were dev-only dependencies of the CRM (the image
+  could not migrate or use Redis); the bridge package could not find its schemas when installed (env override added).
