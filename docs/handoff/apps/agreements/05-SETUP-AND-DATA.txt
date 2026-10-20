@@ -1,0 +1,40 @@
+TFSC AGREEMENTS — SETUP, TESTS, DEPLOYMENT AND DATA
+
+SOURCE
+- Git: github.com/muzahirgdrive-droid/tfsc-unified-platform, branch claude/vigilant-babbage-cg07la
+  (commit {COMMIT}), folder apps/agreements. This archive is a snapshot of those tracked files plus
+  packages/bridge-contract. No frontend build is needed (plain HTML/JS/CSS).
+- The original Windows launchers (Start/Stop .cmd, Start.ps1, launch.py) still work for a single
+  machine with desktop Word; README.txt, DEVELOPER.txt and DEPLOYMENT.txt describe that mode.
+
+LOCAL (Linux/macOS)
+  python3 -m venv .venv && . .venv/bin/activate
+  pip install -r apps/agreements/requirements.txt -e packages/bridge-contract/python
+  cd apps/agreements
+  TFSC_MODE=local python manage.py setup-key        # writes the one-time key to TFSC_DATA_DIR/setup-key.txt
+  TFSC_MODE=local TFSC_RENDERER=libreoffice uvicorn portal:app --port 8765   # API + pages
+  TFSC_MODE=local TFSC_RENDERER=libreoffice python worker.py                 # document worker
+  Open http://127.0.0.1:8765, enter the setup key, create the first Super Admin. Database: SQLite under
+  TFSC_DATA_DIR (default .data); migrations run at start-up (Alembic).
+
+TESTS
+  cd apps/agreements && python -m pytest -q          # unit + API + migrations (TEST_DATABASE_URL for PostgreSQL,
+                                                     # an isolated database named tfsc_test only)
+  End to end with the CRM: apps/crm-api/tests_v2/test_e2e_agreements.py and apps/crm-web/e2e/agreements.spec.ts
+  (both need LibreOffice). All run in CI.
+
+DEPLOYMENT
+- Behind the CRM in infra/compose (services agreements + agreements-worker, PostgreSQL database tfsc,
+  contracts volume) or infra/helm (agreements API + worker sharing the contracts volume).
+- Hosted mode needs: TFSC_MODE=hosted, an https TFSC_ORIGIN, DATABASE_URL (PostgreSQL),
+  TFSC_OUTPUT_ROOT, TFSC_RENDERER=libreoffice, TFSC_CRM_URL / TFSC_CRM_INTERNAL_URL and
+  TFSC_CRM_SHARED_SECRET (same value as the CRM's CRM_TFSC_BRIDGE_SECRET).
+- Link the CRM once: the TFSC Super Admin maps the CRM Super Admin (Map an authorized CRM account on
+  /reviews, or POST /api/integrations/crm/actors). After that, CRM Directors/Super Admins grant access.
+- Install the private signature images on the server: python manage.py install-signatures.
+
+DATA
+- Clients, contracts, reviews, jobs and generated document bytes live in the database; published files
+  live under TFSC_OUTPUT_ROOT. Back up both together.
+- Older local records can be imported by the first Super Admin (migrate_legacy.py / history screen);
+  unknown authors are labelled, never invented.

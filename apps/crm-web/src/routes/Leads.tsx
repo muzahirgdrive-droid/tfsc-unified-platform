@@ -30,7 +30,7 @@ export default function Leads() {
               // The name is the button; its ::after covers the row so the whole row opens the lead, while the phone link
               // stays a separate control above it (no link nested inside a button).
               <div key={l.id} className="relative flex w-full flex-wrap items-center gap-3 p-4 hover:bg-bg">
-                <div className="min-w-0 flex-1"><button onClick={() => setOpen(l.id)} className="text-left font-semibold after:absolute after:inset-0 after:content-['']">{l.provider_name}</button><div className="text-sm text-muted">{l.owner_name ?? ''}</div></div>
+                <div className="min-w-0 flex-1 basis-full sm:basis-0"><button onClick={() => setOpen(l.id)} className="text-left font-semibold after:absolute after:inset-0 after:content-['']">{l.provider_name}</button><div className="text-sm text-muted">{l.owner_name ?? ''}</div></div>
                 <span className="relative z-10"><PhoneLink display={l.phone} /></span>
                 {l.agreement_locked && <span className="chip bg-warn-bg text-warn"><Lock size={12} />Agreement lock</span>}
                 <span className={cn('chip', STAGE_STYLE[l.stage] ?? 'bg-bg')}>{l.stage_label}</span><ArrowRight size={16} className="text-subtle" />

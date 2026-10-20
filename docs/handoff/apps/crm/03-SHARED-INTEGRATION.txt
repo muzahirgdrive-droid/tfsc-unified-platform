@@ -1,0 +1,46 @@
+CRM <-> TFSC AGREEMENTS — SHARED INTEGRATION (identical text in both archives)
+
+TWO SITES, ONE CONTRACT
+- The CRM and TFSC Agreements are separate sites with separate databases and sessions. They never
+  read each other's tables. They talk only through signed HTTP messages defined in
+  packages/bridge-contract (JSON Schemas + signer/verifier in Python and TypeScript + shared vectors).
+- Signature v1 (compatible with the pilot): HMAC-SHA256 over the exact bytes sent, with headers
+  X-TFSC-Timestamp, X-TFSC-Nonce (new per attempt) and X-TFSC-Signature. Events also carry
+  X-TFSC-Event-Id and X-TFSC-Schema (topic@version). Secret: CRM_TFSC_BRIDGE_SECRET on the CRM,
+  TFSC_CRM_SHARED_SECRET on TFSC (the same value, at least 32 characters).
+- Delivery is at least once from each side's outbox; receivers deduplicate on event_id (inbox table).
+  Replays, stale timestamps, reused nonces and bad signatures are refused (contract tests).
+- Service-to-service calls may use internal URLs (CRM_TFSC_INTERNAL_URL, TFSC_CRM_INTERNAL_URL) while
+  sending the public Host header, so both apps keep strict Host allow-lists.
+
+FLOWS
+1. Access grant (acceptance 13). A Director or Super Admin enables "TFSC Agreements access" for a CRM
+   user (People & Teams -> Manage). The CRM calls TFSC (account.provision.requested), TFSC creates or
+   updates the TFSC user with the granted role (Director can grant `user` only; `admin` needs a Super
+   Admin) and companies, and returns tfsc_user_id. The CRM Super Admin must be linked once to the TFSC
+   Super Admin (/api/integrations/crm/actors on TFSC) to bootstrap that trust.
+2. Revocation / offboarding. Disabling the grant revokes the TFSC account in the same request and TFSC
+   ends that user's sessions at once (target <= 60 s); if TFSC is unreachable the revocation is queued
+   and retried. Offboarding a CRM user sends user.offboarded through the outbox (retried until delivered).
+3. Proceed to Agreements (acceptance 12). On a signed-up lead a granted Supervisor+ opens the
+   pre-flight (legal name, address, notice email, signatory, title, effective date, contracting company,
+   documents). Confirming engages the Agreement Lock (owner, attribution and identity freeze; Super
+   Admin + reason to change) and sends agreement.handoff.requested. TFSC creates the client draft and
+   returns a one-time redeem token (10 minutes, single use) for <TFSC>/reviews#redeem=<token>.
+4. In TFSC: the user signs in (a signed-out visitor is sent to login and returned to the handoff),
+   the token is redeemed, services/pricing are completed if a Services Agreement is included, the draft
+   is submitted for independent review, a TFSC admin who is not the owner approves the exact revision,
+   and the owner generates the documents (the worker renders DOCX + PDF).
+5. Back to the CRM. TFSC emits agreement.* events (submitted, approved, issued, ...). On
+   agreement.issued the CRM creates or updates the Client Profile, moves the lead to Client and lists
+   the files; file links point to TFSC (<TFSC>/files/<id>), which authorizes every download. Contract
+   bytes never live in the CRM.
+
+WHAT EACH SIDE NEVER RECEIVES
+- TFSC never receives CRM activity rows, phone registry data, scores or meeting details.
+- CRM agents never receive TFSC client ids, review details, domain, project or project-owner data.
+
+VERIFIED BY
+- packages/bridge-contract tests (Python + TypeScript, shared signature vectors).
+- apps/crm-api/tests_v2/test_e2e_agreements.py (both apps as real processes, LibreOffice renderer).
+- apps/crm-web/e2e/agreements.spec.ts (the same flow in a browser, desktop + mobile).

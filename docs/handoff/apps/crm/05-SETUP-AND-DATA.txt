@@ -1,0 +1,53 @@
+TFSC Sales CRM v2 — SETUP, TESTS, DEPLOYMENT AND DATA
+
+SOURCE
+- Git: github.com/muzahirgdrive-droid/tfsc-unified-platform, branch claude/vigilant-babbage-cg07la
+  (commit {COMMIT}). This archive is a snapshot of the tracked files plus the compiled web app
+  (apps/crm-web/dist). The companion archive holds apps/agreements.
+- Requirements: Python 3.12+ (3.13 used locally), Node 22, PostgreSQL 16, Redis 7 (needed for more
+  than one API process), Docker for images. LibreOffice only for TFSC document rendering.
+
+LOCAL DEVELOPMENT (Linux/macOS)
+  python3 -m venv .venv && . .venv/bin/activate
+  pip install -r apps/crm-api/requirements-dev.txt -r apps/agreements/requirements.txt
+  pip install -e packages/refine/python -e packages/bridge-contract/python
+  tools/dev_services.sh start            # PostgreSQL :54329 + Redis :63799 (dev only)
+  createdb -h 127.0.0.1 -p 54329 -U postgres crm_demo
+  cd apps/crm-api && CRM_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:54329/crm_demo alembic upgrade head
+  CRM_DATABASE_URL=... CRM_DATA_DIR=/tmp/demodata python tools/seed_demo.py   # synthetic demo users
+  (cd ../crm-web && npm ci && npm run build)
+  CRM_DATABASE_URL=... CRM_DATA_DIR=/tmp/demodata CRM_MODE=local CRM_ORIGIN=http://127.0.0.1:8766 \
+    uvicorn tfsc_crm.main:app --port 8766
+  Demo password (local only): Demo-password-2026!   users: super@, director@, manager@, sup@, sup2@,
+  agent1@ … agent8@demo.test. Without CRM_FIELD_KEY / CRM_PHONE_KEY_SECRET, local mode stores fields
+  unencrypted ("p1:" prefix) and uses a fixed development phone key — never put real data in such a
+  database. Hosted mode refuses to start without both keys (and without an https origin).
+
+TESTS (all run in CI, .github/workflows/ci.yml)
+  ruff check . && mypy --config-file apps/crm-api/mypy.ini apps/crm-api/tfsc_crm
+  cd apps/crm-api && python -m pytest -q tests                      # pilot behaviour (17)
+  cd apps/crm-api && python -m pytest -q tests_v2 --cov=tfsc_crm.domain --cov=tfsc_crm.security --cov-fail-under=85
+  python -m pytest -q packages/refine/python packages/bridge-contract/python
+  cd apps/agreements && python -m pytest -q
+  cd apps/crm-web && npm test && npm run build                      # Vitest + typecheck + build
+  cd apps/crm-web && npm run e2e                                    # Playwright, see e2e/README.md
+  Counts at {COMMIT}: see docs/handoff/SESSION-LOG.md (last entry).
+
+DEPLOYMENT
+- One server (pilot): infra/compose (PostgreSQL, Redis, Keycloak, CRM api + bulk + dispatcher +
+  scheduler, Agreements api + worker, Caddy TLS edge). Steps in infra/README.md.
+- Kubernetes: infra/helm/tfsc-platform (secrets by name only; Ingress routes pastes/imports to the
+  bulk pool). Validated with helm lint + kubeconform; not yet deployed to a live cluster.
+- Runbooks: docs/runbooks/backups-and-restore.md (WAL/PITR, restore drill tools/restore_drill.py),
+  docs/runbooks/cutover.md (pilot -> v2), docs/runbooks/legacy-workbook-import.md.
+- Security model: docs/THREAT-MODEL.md. Performance: docs/PERFORMANCE.md. Decisions: docs/adr.
+
+DATA
+- Pilot data is migrated by Alembic 0003 (pilot tables -> v2) during the cutover runbook.
+- The October workbook ("Sales - Office 2 - Tracking 3.xlsx") is imported by a Super Admin through
+  Settings -> Legacy import (or tools/legacy_reconcile.py for a dry run). It reproduces the audited
+  1–14 October figures exactly; real client data is never committed — tests use a synthetic fixture.
+- Day-to-day files: Sheet View -> Upload file (XLSX/CSV, up to 50,000 rows per job, resumable).
+- Exports: Reports -> request (Manager), approval (Director), encrypted ZIP, 24 h expiry.
+- Backups: PostgreSQL base backup + WAL archiving (RPO <= 5 min target); CRM_DATA_DIR holds the setup
+  key, uploaded import files and audit-anchor JSONL — back it up with the database.

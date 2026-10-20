@@ -1,0 +1,28 @@
+TFSC AGREEMENTS (ScribeAlignContractStudio) — PORTABLE HANDOFF (regenerated {DATE}, commit {COMMIT})
+
+START HERE. This archive contains the current TFSC Agreements source (apps/agreements of the monorepo)
+plus the shared bridge contract it uses (packages/bridge-contract). Private signature images are NOT
+included (install them with manage.py install-signatures). The companion archive contains TFSC Sales
+CRM v2 (TFSCSalesCRM). Extract both beside each other.
+The full monorepo with history is the git branch named in 05-SETUP-AND-DATA.txt.
+
+1. Paste 01-PASTE-INTO-NEW-CHAT.txt into the new AI chat, attach both archives.
+2. 02-ARCHITECTURE.txt   — what exists, how it fits together, what is unfinished.
+3. 03-SHARED-INTEGRATION.txt — how the CRM and TFSC Agreements talk (signed bridge).
+4. 04-KNOWN-ISSUES.csv   — confirmed bugs vs risks vs deferred items, each with a next action.
+   04b-LEGACY-ISSUES-STATUS.csv — what happened to every issue listed in the October 15 handoff.
+5. 05-SETUP-AND-DATA.txt — run locally, run tests, deploy (compose / Helm), import data, back up.
+6. 08-OWNER-CHECKLIST.txt — everything that needs the owner (credentials, domains, decisions).
+7. 07-CORRECTIONS-TEMPLATE.txt — optional form for describing corrections.
+8. previews/             — screenshots of the review flow (desktop + mobile).
+
+Generated from the source at build time (do not edit by hand):
+  API-INVENTORY.json     every HTTP route registered on the portal app
+  DATABASE-SCHEMA.json   every table, column, key and index of a database migrated to head (Alembic)
+  ENVIRONMENT-NAMES.json every environment variable the code reads (names only, never values)
+  SERVICE-CATALOG.json   the processes that make up a deployment
+  MANIFEST.sha256        SHA-256 of every file in this archive except itself
+
+Current source wins over any document. docs/handoff/RESUME.md in the source tree is the
+running state of the work (phase checklist, decisions log); SESSION-LOG.md is the history.
+No client data, generated contracts or signature images are included.

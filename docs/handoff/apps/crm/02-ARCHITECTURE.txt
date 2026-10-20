@@ -1,0 +1,66 @@
+TFSC Sales CRM v2 — ARCHITECTURE (what exists at commit {COMMIT})
+
+SHAPE
+- Monorepo, two separately deployed sites (ADR-0001): CRM (apps/crm-api + apps/crm-web) and TFSC
+  Agreements (apps/agreements). Shared code in packages/: refine engine (Python + TypeScript with one
+  set of JSON vectors) and the bridge contract (schemas, signatures; Python + TypeScript).
+- The v1.0.1 pilot UI lives in apps/crm-web-pilot; its behaviour is preserved by tests (tests/).
+- Decisions are recorded in docs/adr (0001–0017) and in docs/handoff/RESUME.md (decisions log).
+
+BACKEND (apps/crm-api, Python 3.12+, FastAPI, SQLAlchemy Core, psycopg 3)
+- tfsc_crm/main.py builds the app: strict Host allow-list from CRM_ORIGIN, Origin + CSRF checks on
+  writes, security headers/CSP, the compiled SPA, optional /metrics (bearer token).
+- api/: routes by area — auth (password + OIDC), activities (entry, Sheet batch save, pre-dial check),
+  pipeline (follow-ups, strong follow-ups, leads, flags, clients), meetings (Google Calendar adapter),
+  dashboard (metric catalog, widgets, leaderboard, layouts), org (users, teams, grants), settings,
+  security (Security Center), imports (XLSX/CSV job), legacy workbook import, agreements (bridge),
+  events (SSE + Wall of Fame).
+- domain/: business rules — activities (refine, lock windows, Pacific business date), duplicates
+  (O(1) phone registry, amber/red flags, ordered batch locks), scoring (event-time score ledger),
+  rollups (agent day/hour stats, staged per batch, nightly reconcile), pipeline, notify, outbox, audit
+  (hash chain + daily anchors), anti_scraping, escalations, exports, offboarding, file and legacy import.
+- security/: sessions (cookie, idle + absolute expiry), CSRF, roles and capabilities
+  (sales_agent < supervisor < manager < director_admin < super_admin, scoped by reporting line and
+  groups), OIDC (code + PKCE, JWKS validation, MFA via amr/acr for Supervisor+), rate limits
+  (Redis or in-process), field encryption (AES-GCM) and blind-indexed phone/email keys.
+- workers/: dispatcher (outbox -> SSE broker, TFSC deliveries; FOR UPDATE SKIP LOCKED, retries,
+  dead letters) and scheduler (flag SLA every 15 min, overdue follow-ups hourly, daily: audit anchor,
+  rollup reconcile, partitions ahead, session cleanup; idempotent claims in job_runs).
+- realtime.py: SSE broker. In-process for one process; with CRM_REDIS_URL each API worker holds one
+  Redis subscription per org and fans events out in memory. Events carry an audience
+  (all / management / user:<id>) and are filtered per connection.
+
+DATABASE (PostgreSQL 16, Alembic migrations 0001–0004 are the schema source; see DATABASE-SCHEMA.json)
+- 47 tables. Core: orgs, users, teams, team_memberships, module_grants, phone_registry, activities
+  (monthly range partitions), activity_revisions, followups, strong_followups, leads, flags, meetings,
+  score_ledger, agent_day_stats, agent_hour_stats, clients, outbox, inbox, audit_log, audit_anchors,
+  import_batches/import_rows, exports, job_runs, settings.
+- Row-level security on org-scoped tables (app role crm_app, app.org_id per transaction) as defence in
+  depth behind application scoping (ADR-0007). PII columns encrypted; phones/emails searchable only via
+  HMAC keys (ADR-0006).
+
+WEB (apps/crm-web: React 19, TypeScript strict, Vite, TanStack Router + Query, Tailwind v4)
+- Screens: Overview (role dashboards, ECharts, react-grid-layout), My Work (quick entry, lock
+  countdown), Sheet View (Glide Data Grid; cards on mobile; Refine & Save; file upload), Follow-ups,
+  Strong FU, Leads (meetings, sale, Proceed to Agreements), Meetings, Flags, Clients, Wall of Fame,
+  People & Teams, Reports (exports), Settings (incl. legacy import), Security, Me.
+- Refine runs in a web worker with the shared TypeScript engine; the server re-refines authoritatively.
+- Live events: one EventSource (celebrations, dashboard nudges, red-duplicate blocking alert).
+- Typed API client generated from apps/crm-api/openapi.json (CI fails on drift).
+
+SCALE (measured, docs/PERFORMANCE.md)
+- One 4-vCPU VM with 2.68 M synthetic activities: 550-agent profile passed every §24 threshold with
+  a separate bulk pool; 15,000 concurrent SSE streams received a celebration with p95 2.80 s.
+- Not measured: 10k/50k-user profiles, 100 M-row dataset, multi-host, soak, failover.
+- Deployment splits interactive API, bulk pool (pastes/imports), dispatcher and scheduler
+  (infra/compose, infra/helm). The API is stateless; scale it horizontally.
+
+TESTS AND QUALITY GATES (CI: .github/workflows/ci.yml)
+- python: ruff, mypy, OpenAPI drift, migrations up/down/up, pilot tests, v2 tests on PostgreSQL with
+  RLS (incl. authorization matrix, leak tests, concurrency, DST, legacy reconciliation fixture),
+  refine vectors, bridge contract, Agreements tests.
+- web: build, typed-client drift, Vitest, TS refine vectors, TS bridge contract.
+- e2e: Playwright desktop + mobile across CRM and TFSC (apps/crm-web/e2e/README.md), axe, snapshots.
+- infra: Helm lint + kubeconform, compose validation, image builds, no private data in images.
+
+UNFINISHED / LIMITS: see 04-KNOWN-ISSUES.csv and 08-OWNER-CHECKLIST.txt.

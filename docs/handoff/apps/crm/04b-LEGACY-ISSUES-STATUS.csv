@@ -1,0 +1,17 @@
+Legacy ID,October 15 issue (short),Status in v2,Evidence,Remaining next action
+CRM-01,No migration/rollback framework,resolved,Alembic migrations 0001-0004; CI runs upgrade/downgrade/upgrade; models-vs-migrations test,-
+CRM-02,Raw aggregates; no measured 50k capacity,partly resolved,"agent_day/hour_stats rollups + nightly reconcile; 550-agent k6 profile and 15,000 SSE streams measured (docs/PERFORMANCE.md)",Measure 10k/50k profiles and 100 M rows (V2-R02)
+CRM-03,No event-time score ledger,resolved,score_ledger (ADR-0016); property test: ledger always sums to the row's points,-
+CRM-04,"1,000-row sync batches; first sheet only; no resumable migration",resolved,"Server import job (50,000 rows, any sheet, resumable); legacy workbook import (resumable, reconciliation report); pastes stay 1,000 rows by design",-
+CRM-05,Paste preview not an Excel-like grid,resolved,Sheet View on Glide Data Grid (cards on mobile); E2E sheet.spec.ts,-
+CRM-06,Phone claim conflates shared line and practice identity; 20-row scan,partly resolved,"O(1) phone_registry (ADR-0005), prospects table, flag resolution option 'Shared line — different provider'",Owner rule for canonical practice identity across multiple numbers
+CRM-07,No round-robin auto-allocation,deferred,Setting exists without allocation logic,See V2-D06
+CRM-08,Fixed roles; supervisor cannot create accounts,partly resolved,"Managers+ create accounts; scoped capabilities per role, authorization matrix test over every endpoint",Custom roles only if needed (V2-D07)
+CRM-09,Weekdays only; no holidays/leave,resolved,work_calendar + user_leave; calls/day metric excludes holidays and leave,-
+CRM-10,Manual status snapshot; no durable events,resolved,"Transactional outbox + dispatcher (retries, dead letters) + inbox dedupe",-
+CRM-11,Concurrent handoff / revocation races untested,partly resolved,"Bridge contract tests (replay, expiry, nonce, signature); 100-way conversion race; Agreement Lock; E2E handoff",Add a concurrent same-lead handoff test against a running TFSC
+CRM-12,No real Google / Vonage verification,deferred,Google OAuth adapter + mock provider; Vonage via tel:/URI template,Owner credentials (V2-D01/V2-D02)
+CRM-13,"No recovery/invite service, no RLS, no tamper-resistant audit sink",partly resolved,"Keycloak SSO (recovery via Keycloak), RLS on org tables, hash-chained audit + daily anchors",SMTP (V2-D03) and object-lock anchor shipping (V2-D04)
+CRM-14,org_id filtering is not multitenant isolation,accepted risk,RLS is defence in depth for a single-company deployment,See V2-R06
+CRM-15,Add/Manage user dismissed by outside click,resolved,Dialogs with dismissOnOutside=false keep typed values,-
+CRM-16,Client audit is not a unified stream,resolved,"Client profile: one timeline of activities, flags, assignments and lead transitions, plus meetings and agreements sections",-

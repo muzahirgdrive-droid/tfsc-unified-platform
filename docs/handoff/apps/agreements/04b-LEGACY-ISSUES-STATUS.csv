@@ -1,0 +1,15 @@
+Legacy ID,October 15 issue (short),Status in the unified platform,Evidence,Remaining next action
+TFSC-01,create_all bootstrap is not a migration framework,resolved,Alembic baseline + migrate.py at start-up; pre-Alembic installs stamped; tests/test_migrations.py,-
+TFSC-02,Client identity is owner/name hash,open (risk),Unchanged,See 04-KNOWN-ISSUES.csv
+TFSC-03,File publication and DB commit not atomic,open (risk),Unchanged,See 04-KNOWN-ISSUES.csv
+TFSC-04,Failed jobs may leave review queued,resolved,"A failed or abandoned generation now returns the review to ""approved"" for an explicit retry (crm_bridge.release_failed; tests for both paths)",-
+TFSC-05,Asset bytes not frozen during render,open (risk),Unchanged,See 04-KNOWN-ISSUES.csv
+TFSC-06,"Review UI is metadata, not a full proof",open (deferred),Unchanged,See 04-KNOWN-ISSUES.csv
+TFSC-07,First 100 reviews / 50 clients,open (deferred),Unchanged,See 04-KNOWN-ISSUES.csv
+TFSC-08,Only supplied service scopes are exact source text,open (deferred),Unchanged; legal content untouched by this project,See 04-KNOWN-ISSUES.csv
+TFSC-09,Word vs LibreOffice pagination,open (risk),CI and E2E render with LibreOffice; visual approval still needed,See 04-KNOWN-ISSUES.csv
+TFSC-10,Signature images are not e-signatures,open (deferred),Unchanged; images stay private (not in git or images),See 04-KNOWN-ISSUES.csv
+TFSC-11,Hosted server cannot pick a laptop folder,accepted (by design),Output under TFSC_OUTPUT_ROOT; authorized downloads,-
+TFSC-12,Bridge/SSO not production load/provider tested,partly resolved,"Bridge v2 verified end to end (API + browser, both apps as real processes); TFSC OIDC not yet exercised with Keycloak",See 04-KNOWN-ISSUES.csv
+TFSC-13,"30-minute lease, no heartbeat; blob growth",open (risk),Unchanged,See 04-KNOWN-ISSUES.csv
+TFSC-14,No email dispatch or e-signature provider,open (deferred),Unchanged,See 04-KNOWN-ISSUES.csv

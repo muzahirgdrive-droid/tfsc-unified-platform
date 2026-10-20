@@ -1,0 +1,49 @@
+WHAT NEEDS THE OWNER (identical in both archives)
+Never paste secret values into a chat or a ticket: put them in the server's .env / Kubernetes secrets.
+
+HOSTING AND NAMES
+[ ] Choose the go-live layout: one VPS with infra/compose, or Kubernetes with infra/helm. For more
+    than the 550-agent load, put PostgreSQL on its own host (docs/PERFORMANCE.md).
+[ ] Domain names and DNS records: CRM (e.g. crm.<company>), TFSC Agreements, SSO (Keycloak).
+    Caddy (compose) or the Ingress obtains TLS certificates once DNS points at the server.
+[ ] Object storage for backups (PostgreSQL base backups + WAL archive) and a separate bucket with
+    object lock for the daily audit anchors; retention periods for both.
+
+SECRETS TO GENERATE ON THE SERVER (names in ENVIRONMENT-NAMES.json, examples in infra/compose/.env.example)
+[ ] CRM_FIELD_KEY (base64 of 32 random bytes) and CRM_PHONE_KEY_SECRET — back them up offline: losing
+    them makes encrypted fields and phone keys unreadable.
+[ ] Bridge secret (same value as CRM_TFSC_BRIDGE_SECRET and TFSC_CRM_SHARED_SECRET, 32+ characters).
+[ ] PostgreSQL password, Keycloak admin password, OIDC client secrets, CRM_METRICS_TOKEN.
+
+SIGN-IN AND EMAIL
+[ ] Keycloak: use the bundled realm (infra/keycloak/realm-tfsc.json) or federate the company directory.
+    Every user's email must match their CRM account; Supervisors and above go in the group
+    supervisors-and-above (TOTP required).
+[ ] SMTP account for Keycloak (password recovery and verification emails).
+
+INTEGRATIONS
+[ ] Google Calendar: a Google Cloud project with an OAuth client (CRM_GOOGLE_CLIENT_ID / _SECRET) and
+    the organizer account(s) that should own meetings; then test in staging.
+[ ] Vonage: keep tel: links, or provide the custom URI template; say whether call logging via the
+    Vonage API is required.
+[ ] Error tracking (Sentry DSN or none) and who receives alerts; Prometheus/Grafana for /metrics.
+
+TFSC AGREEMENTS
+[ ] Install the private signature images on the TFSC server (python manage.py install-signatures);
+    they are never in git or in images.
+[ ] Server renderer is LibreOffice on Linux: approve its pagination against the Word originals, or run
+    a Windows renderer host.
+[ ] Legal review of any agreement text beyond the supplied service scopes; choose an e-signature
+    provider if signatures must be executed electronically.
+
+DATA AND CUTOVER
+[ ] Approve the cutover date (docs/runbooks/cutover.md) and run the restore drill on the production host.
+[ ] Super Admin imports the October workbook (Settings -> Legacy import) and confirms the
+    reconciliation report (the audited 1–14 October figures are reproduced exactly in tests).
+
+DECISIONS STILL OPEN (see 04-KNOWN-ISSUES.csv)
+[ ] Round-robin auto-assignment rule (V2-D06).
+[ ] Canonical practice identity when one practice has several numbers (legacy CRM-06).
+[ ] Client file storage provider and retention (V2-D05).
+[ ] Custom roles beyond the five fixed roles (V2-D07).
+[ ] Budget for a staging stack and load-generator fleet to measure the 10k/50k profiles (V2-R02).
