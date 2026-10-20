@@ -1,0 +1,7 @@
+pyproject.toml
+tests/test_contract.py
+tfsc_bridge/__init__.py
+tfsc_bridge.egg-info/PKG-INFO
+tfsc_bridge.egg-info/SOURCES.txt
+tfsc_bridge.egg-info/dependency_links.txt
+tfsc_bridge.egg-info/top_level.txt

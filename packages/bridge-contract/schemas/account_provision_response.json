@@ -1,0 +1,35 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tfsc/account_provision_response@1",
+ "type": "object",
+ "required": [
+  "tfsc_user_id",
+  "status",
+  "companies"
+ ],
+ "properties": {
+  "tfsc_user_id": {
+   "type": "string"
+  },
+  "status": {
+   "type": "string",
+   "enum": [
+    "active",
+    "suspended",
+    "revoked"
+   ]
+  },
+  "companies": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "role": {
+   "type": "string"
+  },
+  "created": {
+   "type": "boolean"
+  }
+ }
+}

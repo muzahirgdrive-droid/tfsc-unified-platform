@@ -1,0 +1,38 @@
+[
+ {
+  "secret": "test-secret-0123456789-abcdefghijklmnop",
+  "method": "POST",
+  "path": "/api/integrations/v1/crm/handoffs",
+  "body": "{\"a\":1}",
+  "timestamp": "1760000000",
+  "nonce": "nonce-0000000000000001",
+  "signature": "eb83b600e01be9fb0aa1a3ce5f01aea9f96840610136e021c1080a88847a02ba"
+ },
+ {
+  "secret": "test-secret-0123456789-abcdefghijklmnop",
+  "method": "post",
+  "path": "/api/integrations/v1/crm/accounts",
+  "body": "{\"email\":\"x@y.test\",\"role\":\"user\"}",
+  "timestamp": "1760000300",
+  "nonce": "nonce_ABCDEFGHIJKLMNOP",
+  "signature": "44d31be871136c7238dba7676be77c9c6dcd8a287908ddb4d767e386740a580b"
+ },
+ {
+  "secret": "test-secret-0123456789-abcdefghijklmnop",
+  "method": "POST",
+  "path": "/api/integrations/v1/tfsc/events",
+  "body": "{\"topic\":\"agreement.issued\",\"data\":{\"name\":\"Café Ünïcode\"}}",
+  "timestamp": "1760000600",
+  "nonce": "abcdefghijklmnopqrstuvwx",
+  "signature": "bdc6fd691ae80ef322b9a801233689f5b917e66c206b94f541fcdfe747b078b3"
+ },
+ {
+  "secret": "test-secret-0123456789-abcdefghijklmnop",
+  "method": "GET",
+  "path": "/api/integrations/v1/crm/status",
+  "body": "",
+  "timestamp": "1760000900",
+  "nonce": "zzzzzzzzzzzzzzzzzzzz",
+  "signature": "3be7ef761161976b76ecf6f8901eff9d9146e0d5bba490c73cfa92e1be92b567"
+ }
+]

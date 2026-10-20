@@ -1,0 +1,71 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tfsc/agreement_event_data@1",
+ "type": "object",
+ "required": [
+  "crm_client_id",
+  "tfsc_client_id",
+  "state"
+ ],
+ "properties": {
+  "crm_client_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "crm_lead_id": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 64
+  },
+  "tfsc_client_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "review_id": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 64
+  },
+  "state": {
+   "type": "string",
+   "enum": [
+    "draft",
+    "submitted",
+    "changes_requested",
+    "approved",
+    "queued",
+    "issued",
+    "superseded",
+    "executed"
+   ]
+  },
+  "entity": {
+   "type": "string",
+   "maxLength": 100
+  },
+  "revision": {
+   "type": "integer"
+  },
+  "files": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "sha256": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ }
+}

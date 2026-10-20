@@ -1,0 +1,24 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tfsc/handoff_response@1",
+ "type": "object",
+ "required": [
+  "handoff_id",
+  "tfsc_client_id",
+  "redeem_token"
+ ],
+ "properties": {
+  "handoff_id": {
+   "type": "string"
+  },
+  "tfsc_client_id": {
+   "type": "string"
+  },
+  "redeem_token": {
+   "type": "string"
+  },
+  "redeem_url": {
+   "type": "string"
+  }
+ }
+}

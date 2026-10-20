@@ -1,0 +1,122 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tfsc/handoff_request@2",
+ "title": "CRM -> TFSC agreement handoff (agreement.handoff.requested)",
+ "type": "object",
+ "required": [
+  "idempotency_key",
+  "crm_client_id",
+  "crm_actor_id",
+  "entity",
+  "client"
+ ],
+ "properties": {
+  "idempotency_key": {
+   "type": "string",
+   "minLength": 8,
+   "maxLength": 80
+  },
+  "crm_client_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "crm_actor_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "crm_lead_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "event_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "entity": {
+   "type": "string",
+   "enum": [
+    "SCRIBE ALIGN LLC",
+    "EXTENDED HEALTH SERVICES INC.",
+    "24-7 CONSULTANCY LLC"
+   ]
+  },
+  "client": {
+   "type": "object",
+   "required": [
+    "client_name"
+   ],
+   "properties": {
+    "client_name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 200
+    },
+    "legal_name": {
+     "type": "string",
+     "maxLength": 200
+    },
+    "providers": {
+     "type": "array",
+     "maxItems": 50,
+     "items": {
+      "type": "string",
+      "maxLength": 200
+     }
+    },
+    "address": {
+     "type": "string",
+     "maxLength": 1000
+    },
+    "client_email": {
+     "type": "string",
+     "maxLength": 254
+    },
+    "client_phone": {
+     "type": "string",
+     "maxLength": 40
+    },
+    "client_signatory": {
+     "type": "string",
+     "maxLength": 200
+    },
+    "client_title": {
+     "type": "string",
+     "maxLength": 200
+    }
+   }
+  },
+  "services": {
+   "type": "array",
+   "maxItems": 50
+  },
+  "document_types": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "enum": [
+     "baa",
+     "services"
+    ]
+   }
+  },
+  "effective_date": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+  },
+  "domain": {
+   "type": "string",
+   "maxLength": 150
+  },
+  "project_id": {
+   "type": "string",
+   "pattern": "^P\\d{4}$"
+  },
+  "project_owner": {
+   "type": "string",
+   "maxLength": 150
+  }
+ }
+}

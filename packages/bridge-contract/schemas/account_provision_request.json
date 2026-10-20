@@ -1,0 +1,96 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tfsc/account_provision_request@1",
+ "title": "CRM -> TFSC create-or-link an agreements account (\u00a719.2)",
+ "type": "object",
+ "required": [
+  "idempotency_key",
+  "crm_user_id",
+  "granting_crm_user_id",
+  "email",
+  "display_name",
+  "role",
+  "companies",
+  "action"
+ ],
+ "properties": {
+  "idempotency_key": {
+   "type": "string",
+   "minLength": 8,
+   "maxLength": 80
+  },
+  "action": {
+   "type": "string",
+   "enum": [
+    "grant",
+    "update",
+    "suspend",
+    "revoke"
+   ]
+  },
+  "crm_user_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "granting_crm_user_id": {
+   "type": "string",
+   "maxLength": 64
+  },
+  "oidc_issuer": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 500
+  },
+  "oidc_subject": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 250
+  },
+  "link_tfsc_user_id": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 64
+  },
+  "email": {
+   "type": "string",
+   "maxLength": 254
+  },
+  "display_name": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 150
+  },
+  "role": {
+   "type": "string",
+   "enum": [
+    "user",
+    "admin"
+   ]
+  },
+  "companies": {
+   "type": "array",
+   "maxItems": 3,
+   "items": {
+    "type": "string",
+    "enum": [
+     "SCRIBE ALIGN LLC",
+     "EXTENDED HEALTH SERVICES INC.",
+     "24-7 CONSULTANCY LLC"
+    ]
+   }
+  },
+  "parent_admin_tfsc_user_id": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 64
+  }
+ }
+}

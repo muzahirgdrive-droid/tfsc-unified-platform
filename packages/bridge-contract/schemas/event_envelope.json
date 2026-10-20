@@ -1,0 +1,55 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "tfsc/event_envelope@1",
+ "title": "Signed event delivered to the other app inbox (at-least-once, dedup by event_id)",
+ "type": "object",
+ "required": [
+  "event_id",
+  "topic",
+  "schema_version",
+  "occurred_at",
+  "source",
+  "data"
+ ],
+ "properties": {
+  "event_id": {
+   "type": "string",
+   "minLength": 8,
+   "maxLength": 80
+  },
+  "topic": {
+   "type": "string",
+   "enum": [
+    "agreement.handoff.requested",
+    "agreement.draft_created",
+    "agreement.submitted",
+    "agreement.changes_requested",
+    "agreement.approved",
+    "agreement.issued",
+    "agreement.superseded",
+    "agreement.executed",
+    "account.provisioned",
+    "account.suspended",
+    "account.revoked",
+    "user.offboarded"
+   ]
+  },
+  "schema_version": {
+   "type": "integer"
+  },
+  "occurred_at": {
+   "type": "string",
+   "maxLength": 40
+  },
+  "source": {
+   "type": "string",
+   "enum": [
+    "crm",
+    "tfsc"
+   ]
+  },
+  "data": {
+   "type": "object"
+  }
+ }
+}
