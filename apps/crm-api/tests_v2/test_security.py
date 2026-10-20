@@ -106,6 +106,17 @@ MATRIX = {
     ('GET', '/api/integrations/google/status'): ('sup', None),
     ('POST', '/api/integrations/google/disconnect'): ('sup', None),
     ('POST', '/api/meetings/sync'): ('sup', None),
+    ('POST', '/api/imports'): ('any', None),
+    ('GET', '/api/imports'): ('any', None),
+    ('GET', '/api/imports/{import_id}'): ('any', None),
+    ('POST', '/api/imports/{import_id}/start'): ('any', None),
+    ('GET', '/api/imports/{import_id}/rows'): ('any', None),
+    ('POST', '/api/admin/legacy-imports'): ('super', None),
+    ('GET', '/api/admin/legacy-imports'): ('super', None),
+    ('GET', '/api/admin/legacy-imports/{batch_id}'): ('super', None),
+    ('POST', '/api/admin/legacy-imports/{batch_id}/start'): ('super', {'mapping': {}}),
+    ('GET', '/api/admin/legacy-imports/{batch_id}/review'): ('super', None),
+    ('POST', '/api/admin/legacy-imports/{batch_id}/review/{row_no}'): ('super', {'action': 'dismiss'}),
 }
 
 

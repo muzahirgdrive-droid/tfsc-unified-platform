@@ -102,7 +102,8 @@ def create_app() -> FastAPI:
     from .api import routes_activities, routes_auth, routes_org, routes_pipeline, routes_settings
     for r in (routes_auth, routes_org, routes_settings, routes_activities, routes_pipeline):
         app.include_router(r.router)
-    for optional in ('routes_dashboard', 'routes_meetings', 'routes_events', 'routes_imports', 'routes_agreements', 'routes_security'):
+    for optional in ('routes_dashboard', 'routes_meetings', 'routes_events', 'routes_imports', 'routes_file_imports', 'routes_agreements',
+                     'routes_security'):
         try:
             mod = __import__(f'{__package__}.api.{optional}', fromlist=['router'])
         except ModuleNotFoundError as exc:

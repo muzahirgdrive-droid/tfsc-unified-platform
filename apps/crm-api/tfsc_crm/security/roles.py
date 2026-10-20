@@ -46,6 +46,7 @@ CAPS: dict[str, int] = {
     'agreements.grant_admin': SUPER,
     'security.manage': SUPER,
     'flags.view_all': SUPER,
+    'imports.legacy': SUPER,
 }
 
 

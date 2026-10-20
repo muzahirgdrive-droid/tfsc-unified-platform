@@ -5,19 +5,24 @@ import { toast } from 'sonner';
 import { Dialog } from '@/components/ui/Dialog';
 import { PageHeader, Spinnerless } from '@/components/ui/bits';
 import { raw } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
+import { LegacyImport } from './LegacyImport';
 
 type D = { id: string; name: string; legal_name: string | null; tfsc_entity_key: string | null; active: boolean; sort: number; version: number };
 type P = { id: string; name: string | null; domain_id: string | null; owner_user_id: string | null; owner_name: string | null; owner_email: string | null; owner_phone: string | null; status: string; notes: string | null; in_use: boolean; version: number };
 const TFSC = ['', 'SCRIBE ALIGN LLC', 'EXTENDED HEALTH SERVICES INC.', '24-7 CONSULTANCY LLC'];
 
 export default function Settings() {
-  const [tab, setTab] = useState<'domains' | 'projects' | 'policies' | 'targets'>('projects');
+  const { can } = useAuth();
+  const [tab, setTab] = useState<'domains' | 'projects' | 'policies' | 'targets' | 'legacy import'>('projects');
+  const tabs = ['projects', 'domains', 'targets', 'policies', ...(can('imports.legacy') ? ['legacy import'] as const : [])] as const;
   return (
     <div>
       <PageHeader eyebrow="Settings" title="Domains, projects & policies" subtitle="Every user is registered with a domain (default Scribe Align LLC) and a project. Clients inherit both, so client ↔ project ↔ domain ↔ owner is always traceable." />
-      <div className="mb-4 flex gap-1">{(['projects', 'domains', 'targets', 'policies'] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={cn('chip h-9 px-3 capitalize', tab === t ? 'bg-navy text-white' : 'border border-line bg-surface')}>{t}</button>)}</div>
+      <div className="mb-4 flex flex-wrap gap-1" role="tablist">{tabs.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn('chip h-9 px-3 capitalize', tab === t ? 'bg-navy text-white' : 'border border-line bg-surface')}>{t}</button>)}</div>
       {tab === 'domains' && <Domains />}{tab === 'projects' && <Projects />}{tab === 'targets' && <Targets />}{tab === 'policies' && <Policies />}
+      {tab === 'legacy import' && can('imports.legacy') && <LegacyImport />}
     </div>
   );
 }

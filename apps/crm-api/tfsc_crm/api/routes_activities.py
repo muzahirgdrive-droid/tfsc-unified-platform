@@ -16,7 +16,7 @@ from .. import crypto
 from ..db import models as m
 from ..db.session import read, tx
 from ..domain import activities as svc
-from ..domain import duplicates, scoring
+from ..domain import duplicates, file_import, scoring
 from ..domain.anti_scraping import record_reads
 from ..ids import uuid7
 from ..pacific import business_date, utcnow
@@ -214,25 +214,10 @@ def save_batch(body: BatchIn, a: ActorDep) -> BatchOut:
         results: list[BatchRowResult] = []
         import_rows = []
         for i, row in enumerate(body.rows):
-            try:
-                with c.begin_nested():
-                    res = svc.create(c, a, row, source=body.source, batch_id=batch_id)
-                results.append(BatchRowResult(row_no=i, status='saved', activity_id=res.activity['id'], issues=_issues(res.issues),
-                                              duplicate_notice=res.duplicate.notice if res.duplicate.severity else None))
-                import_rows.append({'org_id': a.org_id, 'batch_id': batch_id, 'row_no': i, 'raw': _jsonable(row), 'issues': res.issues,
-                                    'decision': 'saved', 'activity_id': res.activity['id']})
-            except svc.RowRejected as e:
-                review = e.kind == 'contradiction' and body.source == 'import'
-                results.append(BatchRowResult(row_no=i, status='review' if review else 'rejected', issues=_issues(e.issues)))
-                import_rows.append({'org_id': a.org_id, 'batch_id': batch_id, 'row_no': i, 'raw': _jsonable(row), 'issues': e.issues,
-                                    'decision': 'review' if review else 'rejected', 'activity_id': None})
-                if review:
-                    c.execute(m.flags.insert().values(id=uuid7(), org_id=a.org_id, severity='amber', kind='import_contradiction',
-                                                      raised_for_user=a.id, detail={'batch_id': str(batch_id), 'row_no': i, 'issues': e.issues}))
-            except HTTPException as e:
-                results.append(BatchRowResult(row_no=i, status='rejected', issues=[IssueOut(field='row', severity='red', code='rejected', message=str(e.detail))]))
-                import_rows.append({'org_id': a.org_id, 'batch_id': batch_id, 'row_no': i, 'raw': _jsonable(row), 'issues': [{'message': str(e.detail)}],
-                                    'decision': 'rejected', 'activity_id': None})
+            r, rec = file_import.process_row(c, a, batch_id, i, row, body.source)
+            results.append(BatchRowResult(row_no=i, status=r['status'], activity_id=r['activity_id'], issues=_issues(r['issues']),
+                                          duplicate_notice=r.get('duplicate_notice')))
+            import_rows.append(rec)
         if import_rows:
             c.execute(m.import_rows.insert(), import_rows)
         saved = sum(1 for r in results if r.status == 'saved')
@@ -241,10 +226,6 @@ def save_batch(body: BatchIn, a: ActorDep) -> BatchOut:
         c.execute(m.import_batches.update().where(m.import_batches.c.id == batch_id).values(
             status='done', totals={'saved': out.saved, 'rejected': out.rejected, 'review': out.review}, result=out.model_dump(mode='json')))
     return out
-
-
-def _jsonable(row: dict) -> dict:
-    return {str(k): (v if isinstance(v, (str, int, float, bool)) or v is None else str(v)) for k, v in row.items()}
 
 
 @router.get('/precheck', response_model=PrecheckOut)

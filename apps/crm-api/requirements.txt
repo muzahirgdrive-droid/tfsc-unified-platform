@@ -11,3 +11,4 @@ tzdata==2026.5
 Authlib==1.9.1
 cryptography==47.0.0
 Pillow==12.3.0
+defusedxml==0.7.1

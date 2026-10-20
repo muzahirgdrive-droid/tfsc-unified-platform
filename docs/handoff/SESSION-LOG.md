@@ -48,3 +48,10 @@ start doing all the work from where you stop with all the chat history as well."
 - 21 Vitest unit tests (sheet parsing, Pacific time/DST, toggles + rules, API errors, refine vectors via the app alias).
 - Prod `npm audit` clean (lodash 4.18.1, echarts 6.1.0).
 - All suites green: pilot 17, v2 82, refine+bridge 306, agreements 37 (+42 subtests), web 21.
+- Legacy workbook import + §20.5 reconciliation (acceptance 18): pure scanner, resumable Super Admin job, review queue,
+  Settings → Legacy import UI, CLI `tools/legacy_reconcile.py`, sanitized fixture tests. Verified locally on the real
+  workbook (not committed): all §2 figures reproduce, and after a full import the database matches exactly
+  (17,020 / 2,803 / 16.4689% / 27 / 1 / 11.8143%), 0 rollup drift. Import speed ~112 rows/s.
+- XLSX/CSV server import job (`/api/imports`) with live rules, per-row results, resume and idempotent re-import;
+  Sheet View → Upload file → import dialog. Paste batch save now shares the same per-row code.
+- Tests: v2 100, pilot 17, web 21.

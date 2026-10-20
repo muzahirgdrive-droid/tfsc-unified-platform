@@ -42,10 +42,10 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 |---|---|---|
 | P0 Baseline | done | pilot 47 tests + 42 subtests green; baseline migration = pilot schema (diff 0); CI; ADRs |
 | P1 Foundation | done except Keycloak | design system + app shell + world clock + OpenAPI TS client shipped in `apps/crm-web` (v2); Keycloak realm remains (P7) |
-| P2 Capture | done except import job | My Work quick entry + Sheet View (Glide grid, paste/header detect, Refine/Refine & Save, encrypted draft) shipped; XLSX import job pending |
+| P2 Capture | done | My Work, Sheet View, and the XLSX/CSV server import job (`/api/imports`, resumable, per-row results, 50k rows, SHA-256 stored) |
 | P3 Integrity | done except SLA job | follow-ups, strong FU, leads, flags, people/teams UI shipped; SLA escalation job pending (P7) |
 | P4 Meetings & Celebration | done | meetings UI, celebration overlay (SSE, confetti without worker for CSP), Wall of Fame |
-| P5 Dashboards | done except workbook reconciliation | dashboard API (`routes_dashboard.py`) + Overview widgets (ECharts, react-grid-layout) + Reports; reconciliation importer pending |
+| P5 Dashboards | done | dashboards + legacy workbook import with §20.5 reconciliation (acceptance 18; see runbook) |
 | P6 Agreements v2 | done | backend both apps + CRM pre-flight/client profile UI; E2E acceptance 12-13 green with real LibreOffice |
 | P7 Hardening & Scale | not started | |
 
@@ -77,8 +77,10 @@ See `docs/handoff/STATUS.md` for v2 test commands as they are added.
 1. [x] P5 dashboard API (metric catalog, leaderboard, layouts, presets, comparison) — `routes_dashboard.py`, `tests_v2/test_dashboard.py`
 2. [x] crm-web v2 — `apps/crm-web` (pilot UI moved to `apps/crm-web-pilot`). Verified with screenshots
        (`apps/crm-web/e2e/screens.mjs` against `tools/seed_demo.py` data) + 21 Vitest tests.
-3. [ ] Workbook reconciliation importer (§20.5, acceptance 18) with a SANITIZED fixture (never commit the real xlsx)
-4. [ ] XLSX/CSV import job (resumable, all sheets, 50k rows) + legacy workbook historical import (Super Admin)
+3. [x] Workbook reconciliation + legacy historical import (§20.5/§25.3, acceptance 18): `domain/legacy_workbook.py` (pure scan +
+       figures), `domain/legacy_import.py` (resumable job), `/api/admin/legacy-imports`, Settings → Legacy import,
+       `tools/legacy_reconcile.py`, sanitized fixture `tests_v2/legacy_fixture.py`, runbook `docs/runbooks/legacy-workbook-import.md`
+4. [x] XLSX/CSV import job: `domain/file_import.py`, `/api/imports`, Sheet View → Upload file → ImportDialog
 5. [ ] P7: security center, exports (watermarked, approval), offboarding, flag SLA escalation job, audit anchor, Keycloak realm,
        k6 load tests + docs/PERFORMANCE.md, backups/runbooks, compose/Helm (Dockerfile must run `tfsc_crm.main:app`),
        agreements Alembic baseline
@@ -114,3 +116,15 @@ default `postgresql+psycopg://postgres@127.0.0.1:54329/crm_test`).
 - Web: canvas-confetti runs without its blob: worker (CSP `script-src 'self'` stays strict).
 - Web: dashboard widget tables use container queries (tiles are resizable), not viewport breakpoints.
 - Web deps pinned exactly; prod `npm audit` clean (lodash 4.18.1, echarts 6.1.0). Glide Data Grid needs `legacy-peer-deps` (.npmrc).
+- Legacy import: historical rows raise no duplicate flags and get no conflict cap (they predate v2 rules); first-seen
+  phone facts are recorded and repeats are summarised in the reconciliation report. Strong FU / Sign Up cells become
+  confirmed milestones decided by the importing Super Admin (no confirmation step existed in the workbook).
+- Legacy import: contradictory rows (an outcome Yes while Call Attempt is not) and undated rows are NOT imported (review
+  queue: dismiss and re-enter by hand); #REF! rows import from their raw cells and are listed for acknowledgement.
+- Legacy import: rows are stamped 12:00 Pacific on their sheet date (the workbook has no times).
+- "Entry" = a row with a provider name or phone, Excel blank semantics (a space is not blank) → 89,914 entries, as audited.
+- Phone repeats: our reproducible key (10 digits, US 1 removed) gives 5,323 / 2,915 cross-sheet; the audit's 5,917 / 3,382
+  definition is unknown. Not part of acceptance 18.
+- File import job (non-legacy) uses live rules: server Pacific date, import lock window, duplicate flags; same file + sheet
+  cannot be imported twice by the same owner (request_key = sha256 + sheet).
+- `defusedxml` added so openpyxl parses uploaded workbooks defensively.

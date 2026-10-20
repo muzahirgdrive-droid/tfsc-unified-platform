@@ -95,7 +95,7 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
     r = refine_input(row, c, actor.org_id)
     ref = r['refined']
     red = [i for i in r['issues'] if i['severity'] == 'red']
-    if red:
+    if red and not historical:  # historical rows keep their raw cells and go to the import review queue instead
         raise RowRejected(red, 'contradiction' if any(i['code'] == 'contradiction' for i in red) else 'invalid')
     if ref['called'] is False and ref['connected'] is True:
         raise RowRejected([{'field': 'connected', 'severity': 'red', 'code': 'contradiction', 'message': 'Called = No cannot be Connected.'}], 'contradiction')
@@ -109,6 +109,10 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
     aid = uuid7()
     next_due = _followup_due(ref['next_followup'])
     followup_needed = ref['followup_needed'] if ref['followup_needed'] is not None else (True if ref['next_followup'] or ref['call_again'] else None)
+    if historical and not (next_due and next_due > utcnow()):
+        followup_needed_task = False  # past follow-ups from the workbook are history, not open tasks
+    else:
+        followup_needed_task = bool(followup_needed)
     values = {
         'id': aid, 'org_id': actor.org_id, 'owner_id': owner_id, 'business_date': bd,
         'entry_source': 'import_legacy' if historical else source, 'import_batch_id': batch_id,
@@ -127,17 +131,20 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
     reg = None
     if pkey:
         reg = duplicates.lock_registry(c, actor.org_id, pkey)
-        dup = duplicates.evaluate(c, actor.org_id, reg, values, historical=historical)
-        if dup.severity in ('amber', 'red'):
-            values['conflict'] = dup.severity
+        # Historical rows predate v2's rules: they record first-seen facts but raise no flags and get no conflict cap
+        # (repeats are summarised in the reconciliation report instead).
+        if not historical:
+            dup = duplicates.evaluate(c, actor.org_id, reg, values)
+            if dup.severity in ('amber', 'red'):
+                values['conflict'] = dup.severity
     cfg.ensure_partition(c, 'activities', bd)
     c.execute(m.activities.insert().values(**values))
     if reg is not None:
         duplicates.record_contact(c, actor.org_id, reg, values, now)
-    if followup_needed:
+    if followup_needed_task:
         c.execute(m.followups.insert().values(id=uuid7(), org_id=actor.org_id, activity_id=aid, activity_date=bd, phone_key=pkey,
                                               owner_id=owner_id, due_at=next_due, status='open', created_at=now, updated_at=now))
-        if pkey and dup.severity not in ('amber', 'red') and reg is not None and reg['state'] in ('none', 'followup'):
+        if pkey and not historical and dup.severity not in ('amber', 'red') and reg is not None and reg['state'] in ('none', 'followup'):
             duplicates.set_state(c, actor.org_id, pkey, 'followup', owner_id)
     pts = scoring.ladder(scoring.ScoreInput(committed=is_committed, called=ref['called'], connected=ref['connected'],
                                             text_sent=ref['text_sent'], email_sent=ref['email_sent'], conflict=values.get('conflict')))
@@ -148,7 +155,7 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
         values.setdefault(k, None)
     from . import rollups
     rollups.on_activity(c, actor.org_id, None, values, now)
-    return SaveResult(values, dup, [i for i in r['issues'] if i['severity'] != 'red'])
+    return SaveResult(values, dup, r['issues'] if historical else [i for i in r['issues'] if i['severity'] != 'red'])
 
 
 def get_for_update(c: Connection, actor: Actor, activity_id: uuid.UUID) -> dict:

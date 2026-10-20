@@ -149,6 +149,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/legacy-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Batches */
+        get: operations["list_batches_api_admin_legacy_imports_get"];
+        put?: never;
+        /** Upload */
+        post: operations["upload_api_admin_legacy_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/legacy-imports/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch */
+        get: operations["get_batch_api_admin_legacy_imports__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/legacy-imports/{batch_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review */
+        get: operations["review_api_admin_legacy_imports__batch_id__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/legacy-imports/{batch_id}/review/{row_no}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide
+         * @description Close a review item. Contradictory/undated rows are dismissed (re-enter them manually if they should count);
+         *     imported rows with a broken formula or a data-quality issue are acknowledged.
+         */
+        post: operations["decide_api_admin_legacy_imports__batch_id__review__row_no__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/legacy-imports/{batch_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start
+         * @description Start (or resume) the import with a confirmed sheet → user mapping.
+         */
+        post: operations["start_api_admin_legacy_imports__batch_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agreements/launch": {
         parameters: {
             query?: never;
@@ -722,6 +815,78 @@ export interface paths {
         get: operations["health_api_health_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mine */
+        get: operations["mine_api_imports_get"];
+        put?: never;
+        /** Upload */
+        post: operations["upload_api_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{import_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import */
+        get: operations["get_import_api_imports__import_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{import_id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rows */
+        get: operations["rows_api_imports__import_id__rows_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{import_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start
+         * @description Start or resume. Re-importing the same file + sheet returns the earlier job instead of saving twice.
+         */
+        post: operations["start_api_imports__import_id__start_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1729,6 +1894,16 @@ export interface components {
              */
             status: "saved" | "rejected" | "review";
         };
+        /** Body_upload_api_admin_legacy_imports_post */
+        Body_upload_api_admin_legacy_imports_post: {
+            /** File */
+            file?: string | null;
+        };
+        /** Body_upload_api_imports_post */
+        Body_upload_api_imports_post: {
+            /** File */
+            file?: string | null;
+        };
         /** Body_upload_photo_api_users__user_id__photo_post */
         Body_upload_photo_api_users__user_id__photo_post: {
             /** File */
@@ -2108,6 +2283,65 @@ export interface components {
             /** Ids */
             ids: string[];
         };
+        /** ImportOut */
+        ImportOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Filename */
+            filename: string | null;
+            /** Id */
+            id: string;
+            /** Progress */
+            progress?: {
+                [key: string]: number;
+            } | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Sheet */
+            sheet: string | null;
+            /** Sheets */
+            sheets: components["schemas"]["SheetOut"][];
+            /** Status */
+            status: string;
+        };
+        /** ImportRowOut */
+        ImportRowOut: {
+            /** Activity Id */
+            activity_id: string | null;
+            /** Decision */
+            decision: string;
+            /** Issues */
+            issues: {
+                [key: string]: unknown;
+            }[];
+            /** Row No */
+            row_no: number;
+        };
+        /** ImportRowsOut */
+        ImportRowsOut: {
+            /** Items */
+            items: components["schemas"]["ImportRowOut"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+        };
+        /** ImportStartIn */
+        ImportStartIn: {
+            /** Columns */
+            columns?: (("business_date" | "name" | "phone" | "email" | "called" | "connected" | "text_sent" | "email_sent" | "strong_followup" | "sign_up" | "followup_count" | "last_followup" | "next_followup" | "call_again" | "remarks") | null)[] | null;
+            /** Header */
+            header?: boolean | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Sheet */
+            sheet: string;
+        };
         /** IssueOut */
         IssueOut: {
             /** Code */
@@ -2254,6 +2488,46 @@ export interface components {
             reason?: string | null;
             /** Version */
             version: number;
+        };
+        /** LegacyBatchOut */
+        LegacyBatchOut: {
+            /** Audited Workbook */
+            audited_workbook: boolean;
+            /** Bytes */
+            bytes: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Filename */
+            filename: string | null;
+            /** Id */
+            id: string;
+            /** Mapping */
+            mapping?: {
+                [key: string]: string | null;
+            };
+            /** Progress */
+            progress?: {
+                [key: string]: number;
+            } | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Scan */
+            scan?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Status */
+            status: string;
+            /** Suggested Mapping */
+            suggested_mapping?: {
+                [key: string]: string | null;
+            };
         };
         /** LoginIn */
         LoginIn: {
@@ -2592,6 +2866,51 @@ export interface components {
             /** Severity */
             severity: string;
         };
+        /** ReviewDecisionIn */
+        ReviewDecisionIn: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "dismiss" | "acknowledge";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** ReviewItemOut */
+        ReviewItemOut: {
+            /** Activity Id */
+            activity_id: string | null;
+            /** Cells */
+            cells: {
+                [key: string]: unknown;
+            };
+            /** Decision */
+            decision: string;
+            /** Issues */
+            issues: {
+                [key: string]: unknown;
+            }[];
+            /** Row */
+            row: number;
+            /** Row No */
+            row_no: number;
+            /** Sheet */
+            sheet: string;
+        };
+        /** ReviewPageOut */
+        ReviewPageOut: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["ReviewItemOut"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+        };
         /** RevisionOut */
         RevisionOut: {
             /** After */
@@ -2663,6 +2982,32 @@ export interface components {
             password: string;
             /** Setup Key */
             setup_key: string;
+        };
+        /** SheetOut */
+        SheetOut: {
+            /** Header Detected */
+            header_detected: boolean;
+            /** Headers */
+            headers: string[];
+            /** Mapping */
+            mapping: (string | null)[];
+            /** Name */
+            name: string;
+            /** Rows */
+            rows: number;
+            /** Too Many */
+            too_many: boolean;
+        };
+        /** StartIn */
+        StartIn: {
+            /** Mapping */
+            mapping: {
+                [key: string]: string | null;
+            };
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
         };
         /** StrongComment */
         StrongComment: {
@@ -3404,6 +3749,195 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batches_api_admin_legacy_imports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyBatchOut"][];
+                };
+            };
+        };
+    };
+    upload_api_admin_legacy_imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_api_admin_legacy_imports_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_api_admin_legacy_imports__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyBatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_api_admin_legacy_imports__batch_id__review_get: {
+        parameters: {
+            query?: {
+                cursor?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_admin_legacy_imports__batch_id__review__row_no__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+                row_no: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_admin_legacy_imports__batch_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyBatchOut"];
                 };
             };
             /** @description Validation Error */
@@ -4437,6 +4971,160 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    mine_api_imports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportOut"][];
+                };
+            };
+        };
+    };
+    upload_api_imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_api_imports_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_api_imports__import_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rows_api_imports__import_id__rows_get: {
+        parameters: {
+            query?: {
+                decision?: ("saved" | "rejected" | "review") | null;
+                cursor?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRowsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_imports__import_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportStartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

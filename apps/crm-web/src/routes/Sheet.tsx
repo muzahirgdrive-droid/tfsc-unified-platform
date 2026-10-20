@@ -5,6 +5,7 @@ import { ClipboardPaste, Eraser, FileUp, Redo2, Sparkles, Undo2, Wand2 } from 'l
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Issue, RefinedRow } from '@tfsc/refine';
+import { ImportDialog } from '@/components/ImportDialog';
 import { Dialog } from '@/components/ui/Dialog';
 import { PageHeader } from '@/components/ui/bits';
 import { raw } from '@/lib/api';
@@ -158,10 +159,15 @@ export default function Sheet() {
   };
   const selRef = useRef<{ x: number; y: number; width: number; height: number }>(undefined);
 
+  const [importFile, setImportFile] = useState<File | null>(null);
   const onFile = async (f: File) => {
-    if (f.size > 25_000_000) return toast.error('Files over 25 MB go through the import job (ask an admin).');
-    if (/\.csv$|\.tsv$|\.txt$/i.test(f.name)) { pasteText(await f.text()); return; }
-    toast.message('XLSX files are processed by the server import job (resumable, all sheets). This build accepts CSV/TSV here; for .xlsx use Import in Settings.');
+    if (f.size > 20_000_000) return toast.error('Use a file smaller than 20 MB (split larger workbooks).');
+    // Small CSV/TSV files open in the grid for review; workbooks and large files go to the server import job.
+    if (/\.(csv|tsv|txt)$/i.test(f.name) && f.size < 200_000) {
+      const text = await f.text();
+      if (text.split('\n').length <= MAX_ROWS + 1) { pasteText(text); return; }
+    }
+    setImportFile(f);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -182,13 +188,14 @@ export default function Sheet() {
         actions={<>
           <button className="btn-secondary" onClick={undo} disabled={!history.past.length} aria-label="Undo"><Undo2 size={16} /></button>
           <button className="btn-secondary" onClick={redo} disabled={!history.future.length} aria-label="Redo"><Redo2 size={16} /></button>
-          <button className="btn-secondary" onClick={() => fileRef.current?.click()}><FileUp size={16} />Upload CSV</button>
+          <button className="btn-secondary" onClick={() => fileRef.current?.click()}><FileUp size={16} />Upload file</button>
           <button className="btn-secondary" onClick={async () => { try { pasteText(await navigator.clipboard.readText()); } catch { toast.message('Click a cell and press Ctrl+V to paste.'); } }}><ClipboardPaste size={16} />Paste</button>
           <button className="btn-secondary" onClick={() => { commit(Array.from({ length: 30 }, emptyRow)); if (me) clearDraft(me.id); }}><Eraser size={16} />Discard</button>
           <button className="btn-secondary" onClick={refine}><Wand2 size={16} />Refine</button>
           <button className="btn-primary" disabled={save.isPending || !filled.length} onClick={async () => { await refine(); save.mutate(); }}><Sparkles size={16} />{save.isPending ? 'Saving…' : 'Refine & Save'}</button>
         </>} />
-      <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+      <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) onFile(e.target.files[0]); e.target.value = ''; }} />
+      {importFile && <ImportDialog file={importFile} onClose={() => setImportFile(null)} />}
       {preview && (
         <div className="card mb-3 flex flex-wrap items-center gap-3 p-3 text-sm">
           <span>Refined {filled.length} rows in {preview.ms.toFixed(0)} ms:</span>

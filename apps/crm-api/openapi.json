@@ -1143,6 +1143,42 @@
     "title": "BatchRowResult",
     "type": "object"
    },
+   "Body_upload_api_admin_legacy_imports_post": {
+    "properties": {
+     "file": {
+      "anyOf": [
+       {
+        "contentMediaType": "application/octet-stream",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File"
+     }
+    },
+    "title": "Body_upload_api_admin_legacy_imports_post",
+    "type": "object"
+   },
+   "Body_upload_api_imports_post": {
+    "properties": {
+     "file": {
+      "anyOf": [
+       {
+        "contentMediaType": "application/octet-stream",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "File"
+     }
+    },
+    "title": "Body_upload_api_imports_post",
+    "type": "object"
+   },
    "Body_upload_photo_api_users__user_id__photo_post": {
     "properties": {
      "file": {
@@ -2398,6 +2434,245 @@
     "title": "IdsIn",
     "type": "object"
    },
+   "ImportOut": {
+    "properties": {
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "filename": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Filename"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "progress": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Progress"
+     },
+     "result": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Result"
+     },
+     "sha256": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sha256"
+     },
+     "sheet": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sheet"
+     },
+     "sheets": {
+      "items": {
+       "$ref": "#/components/schemas/SheetOut"
+      },
+      "title": "Sheets",
+      "type": "array"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "status",
+     "filename",
+     "sha256",
+     "created_at",
+     "sheets",
+     "sheet"
+    ],
+    "title": "ImportOut",
+    "type": "object"
+   },
+   "ImportRowOut": {
+    "properties": {
+     "activity_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Activity Id"
+     },
+     "decision": {
+      "title": "Decision",
+      "type": "string"
+     },
+     "issues": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Issues",
+      "type": "array"
+     },
+     "row_no": {
+      "title": "Row No",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "row_no",
+     "decision",
+     "issues",
+     "activity_id"
+    ],
+    "title": "ImportRowOut",
+    "type": "object"
+   },
+   "ImportRowsOut": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ImportRowOut"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items",
+     "next_cursor"
+    ],
+    "title": "ImportRowsOut",
+    "type": "object"
+   },
+   "ImportStartIn": {
+    "additionalProperties": false,
+    "properties": {
+     "columns": {
+      "anyOf": [
+       {
+        "items": {
+         "anyOf": [
+          {
+           "enum": [
+            "business_date",
+            "name",
+            "phone",
+            "email",
+            "called",
+            "connected",
+            "text_sent",
+            "email_sent",
+            "strong_followup",
+            "sign_up",
+            "followup_count",
+            "last_followup",
+            "next_followup",
+            "call_again",
+            "remarks"
+           ],
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "maxItems": 40,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Columns"
+     },
+     "header": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Header"
+     },
+     "owner_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner Id"
+     },
+     "sheet": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Sheet",
+      "type": "string"
+     }
+    },
+    "required": [
+     "sheet"
+    ],
+    "title": "ImportStartIn",
+    "type": "object"
+   },
    "IssueOut": {
     "properties": {
      "code": {
@@ -2870,6 +3145,137 @@
      "action"
     ],
     "title": "LeadTransitionIn",
+    "type": "object"
+   },
+   "LegacyBatchOut": {
+    "properties": {
+     "audited_workbook": {
+      "title": "Audited Workbook",
+      "type": "boolean"
+     },
+     "bytes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bytes"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "filename": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Filename"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "mapping": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Mapping",
+      "type": "object"
+     },
+     "progress": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Progress"
+     },
+     "result": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Result"
+     },
+     "scan": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scan"
+     },
+     "sha256": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sha256"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "suggested_mapping": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Suggested Mapping",
+      "type": "object"
+     }
+    },
+    "required": [
+     "id",
+     "status",
+     "filename",
+     "bytes",
+     "sha256",
+     "audited_workbook",
+     "created_at"
+    ],
+    "title": "LegacyBatchOut",
     "type": "object"
    },
    "LoginIn": {
@@ -3961,6 +4367,121 @@
     "title": "RefinedRowOut",
     "type": "object"
    },
+   "ReviewDecisionIn": {
+    "additionalProperties": false,
+    "properties": {
+     "action": {
+      "enum": [
+       "dismiss",
+       "acknowledge"
+      ],
+      "title": "Action",
+      "type": "string"
+     },
+     "note": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Note",
+      "type": "string"
+     }
+    },
+    "required": [
+     "action"
+    ],
+    "title": "ReviewDecisionIn",
+    "type": "object"
+   },
+   "ReviewItemOut": {
+    "properties": {
+     "activity_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Activity Id"
+     },
+     "cells": {
+      "additionalProperties": true,
+      "title": "Cells",
+      "type": "object"
+     },
+     "decision": {
+      "title": "Decision",
+      "type": "string"
+     },
+     "issues": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Issues",
+      "type": "array"
+     },
+     "row": {
+      "title": "Row",
+      "type": "integer"
+     },
+     "row_no": {
+      "title": "Row No",
+      "type": "integer"
+     },
+     "sheet": {
+      "title": "Sheet",
+      "type": "string"
+     }
+    },
+    "required": [
+     "row_no",
+     "sheet",
+     "row",
+     "decision",
+     "issues",
+     "cells",
+     "activity_id"
+    ],
+    "title": "ReviewItemOut",
+    "type": "object"
+   },
+   "ReviewPageOut": {
+    "properties": {
+     "counts": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Counts",
+      "type": "object"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ReviewItemOut"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     }
+    },
+    "required": [
+     "items",
+     "next_cursor",
+     "counts"
+    ],
+    "title": "ReviewPageOut",
+    "type": "object"
+   },
    "RevisionOut": {
     "properties": {
      "after": {
@@ -4159,6 +4680,106 @@
      "password"
     ],
     "title": "SetupIn",
+    "type": "object"
+   },
+   "SheetOut": {
+    "properties": {
+     "header_detected": {
+      "title": "Header Detected",
+      "type": "boolean"
+     },
+     "headers": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Headers",
+      "type": "array"
+     },
+     "mapping": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Mapping",
+      "type": "array"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "rows": {
+      "title": "Rows",
+      "type": "integer"
+     },
+     "too_many": {
+      "title": "Too Many",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "name",
+     "rows",
+     "too_many",
+     "header_detected",
+     "mapping",
+     "headers"
+    ],
+    "title": "SheetOut",
+    "type": "object"
+   },
+   "StartIn": {
+    "additionalProperties": false,
+    "properties": {
+     "mapping": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "maxProperties": 200,
+      "title": "Mapping",
+      "type": "object"
+     },
+     "period_end": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Period End"
+     },
+     "period_start": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Period Start"
+     }
+    },
+    "required": [
+     "mapping"
+    ],
+    "title": "StartIn",
     "type": "object"
    },
    "StrongComment": {
@@ -6160,6 +6781,294 @@
     ]
    }
   },
+  "/api/admin/legacy-imports": {
+   "get": {
+    "operationId": "list_batches_api_admin_legacy_imports_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/LegacyBatchOut"
+         },
+         "title": "Response List Batches Api Admin Legacy Imports Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Batches",
+    "tags": [
+     "imports"
+    ]
+   },
+   "post": {
+    "operationId": "upload_api_admin_legacy_imports_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_api_admin_legacy_imports_post"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegacyBatchOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/admin/legacy-imports/{batch_id}": {
+   "get": {
+    "operationId": "get_batch_api_admin_legacy_imports__batch_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "batch_id",
+      "required": true,
+      "schema": {
+       "title": "Batch Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegacyBatchOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Batch",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/admin/legacy-imports/{batch_id}/review": {
+   "get": {
+    "operationId": "review_api_admin_legacy_imports__batch_id__review_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "batch_id",
+      "required": true,
+      "schema": {
+       "title": "Batch Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReviewPageOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Review",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/admin/legacy-imports/{batch_id}/review/{row_no}": {
+   "post": {
+    "description": "Close a review item. Contradictory/undated rows are dismissed (re-enter them manually if they should count);\nimported rows with a broken formula or a data-quality issue are acknowledged.",
+    "operationId": "decide_api_admin_legacy_imports__batch_id__review__row_no__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "batch_id",
+      "required": true,
+      "schema": {
+       "title": "Batch Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "row_no",
+      "required": true,
+      "schema": {
+       "title": "Row No",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReviewDecisionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OkOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decide",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/admin/legacy-imports/{batch_id}/start": {
+   "post": {
+    "description": "Start (or resume) the import with a confirmed sheet \u2192 user mapping.",
+    "operationId": "start_api_admin_legacy_imports__batch_id__start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "batch_id",
+      "required": true,
+      "schema": {
+       "title": "Batch Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StartIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LegacyBatchOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
   "/api/agreements/launch": {
    "get": {
     "description": "The Agreements \u2197 menu item: only with an explicit grant (never implied by a sales role).",
@@ -8092,6 +9001,253 @@
     "summary": "Health",
     "tags": [
      "auth"
+    ]
+   }
+  },
+  "/api/imports": {
+   "get": {
+    "operationId": "mine_api_imports_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImportOut"
+         },
+         "title": "Response Mine Api Imports Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Mine",
+    "tags": [
+     "imports"
+    ]
+   },
+   "post": {
+    "operationId": "upload_api_imports_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_api_imports_post"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/imports/{import_id}": {
+   "get": {
+    "operationId": "get_import_api_imports__import_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "import_id",
+      "required": true,
+      "schema": {
+       "title": "Import Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Import",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/imports/{import_id}/rows": {
+   "get": {
+    "operationId": "rows_api_imports__import_id__rows_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "import_id",
+      "required": true,
+      "schema": {
+       "title": "Import Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "decision",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "saved",
+          "rejected",
+          "review"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Decision"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 100,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportRowsOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rows",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/imports/{import_id}/start": {
+   "post": {
+    "description": "Start or resume. Re-importing the same file + sheet returns the earlier job instead of saving twice.",
+    "operationId": "start_api_imports__import_id__start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "import_id",
+      "required": true,
+      "schema": {
+       "title": "Import Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImportStartIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start",
+    "tags": [
+     "imports"
     ]
    }
   },
