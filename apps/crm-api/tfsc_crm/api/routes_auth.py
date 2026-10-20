@@ -84,7 +84,11 @@ def setup(body: SetupIn, request: Request, response: Response) -> SessionOut:
 @router.post('/auth/login', response_model=SessionOut)
 def login(body: LoginIn, request: Request, response: Response) -> SessionOut:
     ip = client_ip(request)
-    ratelimit.enforce(f'login-ip:{ip}', 30, 900)
+    # A whole office signs in from one NAT address at shift start, so successful sign-ins never count against the
+    # address; failed ones do (100 per 15 min), with a high flood ceiling. Each account keeps its own strict limit.
+    ratelimit.enforce(f'login-ip:{ip}', 1000, 900)
+    if ratelimit.peek(f'login-ip-fail:{ip}', 900) >= 100:
+        raise HTTPException(429, 'Too many failed sign-ins from this network. Please wait and try again.')
     ratelimit.enforce(f'login-user:{body.email}', 10, 900)
     with system_tx() as c:
         user = c.execute(select(m.users).where(m.users.c.email == body.email)).mappings().first()
@@ -92,6 +96,7 @@ def login(body: LoginIn, request: Request, response: Response) -> SessionOut:
     if user and user['crm_role'] != 'super_admin' and not get_settings().allow_local_login:
         ok = False
     if not ok:
+        ratelimit.hit(f'login-ip-fail:{ip}', 100, 900)
         if user:
             with tx(user['org_id'], None) as c:
                 audit.record(c, user['org_id'], user['id'], 'auth.login_failed', 'user', user['id'], None, {'ip': ip}, ip=ip)
@@ -111,7 +116,7 @@ def oidc_start(request: Request, next: str | None = None) -> Response:
     from ..security import oidc
     if not oidc.enabled():
         raise HTTPException(404, 'Single sign-on is not configured.')
-    ratelimit.enforce(f'oidc-start:{client_ip(request)}', 60, 900)
+    ratelimit.enforce(f'oidc-start:{client_ip(request)}', 1000, 900)  # office NAT: many people, one address
     try:
         url, cookie = oidc.start(next)
     except (oidc.OidcError, Exception):
@@ -139,7 +144,7 @@ def oidc_callback(request: Request, code: str | None = None, state: str | None =
 
     if not oidc.enabled():
         raise HTTPException(404, 'Single sign-on is not configured.')
-    ratelimit.enforce(f'oidc-cb:{client_ip(request)}', 60, 900)
+    ratelimit.enforce(f'oidc-cb:{client_ip(request)}', 1000, 900)
     if error or not code or not state:
         return fail('cancelled')
     try:

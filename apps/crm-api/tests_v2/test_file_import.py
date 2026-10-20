@@ -105,15 +105,15 @@ def test_resume_after_a_crash_does_not_duplicate(ws, monkeypatch):
     data = _csv([['Provider Name', 'Phone', 'Call Attempt']] + [[f'resume clinic {i}', new_phone(), 'Yes'] for i in range(7)])
     up = _upload(b, data, 'resume.csv').json()
     monkeypatch.setattr(fi, 'CHUNK', 2)
-    real, calls = fi.process_row, {'n': 0}
+    real, calls = fi.save_rows, {'n': 0}
 
-    def flaky(*args, **kw):
+    def crash_on_third_chunk(*args, **kw):  # the worker dies while saving chunk 3 (its transaction never commits)
         calls['n'] += 1
-        if calls['n'] == 5:
+        if calls['n'] == 3:
             raise RuntimeError('worker lost')
         return real(*args, **kw)
 
-    monkeypatch.setattr(fi, 'process_row', flaky)
+    monkeypatch.setattr(fi, 'save_rows', crash_on_third_chunk)
     job = b.post(f"/api/imports/{up['id']}/start", json={'sheet': 'CSV'}).json()
     assert job['status'] == 'failed' and job['progress']['done'] == 4
     job = b.post(f"/api/imports/{up['id']}/start", json={'sheet': 'ignored on resume'}).json()

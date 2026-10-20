@@ -213,9 +213,8 @@ def save_batch(body: BatchIn, a: ActorDep) -> BatchOut:
                                                    request_key=body.request_key, body_hash=body_hash, status='processing'))
         results: list[BatchRowResult] = []
         import_rows = []
-        for i, row in enumerate(body.rows):
-            r, rec = file_import.process_row(c, a, batch_id, i, row, body.source)
-            results.append(BatchRowResult(row_no=i, status=r['status'], activity_id=r['activity_id'], issues=_issues(r['issues']),
+        for r, rec in file_import.save_rows(c, a, batch_id, list(enumerate(body.rows)), body.source):
+            results.append(BatchRowResult(row_no=r['row_no'], status=r['status'], activity_id=r['activity_id'], issues=_issues(r['issues']),
                                           duplicate_notice=r.get('duplicate_notice')))
             import_rows.append(rec)
         if import_rows:

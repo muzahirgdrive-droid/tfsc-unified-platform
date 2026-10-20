@@ -166,3 +166,5 @@ __pycache__/
 apps/agreements/private-assets/signatures/*
 !apps/agreements/private-assets/signatures/.gitkeep
 handoff-out/
+infra/load/users.json
+infra/load/results/

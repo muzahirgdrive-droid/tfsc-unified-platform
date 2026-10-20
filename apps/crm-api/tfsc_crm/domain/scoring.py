@@ -73,23 +73,30 @@ def stage_label(points: int, committed: bool, called: bool | None) -> str:
     return {10: 'Attempted', 20: 'Connected', 30: 'Touch + Connect', 50: 'Strong Follow-Up', 100: 'Sign Up'}.get(points, 'Attempted')
 
 
-def apply(c: Connection, org_id: uuid.UUID, activity: dict, new_points: int, at: datetime | None = None) -> int:
-    """Write ledger deltas for an activity and update activities.score_points. Returns the delta."""
-    old = int(activity.get('score_points') or 0)
+def apply(c: Connection, org_id: uuid.UUID, activity: dict, new_points: int, at: datetime | None = None, *, old: int | None = None,
+          write_row: bool = True) -> int:
+    """Write ledger deltas for an activity and update activities.score_points. Returns the delta.
+    A new activity is inserted with its points already set: pass old=0, write_row=False."""
+    old = int(activity.get('score_points') or 0) if old is None else old
     rows = deltas(old, new_points)
     if not rows:
         return 0
     at = at or utcnow()
     bd = business_date(at)
+    from . import rollups
     from .settings import ensure_partition
     ensure_partition(c, 'score_ledger', bd)
-    c.execute(m.score_ledger.insert(), [{
-        'id': uuid7(), 'org_id': org_id, 'activity_id': activity['id'], 'activity_date': activity['business_date'],
-        'user_id': activity['owner_id'], 'business_date': bd, 'delta_points': d, 'reason': r, 'rule_version': RULE_VERSION, 'at': at,
-    } for d, r in rows])
-    c.execute(m.activities.update().where(m.activities.c.id == activity['id'], m.activities.c.business_date == activity['business_date'])
-              .values(score_points=new_points))
-    from . import rollups
+    ledger = [{'id': uuid7(), 'org_id': org_id, 'activity_id': activity['id'], 'activity_date': activity['business_date'],
+               'user_id': activity['owner_id'], 'business_date': bd, 'delta_points': d, 'reason': r, 'rule_version': RULE_VERSION, 'at': at}
+              for d, r in rows]
+    st = rollups.stage(c)
+    if st is not None:
+        st['ledger'].extend(ledger)
+    else:
+        c.execute(m.score_ledger.insert(), ledger)
+    if write_row:
+        c.execute(m.activities.update().where(m.activities.c.id == activity['id'], m.activities.c.business_date == activity['business_date'])
+                  .values(score_points=new_points))
     rollups.on_score(c, org_id, activity['owner_id'], at, activity['business_date'], new_points - old)
     return new_points - old
 

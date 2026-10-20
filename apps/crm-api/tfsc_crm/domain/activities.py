@@ -87,6 +87,9 @@ def refine_input(row: dict[str, Any], c: Connection, org_id: uuid.UUID) -> dict:
     return refine_row(row, business_date().isoformat(), comma)
 
 
+_INSERT = m.activities.insert()  # parameter form: compiled once and cached
+
+
 def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'manual', owner_id: uuid.UUID | None = None,
            batch_id: uuid.UUID | None = None, historical: bool = False, at: datetime | None = None) -> SaveResult:
     owner_id = owner_id or actor.id
@@ -129,6 +132,7 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
     }
     dup = duplicates.DupResult(None, duplicates.AGENT_NOTICE[None])
     reg = None
+    c.info['row_wrote'] = True  # first write below; batch fast path relies on rejections happening before this point
     if pkey:
         reg = duplicates.lock_registry(c, actor.org_id, pkey)
         # Historical rows predate v2's rules: they record first-seen facts but raise no flags and get no conflict cap
@@ -137,8 +141,14 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
             dup = duplicates.evaluate(c, actor.org_id, reg, values)
             if dup.severity in ('amber', 'red'):
                 values['conflict'] = dup.severity
+    pts = scoring.ladder(scoring.ScoreInput(committed=is_committed, called=ref['called'], connected=ref['connected'],
+                                            text_sent=ref['text_sent'], email_sent=ref['email_sent'], conflict=values.get('conflict')))
+    values['score_points'] = pts  # inserted with its points; the ledger below records 0 -> pts
     cfg.ensure_partition(c, 'activities', bd)
-    c.execute(m.activities.insert().values(**values))
+    for k in ('deleted_at', 'deleted_by', 'delete_reason', 'conflict', 'prospect_id', 'legacy_id'):
+        values.setdefault(k, None)
+    c.execute(_INSERT, values)
+    from . import rollups
     if reg is not None:
         duplicates.record_contact(c, actor.org_id, reg, values, now)
     if followup_needed_task:
@@ -146,14 +156,7 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
                                               owner_id=owner_id, due_at=next_due, status='open', created_at=now, updated_at=now))
         if pkey and not historical and dup.severity not in ('amber', 'red') and reg is not None and reg['state'] in ('none', 'followup'):
             duplicates.set_state(c, actor.org_id, pkey, 'followup', owner_id)
-    pts = scoring.ladder(scoring.ScoreInput(committed=is_committed, called=ref['called'], connected=ref['connected'],
-                                            text_sent=ref['text_sent'], email_sent=ref['email_sent'], conflict=values.get('conflict')))
-    values['score_points'] = 0
-    scoring.apply(c, actor.org_id, values, pts, now)
-    values['score_points'] = pts
-    for k in ('deleted_at', 'deleted_by', 'delete_reason', 'conflict', 'prospect_id', 'legacy_id'):
-        values.setdefault(k, None)
-    from . import rollups
+    scoring.apply(c, actor.org_id, values, pts, now, old=0, write_row=False)
     rollups.on_activity(c, actor.org_id, None, values, now)
     return SaveResult(values, dup, r['issues'] if historical else [i for i in r['issues'] if i['severity'] != 'red'])
 

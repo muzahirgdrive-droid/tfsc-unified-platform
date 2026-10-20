@@ -25,7 +25,7 @@ from ..db import models as m
 from ..db.session import read, tx
 from ..ids import uuid7
 from ..security.roles import Actor
-from . import activities
+from . import activities, rollups
 
 log = logging.getLogger('tfsc_crm.file_import')
 MAX_ROWS = 50_000
@@ -140,12 +140,36 @@ def to_row(cells: list[str | None], mapping: list[str | None]) -> dict[str, Any]
     return row
 
 
-def process_row(c: Connection, actor: Actor, batch_id: uuid.UUID, row_no: int, row: dict, source: str,
-                owner_id: uuid.UUID | None = None) -> tuple[dict, dict]:
-    """Save one row inside its own savepoint. Returns (result, import_rows record). Shared with Refine & Save."""
+def save_rows(c: Connection, actor: Actor, batch_id: uuid.UUID, rows: list[tuple[int, dict]], source: str,
+              owner_id: uuid.UUID | None = None) -> list[tuple[dict, dict]]:
+    """Save many rows with staged rollups. Fast path: no per-row savepoint (every rejection in activities.create
+    happens before its first write). If anything unexpected fails, the fast path is rolled back as a whole and the rows
+    are saved again one savepoint each, so one bad row can never take the others down."""
     try:
-        with c.begin_nested():
-            res = activities.create(c, actor, row, source=source, owner_id=owner_id, batch_id=batch_id)
+        with c.begin_nested(), rollups.batched(c):
+            return [process_row(c, actor, batch_id, n, r, source, owner_id, savepoint=False) for n, r in rows]
+    except Exception:
+        log.warning('batch %s: a row failed after writing; saving row by row', batch_id, exc_info=True)
+    with rollups.batched(c):
+        return [process_row(c, actor, batch_id, n, r, source, owner_id) for n, r in rows]
+
+
+def process_row(c: Connection, actor: Actor, batch_id: uuid.UUID, row_no: int, row: dict, source: str,
+                owner_id: uuid.UUID | None = None, *, savepoint: bool = True) -> tuple[dict, dict]:
+    """Save one row (inside its own savepoint unless the caller handles failures). Returns (result, import_rows record)."""
+    try:
+        if savepoint:
+            with rollups.row(c), c.begin_nested():
+                res = activities.create(c, actor, row, source=source, owner_id=owner_id, batch_id=batch_id)
+        else:
+            c.info['row_wrote'] = False
+            try:
+                with rollups.row(c):
+                    res = activities.create(c, actor, row, source=source, owner_id=owner_id, batch_id=batch_id)
+            except (activities.RowRejected, HTTPException):
+                if c.info.get('row_wrote'):  # rejected after a write: only a savepoint can undo it -> slow path
+                    raise RuntimeError('row rejected after writing') from None
+                raise
         result = {'row_no': row_no, 'status': 'saved', 'activity_id': res.activity['id'], 'issues': res.issues,
                   'duplicate_notice': res.duplicate.notice if res.duplicate.severity else None}
     except activities.RowRejected as e:
@@ -220,7 +244,7 @@ def _run(actor: Actor, bid: uuid.UUID) -> None:
     for start in range(0, len(todo), CHUNK):
         part = todo[start:start + CHUNK]
         with tx(actor.org_id, actor.id) as c:
-            records = [process_row(c, actor, bid, i, to_row(rows[i], cfg['columns']), 'import', owner)[1] for i in part]
+            records = [rec for _res, rec in save_rows(c, actor, bid, [(i, to_row(rows[i], cfg['columns'])) for i in part], 'import', owner)]
             c.execute(m.import_rows.insert(), records)
             _set(c, bid, totals={**b['totals'], 'progress': {'done': total - len(todo) + start + len(part), 'total': total}})
     with tx(actor.org_id, actor.id) as c:

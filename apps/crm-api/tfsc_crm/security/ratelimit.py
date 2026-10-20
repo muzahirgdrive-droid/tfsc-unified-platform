@@ -50,6 +50,23 @@ def hit(key: str, limit: int, window_s: int) -> bool:
         return len(q) <= limit
 
 
+def peek(key: str, window_s: int) -> int:
+    """Current number of hits in the window, without recording one."""
+    now = time.time()
+    r = _client()
+    if r is not None:
+        try:
+            k = f'rl:{key}'
+            r.zremrangebyscore(k, 0, now - window_s)
+            return int(r.zcard(k))
+        except Exception:  # Redis outage: fall back to the local window (same policy as hit())
+            import logging
+            logging.getLogger('tfsc_crm').warning('rate limiter: Redis unavailable, using local window')
+    with _lock:
+        q = _local.get(key)
+        return sum(1 for t in q if t >= now - window_s) if q else 0
+
+
 def enforce(key: str, limit: int, window_s: int, message: str = 'Too many attempts. Please wait and try again.') -> None:
     if not hit(key, limit, window_s):
         raise HTTPException(429, message)

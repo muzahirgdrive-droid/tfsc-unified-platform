@@ -9,6 +9,8 @@ from different agents never contend). Event-time points come from the score ledg
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Any
 
@@ -41,10 +43,119 @@ def contribution(a: dict | None) -> dict[str, int]:
     return z
 
 
+ALL_DAY_COLS = ('attempts', 'connected', 'sms', 'emails', 'any_touch', 'research', 'no_call', 'points', 'points_event', 'followups_created',
+                'strong_requested', 'strong_confirmed', 'leads', 'signups', 'duplicates', 'red_flags', 'post_lock_edits')
+HOUR_COLS = ('attempts', 'connected', 'points')
+
+
+# ------------------------------------------------------------------ staged writes for multi-row saves
+# A 1,000-row Refine & Save used to issue ~4,000 rollup upserts. Inside `batched(c)` the deltas are staged in memory
+# and written with one statement per table at the end. Each row stages into its own buffer (`row(c)`), which is merged
+# only when that row's savepoint commits, so a rejected row can never leave a delta behind.
+def _new_stage() -> dict[str, Any]:
+    return {'day': {}, 'hour': {}, 'ledger': [], 'deferred': []}
+
+
+def defer(c: Connection, statement: Any, params: dict) -> bool:
+    """Queue an idempotent-per-row write for the batch flush (executed in order). False when not batching."""
+    st = stage(c)
+    if st is None:
+        return False
+    st['deferred'].append((statement, params))
+    return True
+
+
+def stage(c: Connection) -> dict[str, Any] | None:
+    return c.info.get('rollup_row') or c.info.get('rollup_batch')
+
+
+@contextmanager
+def batched(c: Connection) -> Iterator[None]:
+    c.info['rollup_batch'] = _new_stage()
+    try:
+        yield
+        flush(c, c.info['rollup_batch'])
+    finally:
+        c.info.pop('rollup_batch', None)
+        c.info.pop('rollup_row', None)
+
+
+@contextmanager
+def row(c: Connection) -> Iterator[None]:
+    batch = c.info.get('rollup_batch')
+    if batch is None:
+        yield
+        return
+    c.info['rollup_row'] = _new_stage()
+    try:
+        yield
+    except BaseException:
+        c.info.pop('rollup_row', None)
+        raise
+    staged = c.info.pop('rollup_row')
+    for key, e in staged['day'].items():
+        _merge_day(batch['day'], key, e)
+    for key, e in staged['hour'].items():
+        tgt = batch['hour'].setdefault(key, dict.fromkeys(HOUR_COLS, 0))
+        for k in HOUR_COLS:
+            tgt[k] += e[k]
+    batch['ledger'].extend(staged['ledger'])
+    batch['deferred'].extend(staged['deferred'])
+
+
+def _merge_day(into: dict, key: tuple, e: dict) -> None:
+    tgt = into.setdefault(key, {**dict.fromkeys(ALL_DAY_COLS, 0), 'domain_id': e['domain_id'], 'project_id': e['project_id'], 'last': None})
+    for k in ALL_DAY_COLS:
+        tgt[k] += e[k]
+    if e['last'] is not None and (tgt['last'] is None or e['last'] > tgt['last']):
+        tgt['last'] = e['last']
+    tgt['domain_id'] = tgt['domain_id'] or e['domain_id']
+    tgt['project_id'] = tgt['project_id'] or e['project_id']
+
+
+_DAY_SQL = text(
+    'INSERT INTO agent_day_stats (org_id, user_id, business_date, domain_id, project_id, last_activity_at, '  # noqa: S608 - fixed column names, built once
+    + ', '.join(ALL_DAY_COLS) + ') VALUES (:org_id, :user_id, :business_date, :domain_id, :project_id, :last, '
+    + ', '.join(f':{k}' for k in ALL_DAY_COLS) + ') ON CONFLICT (org_id, user_id, business_date) DO UPDATE SET '
+    + ', '.join(f'{k} = agent_day_stats.{k} + EXCLUDED.{k}' for k in ALL_DAY_COLS)
+    + ', last_activity_at = GREATEST(agent_day_stats.last_activity_at, EXCLUDED.last_activity_at), updated_at = now()')
+_HOUR_SQL = text(
+    'INSERT INTO agent_hour_stats (org_id, user_id, business_date, hour, attempts, connected, points) '
+    'VALUES (:org_id, :user_id, :business_date, :hour, :attempts, :connected, :points) '
+    'ON CONFLICT (org_id, user_id, business_date, hour) DO UPDATE SET attempts = agent_hour_stats.attempts + EXCLUDED.attempts, '
+    'connected = agent_hour_stats.connected + EXCLUDED.connected, points = agent_hour_stats.points + EXCLUDED.points')
+
+
+def flush(c: Connection, st: dict[str, Any]) -> None:
+    days = [{'org_id': k[0], 'user_id': k[1], 'business_date': k[2], **e} for k, e in st['day'].items()
+            if e['last'] is not None or any(e[col] for col in ALL_DAY_COLS)]
+    if days:
+        c.execute(_DAY_SQL, days)
+    hours = [{'org_id': k[0], 'user_id': k[1], 'business_date': k[2], 'hour': k[3], **e} for k, e in st['hour'].items() if any(e.values())]
+    if hours:
+        c.execute(_HOUR_SQL, hours)
+    if st['ledger']:
+        c.execute(m.score_ledger.insert(), st['ledger'])
+    i = 0
+    deferred = st['deferred']
+    while i < len(deferred):  # consecutive writes of the same statement go out as one executemany, order preserved
+        j = i
+        while j < len(deferred) and deferred[j][0] is deferred[i][0]:
+            j += 1
+        c.execute(deferred[i][0], [p for _s, p in deferred[i:j]])
+        i = j
+    st.update(_new_stage())
+
+
 def _bump_day(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, d: date, delta: dict[str, int], at: datetime | None,
               domain_id=None, project_id=None) -> None:
     delta = {k: v for k, v in delta.items() if v}
     if not delta and at is None:
+        return
+    st = stage(c)
+    if st is not None:
+        _merge_day(st['day'], (org_id, user_id, d), {**dict.fromkeys(ALL_DAY_COLS, 0), **delta, 'domain_id': domain_id,
+                                                     'project_id': project_id, 'last': at})
         return
     t = m.agent_day_stats
     ins = insert(t).values(org_id=org_id, user_id=user_id, business_date=d, domain_id=domain_id, project_id=project_id,
@@ -57,8 +168,14 @@ def _bump_day(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, d: date, del
 
 
 def _bump_hour(c: Connection, org_id: uuid.UUID, user_id: uuid.UUID, d: date, hour: int, delta: dict[str, int]) -> None:
-    delta = {k: v for k, v in delta.items() if v and k in ('attempts', 'connected', 'points')}
+    delta = {k: v for k, v in delta.items() if v and k in HOUR_COLS}
     if not delta:
+        return
+    st = stage(c)
+    if st is not None:
+        tgt = st['hour'].setdefault((org_id, user_id, d, hour), dict.fromkeys(HOUR_COLS, 0))
+        for k, v in delta.items():
+            tgt[k] += v
         return
     t = m.agent_hour_stats
     ins = insert(t).values(org_id=org_id, user_id=user_id, business_date=d, hour=hour, **delta)

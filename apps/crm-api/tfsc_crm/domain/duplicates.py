@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Connection, select
+from sqlalchemy import Connection, bindparam, text
 from sqlalchemy.dialects.postgresql import insert
 
 from ..db import models as m
@@ -56,9 +56,14 @@ def precheck_state(reg: dict | None, owner_id: uuid.UUID) -> str:
 
 
 def lock_registry(c: Connection, org_id: uuid.UUID, phone_key: str) -> dict:
-    c.execute(insert(m.phone_registry).values(org_id=org_id, phone_key=phone_key, state='none').on_conflict_do_nothing())
-    return dict(c.execute(select(m.phone_registry).where(m.phone_registry.c.org_id == org_id, m.phone_registry.c.phone_key == phone_key)
-                          .with_for_update()).mappings().one())
+    """Create-or-lock the registry row in one round trip: ON CONFLICT DO UPDATE takes the row lock (like FOR UPDATE)
+    and RETURNING gives the current row."""
+    return dict(c.execute(_LOCK, {'org_id': org_id, 'phone_key': phone_key}).mappings().one())
+
+
+_LOCK = (insert(m.phone_registry).values(org_id=bindparam('org_id'), phone_key=bindparam('phone_key'), state='none')
+         .on_conflict_do_update(index_elements=['org_id', 'phone_key'], set_={'updated_at': m.phone_registry.c.updated_at})
+         .returning(*m.phone_registry.c))
 
 
 def record_contact(c: Connection, org_id: uuid.UUID, reg: dict, activity: dict, at: datetime) -> None:
@@ -71,8 +76,30 @@ def record_contact(c: Connection, org_id: uuid.UUID, reg: dict, activity: dict, 
         vals.update(first_attempt_activity_id=activity['id'], first_attempt_by=activity['owner_id'], first_attempt_at=committed_at)
     if activity.get('connected') is True and committed_at and not reg.get('first_connect_activity_id'):
         vals.update(first_connect_activity_id=activity['id'], first_connect_by=activity['owner_id'], first_connect_at=committed_at)
-    c.execute(m.phone_registry.update().where(m.phone_registry.c.org_id == org_id, m.phone_registry.c.phone_key == reg['phone_key']).values(**vals))
+    # One prebuilt statement (COALESCE keeps facts that are already set); inside a batch it is deferred to the batch flush,
+    # which is safe because this transaction holds the row lock and the updates run in order.
+    params = {'org_id': org_id, 'phone_key': reg['phone_key'], 'at': at, 'aid': activity['id'], 'owner': activity['owner_id'],
+              'attempt_at': committed_at if activity.get('called') is True and committed_at else None,
+              'connect_at': committed_at if activity.get('connected') is True and committed_at else None}
+    from . import rollups
+    if not rollups.defer(c, _CONTACT, params):
+        c.execute(_CONTACT, params)
     reg.update(vals)
+
+
+_CONTACT = text(
+    'UPDATE phone_registry SET last_activity_at = :at, updated_at = :at, '
+    'first_seen_activity_id = COALESCE(first_seen_activity_id, :aid), first_seen_by = COALESCE(first_seen_by, :owner), '
+    'first_seen_at = COALESCE(first_seen_at, :at), '
+    'first_attempt_activity_id = CASE WHEN first_attempt_activity_id IS NULL AND CAST(:attempt_at AS timestamptz) IS NOT NULL '
+    'THEN :aid ELSE first_attempt_activity_id END, '
+    'first_attempt_by = CASE WHEN first_attempt_by IS NULL AND CAST(:attempt_at AS timestamptz) IS NOT NULL THEN :owner ELSE first_attempt_by END, '
+    'first_attempt_at = COALESCE(first_attempt_at, CAST(:attempt_at AS timestamptz)), '
+    'first_connect_activity_id = CASE WHEN first_connect_activity_id IS NULL AND CAST(:connect_at AS timestamptz) IS NOT NULL '
+    'THEN :aid ELSE first_connect_activity_id END, '
+    'first_connect_by = CASE WHEN first_connect_by IS NULL AND CAST(:connect_at AS timestamptz) IS NOT NULL THEN :owner ELSE first_connect_by END, '
+    'first_connect_at = COALESCE(first_connect_at, CAST(:connect_at AS timestamptz)) '
+    'WHERE org_id = :org_id AND phone_key = :phone_key')
 
 
 def evaluate(c: Connection, org_id: uuid.UUID, reg: dict, activity: dict, *, historical: bool = False) -> DupResult:

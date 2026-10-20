@@ -159,7 +159,7 @@ def _run_import(actor: Actor, bid: uuid.UUID) -> None:
         _set(c, bid, status='importing', result=None, totals={**batch['totals'], 'progress': {'done': total - len(todo), 'total': total}})
     for i in range(0, len(todo), CHUNK):
         chunk = todo[i:i + CHUNK]
-        with tx(actor.org_id, actor.id) as c:
+        with tx(actor.org_id, actor.id) as c, rollups.batched(c):
             for r in chunk:
                 _import_row(c, actor, bid, order[r.sheet] * ROW_KEY + r.row_no, r, mapping[r.sheet])
             _set(c, bid, totals={**batch['totals'], 'progress': {'done': total - len(todo) + i + len(chunk), 'total': total}})
