@@ -1,0 +1,10 @@
+[project]
+name = "tfsc-refine"
+version = "1.0.0"
+description = "TFSC refinement engine (names, phones, emails, dates) - Python reference implementation"
+requires-python = ">=3.12"
+dependencies = ["phonenumbers>=9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

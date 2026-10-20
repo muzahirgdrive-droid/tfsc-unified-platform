@@ -1,0 +1,10 @@
+{
+  "name": "@tfsc/refine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {"test": "vitest run", "typecheck": "tsc --noEmit"},
+  "dependencies": {"libphonenumber-js": "1.12.24"},
+  "devDependencies": {"typescript": "5.9.3", "vitest": "3.2.4", "@types/node": "22.18.8"}
+}

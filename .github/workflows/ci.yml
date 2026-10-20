@@ -1,0 +1,68 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_PASSWORD: postgres, POSTGRES_DB: crm_test}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    env:
+      CRM_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/crm_test
+      CRM_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - name: Install
+        run: |
+          pip install -r apps/crm-api/requirements-dev.txt -r apps/agreements/requirements.txt
+      - name: Lint (v2 code)
+        run: pip install ruff mypy alembic hypothesis && ruff check .
+      - name: Typecheck (v2 code)
+        if: hashFiles('apps/crm-api/mypy.ini') != ''
+        run: mypy --config-file apps/crm-api/mypy.ini apps/crm-api/tfsc_crm
+      - name: Migrations up/down/up
+        working-directory: apps/crm-api
+        env: {CRM_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/crm_test}
+        run: alembic upgrade head && alembic downgrade base && alembic upgrade head && alembic downgrade base
+      - name: CRM tests (pilot + v2)
+        working-directory: apps/crm-api
+        run: python -m pytest -q
+      - name: Refine engine vectors (Python)
+        run: python -m pytest -q packages/refine/python
+      - name: Bridge contract (Python)
+        if: hashFiles('packages/bridge-contract/python/**') != ''
+        run: python -m pytest -q packages/bridge-contract/python
+      - name: Agreements tests
+        working-directory: apps/agreements
+        run: python -m pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22", cache: npm, cache-dependency-path: apps/crm-web/package-lock.json}
+      - name: Build CRM web
+        working-directory: apps/crm-web
+        run: npm ci && npm run build
+      - name: Unit tests (CRM web)
+        working-directory: apps/crm-web
+        run: npm test --if-present
+      - name: Refine engine vectors (TS)
+        working-directory: packages/refine/ts
+        run: npm ci && npm test
+      - name: Bridge contract (TS)
+        if: hashFiles('packages/bridge-contract/ts/package.json') != ''
+        working-directory: packages/bridge-contract/ts
+        run: npm ci && npm test

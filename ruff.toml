@@ -1,0 +1,13 @@
+# Lint config for v2 code (pilot code under apps/crm-api/*.py and apps/agreements is excluded until refactored).
+line-length = 140
+target-version = "py312"
+extend-exclude = ["apps/agreements", "apps/crm-api/crm_*.py", "apps/crm-api/google_calendar.py", "apps/crm-api/oidc_support.py",
+  "apps/crm-api/launch.py", "apps/crm-api/build_release.py", "apps/crm-api/tests", "apps/crm-api/migrations/versions/0001_pilot_baseline.py", "docs"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "RUF"]
+ignore = ["E701", "E702", "E501", "S101", "S311", "RUF001", "RUF002", "RUF003", "B008", "RUF012"]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["S", "B"]
+"**/test_*.py" = ["S", "B"]
