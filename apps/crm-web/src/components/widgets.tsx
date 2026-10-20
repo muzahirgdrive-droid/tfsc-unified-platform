@@ -23,7 +23,7 @@ function Frame({ title, hint, children, action }: { title: string; hint?: string
       <header className="mb-3 flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 font-semibold">{title}{hint && <Hint text={hint} />}</h3>{action}
       </header>
-      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+      <div className="min-h-0 flex-1 overflow-auto" tabIndex={0} role="region" aria-label={title}>{children}</div>
     </section>
   );
 }
@@ -149,12 +149,12 @@ function TeamBoard({ f }: { f: Filters }) {
   return (
     <Frame title="Live team board" hint="Today, Pacific. Active = activity in the last 15 minutes.">
       {!q.data ? <Loading /> : (
-        <div className="@container overflow-x-auto">
+        <div className="@container overflow-x-auto" tabIndex={0} role="region" aria-label="Team table">
         <table className={TBL}>
           <thead><tr className="table-head"><th className="pb-2">Agent</th><th className="text-right">Attempts</th><th className="text-right">Conn.</th><th className="hidden text-right @md:table-cell">Points</th><th className="hidden @lg:table-cell">Last activity</th><th className="hidden text-right @sm:table-cell">Band</th></tr></thead>
           <tbody>{q.data.agents.map((r) => (
             <tr key={r.user_id} className="border-t border-line">
-              <td className="py-2"><span className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${dot[r.status]}`} aria-label={r.status} /><Avatar name={r.name} userId={r.user_id} hasPhoto={r.has_photo} size={24} /><span className="truncate">{r.name}</span></span></td>
+              <td className="py-2"><span className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${dot[r.status]}`} role="img" aria-label={r.status} /><Avatar name={r.name} userId={r.user_id} hasPhoto={r.has_photo} size={24} /><span className="truncate">{r.name}</span></span></td>
               <td className="whitespace-nowrap text-right tabular-nums">{r.attempts}<span className="text-muted">/{r.target}</span></td><td className="text-right tabular-nums">{pct(r.conn_rate)}</td>
               <td className="hidden text-right tabular-nums @md:table-cell">{r.points}</td><td className="hidden whitespace-nowrap text-muted @lg:table-cell">{r.last_activity_at ? new Date(r.last_activity_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</td>
               <td className="hidden text-right @sm:table-cell"><BandBadge band={r.band} /></td>

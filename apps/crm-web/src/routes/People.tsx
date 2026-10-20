@@ -33,7 +33,7 @@ export default function People() {
       {tab === 'people' && <>
         <input className="input mb-3 max-w-sm" placeholder="Search name, email, code" value={qtext} onChange={(e) => setQ(e.target.value)} />
         <Spinnerless loading={users.isLoading}>
-          <div className="card overflow-x-auto"><table className="w-full min-w-[720px] text-sm">
+          <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label="People"><table className="w-full min-w-[720px] text-sm">
             <thead><tr className="table-head"><th className="p-3">Name</th><th>Role</th><th>Reports to</th>{rank >= 2 && <th>Domain · Project</th>}<th>Agreements</th><th>Status</th></tr></thead>
             <tbody>{users.data?.items.map((u) => (
               <tr key={u.id} className="cursor-pointer border-t border-line hover:bg-bg" onClick={() => rank >= 2 && setEdit(u)}>

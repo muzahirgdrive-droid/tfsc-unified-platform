@@ -19,7 +19,7 @@ export function FollowupPicker({ value, onChange }: { value: string | null; onCh
     <P.Root open={open} onOpenChange={setOpen}>
       <P.Trigger className="input inline-flex items-center gap-2 text-left" aria-label="Next follow-up date">
         <CalendarDays size={15} className="text-royal" aria-hidden />
-        <span className={value ? '' : 'text-subtle'}>{value ? format(parseISO(value), 'EEE MMM d') : 'Follow-up date'}</span>
+        <span className={value ? '' : 'text-muted'}>{value ? format(parseISO(value), 'EEE MMM d') : 'Follow-up date'}</span>
       </P.Trigger>
       <P.Portal>
         <P.Content sideOffset={6} className="card z-[70] w-[320px] p-3">

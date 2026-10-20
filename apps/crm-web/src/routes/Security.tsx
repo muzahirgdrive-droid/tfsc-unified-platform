@@ -84,7 +84,7 @@ function AuditTab({ super: isSuper }: { super: boolean }) {
         {v && (v.ok ? <span className="flex items-center gap-1 text-sm text-success"><CheckCircle2 size={16} />Intact: {v.rows.toLocaleString()} entries, {v.anchors} anchors checked.</span>
           : <span className="flex items-center gap-1 text-sm text-danger"><TriangleAlert size={16} />Tampering detected: {v.broken_links.length} broken links, {v.altered_rows.length} altered entries, {v.anchors_failed.length} anchors failed.</span>)}
       </div>}
-      <div className="card overflow-x-auto p-5">
+      <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Audit log">
         <div className="mb-3 flex flex-wrap items-end gap-2"><div><label className="label" htmlFor="aa">Action starts with</label><input id="aa" className="input w-64" placeholder="e.g. user. or export." value={action} onChange={(e) => { setAction(e.target.value); setCursor(null); }} /></div></div>
         <table className="w-full min-w-[760px] text-sm"><thead><tr className="table-head"><th className="pb-2">When</th><th>Who</th><th>Action</th><th>Resource</th><th>IP</th></tr></thead>
           <tbody>{q.data?.items.map((r) => <tr key={r.id} className="border-t border-line"><td className="py-2 whitespace-nowrap">{new Date(r.at).toLocaleString()}</td><td>{r.actor ?? 'system'}</td><td className="font-medium">{r.action}</td><td className="text-muted">{r.resource}{r.resource_id ? ` · ${r.resource_id.slice(0, 12)}` : ''}</td><td className="text-muted">{r.ip ?? ''}</td></tr>)}</tbody></table>
@@ -100,7 +100,7 @@ function SessionsTab({ super: isSuper }: { super: boolean }) {
   const revoke = useMutation({ mutationFn: (id: string) => raw(`/api/security/sessions/${id}`, { method: 'DELETE' }),
     onSuccess: () => { toast.success('Session ended'); qc.invalidateQueries({ queryKey: ['security-sessions'] }); }, onError: (e) => toast.error((e as Error).message) });
   return (
-    <div className="card overflow-x-auto p-5"><table className="w-full min-w-[760px] text-sm"><thead><tr className="table-head"><th className="pb-2">User</th><th>Signed in</th><th>Last seen</th><th>IP</th><th>Device</th><th /></tr></thead>
+    <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Signed-in sessions"><table className="w-full min-w-[760px] text-sm"><thead><tr className="table-head"><th className="pb-2">User</th><th>Signed in</th><th>Last seen</th><th>IP</th><th>Device</th><th /></tr></thead>
       <tbody>{q.data?.map((s) => <tr key={s.id} className="border-t border-line"><td className="py-2">{s.user}</td><td>{new Date(s.created_at).toLocaleString()}</td><td>{new Date(s.last_seen_at).toLocaleString()}</td><td className="text-muted">{s.ip ?? ''}</td>
         <td className="max-w-[240px] truncate text-muted" title={s.user_agent ?? ''}>{s.user_agent ?? ''}</td><td className="text-right">{isSuper && <button className="btn-secondary h-8 px-3" onClick={() => revoke.mutate(s.id)}>End session</button>}</td></tr>)}</tbody></table></div>
   );
@@ -112,7 +112,7 @@ function DeadTab({ super: isSuper }: { super: boolean }) {
   const retry = useMutation({ mutationFn: (id: number) => raw(`/api/security/outbox/${id}/retry`, { method: 'POST' }),
     onSuccess: () => { toast.success('Queued for delivery'); qc.invalidateQueries({ queryKey: ['dead-letters'] }); }, onError: (e) => toast.error((e as Error).message) });
   return (
-    <div className="card overflow-x-auto p-5"><h3 className="mb-1 font-semibold">Undelivered events</h3><p className="mb-3 text-sm text-muted">Events that failed 12 times (e.g. TFSC unreachable). Retrying re-queues them; deliveries are idempotent on the receiving side.</p>
+    <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Undelivered events"><h3 className="mb-1 font-semibold">Undelivered events</h3><p className="mb-3 text-sm text-muted">Events that failed 12 times (e.g. TFSC unreachable). Retrying re-queues them; deliveries are idempotent on the receiving side.</p>
       {q.data && !q.data.length ? <p className="text-sm text-muted">Nothing stuck.</p> : <table className="w-full min-w-[640px] text-sm"><thead><tr className="table-head"><th className="pb-2">Event</th><th>Attempts</th><th>Last error</th><th /></tr></thead>
         <tbody>{q.data?.map((d) => <tr key={d.id} className="border-t border-line align-top"><td className="py-2">{d.topic}<div className="text-xs text-muted">{new Date(d.created_at).toLocaleString()}</div></td><td>{d.attempts}</td><td className="max-w-[360px] text-xs text-muted">{d.last_error}</td>
           <td className="text-right">{isSuper && <button className="btn-secondary h-8 px-3" onClick={() => retry.mutate(d.id)}><RotateCcw size={14} />Retry</button>}</td></tr>)}</tbody></table>}

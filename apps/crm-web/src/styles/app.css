@@ -20,7 +20,7 @@
   --color-muted: #5e6c8f; /* darker than spec #7383A5 for AA text contrast on white */
   --color-subtle: #7383a5;
   --color-line: #e5eaf4;
-  --color-success: #0f8a4f;
+  --color-success: #0b7a45; /* 4.8:1 on success-bg, 5.4:1 under white text (WCAG AA) */
   --color-success-bg: #e5f6ec;
   --color-warn: #a65a00;
   --color-warn-bg: #fff3dc;

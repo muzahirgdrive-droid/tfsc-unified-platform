@@ -29,12 +29,12 @@ export default function Flags() {
     <div>
       <PageHeader eyebrow="Flags center" title="Duplicates & conflicts" subtitle="Amber: another agent's follow-up or strong follow-up. Red: someone's protected lead — clarify before incentives. Red alerts escalate to the Manager after 24 h."
         actions={<>{sel.length > 0 && <button className="btn-secondary" onClick={() => ack.mutate()}><CheckCheck size={16} />Acknowledge {sel.length} amber</button>}
-          <select className="input w-36" value={filt.status} onChange={(e) => setFilt({ ...filt, status: e.target.value })}><option value="open">Open</option><option value="ack">Acknowledged</option><option value="resolved">Resolved</option><option value="all">All</option></select>
-          <select className="input w-36" value={filt.severity} onChange={(e) => setFilt({ ...filt, severity: e.target.value })}><option value="">All severities</option><option value="red">Red</option><option value="amber">Amber</option><option value="info">Info</option></select></>} />
+          <select className="input w-36" aria-label="Status" value={filt.status} onChange={(e) => setFilt({ ...filt, status: e.target.value })}><option value="open">Open</option><option value="ack">Acknowledged</option><option value="resolved">Resolved</option><option value="all">All</option></select>
+          <select className="input w-36" aria-label="Severity" value={filt.severity} onChange={(e) => setFilt({ ...filt, severity: e.target.value })}><option value="">All severities</option><option value="red">Red</option><option value="amber">Amber</option><option value="info">Info</option></select></>} />
       {red.length > 0 && <div role="alert" className="card mb-4 flex items-center gap-3 border-danger bg-danger-bg p-4 text-danger"><ShieldAlert /><b>{red.length} red alert{red.length > 1 ? 's' : ''}:</b> a number that belongs to an active lead was contacted by another agent. Resolve to protect incentives.</div>}
       <Spinnerless loading={q.isLoading}>
         {q.data?.items.length === 0 ? <Empty title="No flags">Clean pipeline. Duplicates are detected the moment a number is saved.</Empty> : (
-          <div className="card overflow-x-auto"><table className="w-full min-w-[720px] text-sm">
+          <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label="Flags"><table className="w-full min-w-[720px] text-sm">
             <thead><tr className="table-head"><th className="p-3" /><th>Severity</th><th>What</th><th>New entry by</th><th>Existing</th><th>Age</th><th /></tr></thead>
             <tbody>{q.data?.items.map((f) => (
               <tr key={f.id} className="border-t border-line">

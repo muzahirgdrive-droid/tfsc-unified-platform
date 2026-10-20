@@ -255,7 +255,7 @@ function ColumnMapper({ headers, onDone }: { headers: string[]; onDone: (m: (Col
       {headers.map((h, i) => (
         <div key={i} className="grid grid-cols-2 items-center gap-3">
           <span className="truncate text-sm font-medium">{h || `Column ${i + 1}`}</span>
-          <select className="input" value={m[i] ?? ''} onChange={(e) => setM(m.map((x, j) => (j === i ? ((e.target.value || null) as ColKey | null) : x)))}>
+          <select className="input" aria-label={`Meaning of ${h || `column ${i + 1}`}`} value={m[i] ?? ''} onChange={(e) => setM(m.map((x, j) => (j === i ? ((e.target.value || null) as ColKey | null) : x)))}>
             <option value="">— ignore —</option>{COLUMNS.map((c) => <option key={c.key} value={c.key}>{c.title}</option>)}
           </select>
         </div>

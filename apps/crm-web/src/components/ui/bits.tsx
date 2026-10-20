@@ -86,7 +86,7 @@ export function Avatar({ name, userId, hasPhoto, size = 32, onDark = false }: { 
 /** Click-to-dial (§16). Mode comes from Settings: tel: (default), a verified custom URI template, or VBC API. */
 export function PhoneLink({ display, e164 }: { display: string | null | undefined; e164?: string | null }) {
   const cfg = useConfig();
-  if (!display) return <span className="text-subtle">—</span>;
+  if (!display) return <span className="text-muted">—</span>;
   const target = e164 ?? display.replace(/[^\d+]/g, '');
   const tpl = cfg.data?.dialer.template;
   const href = tpl ? tpl.replace('{e164}', encodeURIComponent(target)) : `tel:${target}`;

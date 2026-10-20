@@ -87,7 +87,7 @@ function BatchView({ b }: { b: Batch }) {
       </div>
 
       {b.scan && (
-        <div className="card overflow-x-auto p-5">
+        <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Sheets to users">
           <h3 className="mb-1 font-semibold">Sheets → users</h3>
           <p className="mb-3 text-sm text-muted">Names are not identities: choose the CRM user for every sheet you import. Unmapped sheets are skipped.</p>
           <table className="w-full min-w-[640px] text-sm">
@@ -125,7 +125,7 @@ function ReconTable({ r }: { r: Recon }) {
   const keys = ['attempts', 'connected', 'conn_rate', 'strong_fu', 'signups', 'points', 'quality', 'sms', 'emails', 'contradictions', 'ref_cells'];
   const ok = (m?: Record<string, boolean>, k?: string) => (m && k && k in m ? m[k] : undefined);
   return (
-    <div className="card overflow-x-auto p-5">
+    <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Reconciliation">
       <h3 className="mb-1 font-semibold">Reconciliation · {r.period.start} – {r.period.end}</h3>
       <p className="mb-3 text-sm text-muted">Workbook = the sheet's own rules on raw cells. Importable = what the import writes (contradictory and undated rows wait for review). Database = what dashboards read after import.</p>
       <table className="w-full min-w-[640px] text-sm">
@@ -159,7 +159,7 @@ function ReviewQueue({ id }: { id: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['legacy-review', id] }), onError: (e) => toast.error((e as Error).message),
   });
   return (
-    <div className="card overflow-x-auto p-5">
+    <div className="card overflow-x-auto p-5" tabIndex={0} role="region" aria-label="Review queue">
       <h3 className="mb-1 font-semibold">Review queue</h3>
       <p className="mb-3 text-sm text-muted">{Object.entries(q.data?.counts ?? {}).map(([k, v]) => `${k.replace('_', ' ')}: ${v.toLocaleString()}`).join(' · ')}</p>
       {q.data && !q.data.items.length ? <Empty title="Nothing to review" /> : (

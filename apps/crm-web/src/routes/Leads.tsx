@@ -27,12 +27,14 @@ export default function Leads() {
         {q.data?.items.length === 0 ? <Empty title="No leads here">Confirmed strong follow-ups become leads.</Empty> : (
           <div className="card divide-y divide-line">
             {q.data?.items.map((l) => (
-              <button key={l.id} onClick={() => setOpen(l.id)} className="flex w-full flex-wrap items-center gap-3 p-4 text-left hover:bg-bg">
-                <div className="min-w-0 flex-1"><div className="font-semibold">{l.provider_name}</div><div className="text-sm text-muted">{l.owner_name ?? ''}</div></div>
-                <span onClick={(e) => e.stopPropagation()}><PhoneLink display={l.phone} /></span>
+              // The name is the button; its ::after covers the row so the whole row opens the lead, while the phone link
+              // stays a separate control above it (no link nested inside a button).
+              <div key={l.id} className="relative flex w-full flex-wrap items-center gap-3 p-4 hover:bg-bg">
+                <div className="min-w-0 flex-1"><button onClick={() => setOpen(l.id)} className="text-left font-semibold after:absolute after:inset-0 after:content-['']">{l.provider_name}</button><div className="text-sm text-muted">{l.owner_name ?? ''}</div></div>
+                <span className="relative z-10"><PhoneLink display={l.phone} /></span>
                 {l.agreement_locked && <span className="chip bg-warn-bg text-warn"><Lock size={12} />Agreement lock</span>}
                 <span className={cn('chip', STAGE_STYLE[l.stage] ?? 'bg-bg')}>{l.stage_label}</span><ArrowRight size={16} className="text-subtle" />
-              </button>))}
+              </div>))}
           </div>)}
       </Spinnerless>
       {open && <LeadDetail id={open} onClose={() => setOpen(null)} />}
@@ -77,7 +79,8 @@ function LeadDetail({ id, onClose }: { id: string; onClose: () => void }) {
       {l && (dlg === 'lost' || dlg === 'reverse' || dlg === 'reopen') && <ReasonDialog title={dlg === 'lost' ? 'Mark lead lost' : dlg === 'reverse' ? 'Reverse sale' : 'Reopen lead'} onClose={() => setDlg(null)} onSubmit={(reason) => tr.mutate({ action: dlg === 'reverse' ? 'reverse_sale' : dlg, reason })} />}
       {l && dlg === 'reassign' && <Reassign lead={l} onClose={() => setDlg(null)} onDone={refresh} />}
       {l && dlg === 'meeting' && <Schedule lead={l} onClose={() => setDlg(null)} onDone={refresh} />}
-      {l && dlg === 'agreements' && <Preflight lead={l} onClose={() => setDlg(null)} onDone={refresh} />}
+      {/* After the handoff the lead detail closes too: a modal underneath would block the toast's "Open Agreements" link. */}
+      {l && dlg === 'agreements' && <Preflight lead={l} onClose={() => setDlg(null)} onDone={() => { refresh(); onClose(); }} />}
     </Dialog>
   );
 }
@@ -110,8 +113,8 @@ function Schedule({ lead, onClose, onDone }: { lead: L; onClose: () => void; onD
     footer={<button className="btn-primary" disabled={m.isPending} onClick={() => m.mutate()}>Create meeting</button>}>
     <div className="space-y-3">
       <div><label className="block"><span className="label">Title</span><input className="input" value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></label></div>
-      <div className="grid grid-cols-3 gap-2"><input type="date" className="input" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /><input type="time" className="input" value={v.time} onChange={(e) => setV({ ...v, time: e.target.value })} />
-        <select className="input" value={v.duration} onChange={(e) => setV({ ...v, duration: +e.target.value })}>{[15, 30, 45, 60, 90].map((d) => <option key={d} value={d}>{d} min</option>)}</select></div>
+      <div className="grid grid-cols-3 gap-2"><input type="date" className="input" aria-label="Date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /><input type="time" className="input" aria-label="Start time" value={v.time} onChange={(e) => setV({ ...v, time: e.target.value })} />
+        <select className="input" aria-label="Duration" value={v.duration} onChange={(e) => setV({ ...v, duration: +e.target.value })}>{[15, 30, 45, 60, 90].map((d) => <option key={d} value={d}>{d} min</option>)}</select></div>
       <p className="text-xs text-muted">{dual(ptToUtc(v.date, v.time))}</p>
       <div><label className="block"><span className="label">Attendees (optional, client email)</span><input className="input" value={v.attendees} onChange={(e) => setV({ ...v, attendees: e.target.value })} /></label></div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.invite} onChange={(e) => setV({ ...v, invite: e.target.checked })} />Send Google invitations</label>

@@ -21,7 +21,7 @@ export default function Reports() {
       <PageHeader eyebrow="Reports" title="Metric catalog" subtitle="Every metric with its definition, the selected period and the previous period of the same length. Data is read-only." />
       <FilterBar f={f} setF={setF} rank={rank} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="card overflow-x-auto p-5 xl:col-span-2">
+        <div className="card overflow-x-auto p-5 xl:col-span-2" tabIndex={0} role="region" aria-label="Report metrics">
           <table className="w-full text-sm"><thead><tr className="table-head"><th className="pb-2">Metric</th><th className="text-right">{s.data?.period.label ?? 'Period'}</th><th className="text-right">Previous</th><th className="text-right">Change</th></tr></thead>
             <tbody>{ROWS.map(([k, l, t]) => {
               const cur = s.data?.current[k] as number | null | undefined; const prev = s.data?.previous[k] as number | null | undefined;

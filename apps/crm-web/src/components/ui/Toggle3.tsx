@@ -24,7 +24,7 @@ export function Toggle3({ label, value, onChange, disabled, compact }: { label: 
     >
       {value === null ? <Minus size={13} aria-hidden /> : value ? <Check size={13} aria-hidden /> : <X size={13} aria-hidden />}
       <span>{label}</span>
-      {!compact && <span className="opacity-70">· {text}</span>}
+      {!compact && <span className="font-medium">· {text}</span>}
     </button>
   );
 }

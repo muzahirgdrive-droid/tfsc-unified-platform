@@ -86,7 +86,7 @@ function EditDialog({ a, onClose }: { a: Act; onClose: () => void }) {
   const needsReason = a.state === 'locked' || a.owner_id !== me?.id;
   const save = useMutation({
     mutationFn: () => call(client.PATCH('/api/activities/{activity_id}', { params: { path: { activity_id: a.id } }, body: { version: a.version, reason: reason || null, ...d, email: d.email || null, phone: d.phone || null } })),
-    onSuccess: () => { toast.success('Updated'); qc.invalidateQueries({ queryKey: ['activities'] }); onClose(); }, onError: (e) => toast.error((e as Error).message),
+    onSuccess: () => { toast.success('Updated'); qc.invalidateQueries({ queryKey: ['activities'] }); qc.invalidateQueries({ queryKey: ['today'] }); onClose(); }, onError: (e) => toast.error((e as Error).message),
   });
   const t = (k: keyof Draft, label: string) => <Toggle3 label={label} value={d[k] as Tri} onChange={(v) => setD(applyToggle(d, k, v))} disabled={k === 'connected' && d.called === false} />;
   return (

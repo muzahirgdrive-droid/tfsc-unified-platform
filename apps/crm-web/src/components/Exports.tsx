@@ -48,7 +48,7 @@ export function ExportsPanel() {
         <div className="sm:col-span-2"><label className="label" htmlFor="ex-r">Reason</label><input id="ex-r" className="input" placeholder="e.g. Monthly compliance review" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></div>
       </div>
       <button className="btn-primary" disabled={req.isPending || form.reason.trim().length < 5} onClick={() => req.mutate()}>Request export</button>
-      <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[720px] text-sm">
+      <div className="mt-5 overflow-x-auto" tabIndex={0} role="region" aria-label="Export requests"><table className="w-full min-w-[720px] text-sm">
         <thead><tr className="table-head"><th className="pb-2">Requested</th><th>Data</th><th>Period</th><th>By</th><th>Status</th><th className="text-right">Rows</th><th /></tr></thead>
         <tbody>{list.data?.map((x) => (
           <tr key={x.id} className="border-t border-line align-top">
