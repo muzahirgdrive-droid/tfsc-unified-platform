@@ -139,4 +139,14 @@ start doing all the work from where you stop with all the chat history as well."
   copied now). Drills on the trial stack: PITR to a time (later change gone, timeline 2); data volume deleted and
   restored to the latest WAL (database open in 4 s, stack serving in about 20 s); off-site repo2 over HTTPS restored
   and checked. Tests: v2 176 (coverage 90%), pilot 17, web 22, E2E 49; CI gains a backup + restore-test step.
+- P8.6 pushed (e797a6c), CI run 39 green (includes the new backup + restore-test step).
+- P8.7 done (ee09a84 + docs). Pastes write one statement per table at the batch flush (19 statements instead of
+  1,516 per 1,000 rows); each phone's NANP check runs once. Measuring went wrong twice before it went right: the
+  restart script used `ss` (not installed), so "baseline" runs were really the new code; and reusing one database made
+  every run slower than the last. Fixed method: servers stopped/started by process and verified, every run from a fresh
+  copy of a template (3.98 M activities, 800 agents). Results (two A/B passes, 550 agents at 6 s think): paste p95
+  3.8-5.3 s -> 1.9-2.1 s, interactive p95 2-5x lower. 800 agents at 20 s think meets the §24 p95 targets; 800 at 6 s
+  think overloads this 4-vCPU box (~4 s p95), reported as such.
+- P8.8 prep (701f3df): images now use numeric UIDs (named users fail runAsNonRoot), crm.dataVolume.accessMode, kind
+  smoke-test kit in infra/helm/smoke (first run next).
 

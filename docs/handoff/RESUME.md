@@ -136,8 +136,10 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        Security Center "Backups" card + crm_backup_* metrics + 3 alerts + Grafana row; off-site repo2 via
        backup-offsite.env (verified against RustFS over HTTPS); DR restore command; CI runs backup + restore test.
        Runbook rewritten with measured drills.
-7. [ ] Performance: batch activity INSERTs per paste; re-measure; larger dataset and more concurrent users than
-       before, within this VM's limits (PERFORMANCE.md stays measured-only)
+7. [x] Performance: batch activity INSERTs per paste; re-measure; larger dataset and more concurrent users than
+       before, within this VM's limits (PERFORMANCE.md stays measured-only). Commit ee09a84 (fast path stages rows,
+       one statement per table at the flush: 1,516 -> 19 statements; NANP verdict cached). PERFORMANCE.md "Round 2":
+       3.98 M activities, every run from a fresh template copy, A/B x2 at 550 agents/6 s think, 800 agents at 20 s and 6 s.
 8. [ ] Kubernetes: deploy the Helm chart to a local cluster (kind/k3d) and smoke-test it
 9. [ ] Regenerate both §29 handoff ZIPs + the continuation ZIP; update known issues / owner checklist; final report
 
