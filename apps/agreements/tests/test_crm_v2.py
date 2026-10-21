@@ -129,3 +129,44 @@ class EventTests(unittest.TestCase):
         self.login(self.u1); cid = self.save(); self.post('/api/reviews/submit', {'client_id': cid})
         with db.engine.connect() as c:
             self.assertEqual(c.execute(select(v2.outbox)).first(), None)
+
+
+class SsoDiscoveryTests(unittest.TestCase):
+    """Hosted mode behind Keycloak with a dynamic back-channel: discovery fetched on the internal URL returns token and
+    JWKS endpoints on that internal (http) address, while the browser is sent to the public HTTPS sign-in page."""
+    INTERNAL = 'http://keycloak:8080/realms/tfsc'
+    add = baseline.PortalTests.add
+
+    def setUp(self):
+        baseline.PortalTests.setUp(self)
+        self.env = patch.dict(os.environ, {'TFSC_OIDC_INTERNAL_URL': self.INTERNAL, 'TFSC_OIDC_CLIENT_ID': 'tfsc-agreements',
+                                           'TFSC_OIDC_CLIENT_SECRET': 'synthetic-client-secret'}); self.env.start()
+        self.hosted = patch.object(db, 'LOCAL', False); self.hosted.start()
+
+    def tearDown(self):
+        self.hosted.stop(); self.env.stop(); baseline.PortalTests.tearDown(self)
+
+    def start(self, **endpoints):
+        import httpx, oidc_support
+        iss = 'https://sso.example.com/realms/' + uuid.uuid4().hex[:8]  # a new issuer per call: no cached discovery is reused
+        meta = {'issuer': iss, 'authorization_endpoint': iss + '/protocol/openid-connect/auth',
+                'token_endpoint': self.INTERNAL + '/protocol/openid-connect/token', 'jwks_uri': self.INTERNAL + '/protocol/openid-connect/certs', **endpoints}
+        seen = []
+        def get(url, **_):
+            seen.append(url); return httpx.Response(200, json=meta, request=httpx.Request('GET', url))
+        with patch.dict(os.environ, {'TFSC_OIDC_ISSUER': iss}), patch.object(oidc_support.httpx, 'get', side_effect=get):
+            return iss, self.api.get('/api/auth/sso/login', follow_redirects=False), seen
+
+    def test_internal_back_channel_endpoints_are_accepted_and_the_browser_goes_to_https(self):
+        iss, r, seen = self.start()
+        self.assertEqual(r.status_code, 307, r.text)
+        self.assertTrue(r.headers['location'].startswith(iss + '/protocol/openid-connect/auth?'), r.headers['location'])
+        self.assertEqual(seen, [self.INTERNAL + '/.well-known/openid-configuration'])
+
+    def test_http_endpoints_outside_the_internal_url_and_a_plain_http_sign_in_page_are_refused(self):
+        for case in ({'token_endpoint': 'http://elsewhere.example/token'}, {'jwks_uri': 'http://keycloak:8080/realms/tfsc-other/certs'},
+                     {'authorization_endpoint': self.INTERNAL + '/protocol/openid-connect/auth'}):
+            with self.subTest(case=case):
+                _, r, _ = self.start(**case)
+                self.assertEqual(r.status_code, 503, r.text)
+                self.assertIn('metadata is unavailable or invalid', r.text)

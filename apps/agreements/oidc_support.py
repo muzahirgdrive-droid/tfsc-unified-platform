@@ -25,14 +25,19 @@ def install(app,db,sec,session_response,origin,prefix,actor_fn):
  def back(url):
   issuer,internal=setting('ISSUER').rstrip('/'),setting('INTERNAL_URL').rstrip('/')
   return internal+url[len(issuer):] if internal and url.startswith(issuer) else url
+ def server_side(url):
+  # token and JWKS calls come from this server: HTTPS, or the configured internal URL (Keycloak's dynamic back-channel
+  # answers discovery fetched there with its own address); the browser-facing authorization endpoint must be HTTPS
+  internal=setting('INTERNAL_URL').rstrip('/')
+  return urlsplit(url).scheme in schemes() or bool(internal) and url.startswith(internal+'/')
  def metadata():
   issuer=setting('ISSUER').rstrip('/')
   if urlsplit(issuer).scheme not in schemes():raise HTTPException(503,'OIDC requires an HTTPS issuer.')
-  if cache.get('expires',0)>time.time():return cache['value']
+  if cache.get('issuer')==issuer and cache.get('expires',0)>time.time():return cache['value']
   try:
    r=httpx.get(back(issuer+'/.well-known/openid-configuration'),timeout=10);r.raise_for_status();m=r.json()
-   if m.get('issuer')!=issuer or any(urlsplit(m.get(k,'')).scheme not in schemes() for k in ('authorization_endpoint','token_endpoint','jwks_uri')):raise ValueError()
-   cache.update(expires=time.time()+3600,value=m);return m
+   if m.get('issuer')!=issuer or urlsplit(m.get('authorization_endpoint','')).scheme not in schemes() or not all(server_side(m.get(k,'')) for k in ('token_endpoint','jwks_uri')):raise ValueError()
+   cache.update(issuer=issuer,expires=time.time()+3600,value=m);return m
   except Exception:raise HTTPException(503,'Identity provider metadata is unavailable or invalid.')
  @app.get('/api/auth/sso/status')
  def status():return {'enabled':enabled()}
