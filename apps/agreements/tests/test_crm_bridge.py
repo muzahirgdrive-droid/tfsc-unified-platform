@@ -81,4 +81,28 @@ class BridgeTests(unittest.TestCase):
   wrong=self.signed_post({'crm_actor_id':crm_id,'crm_client_id':'different-client'},path='/api/integrations/v1/crm/status');self.assertEqual(wrong.json()['items'],[])
   body['client']['client_name']='Changed';self.assertEqual(self.signed_post(body).status_code,409)
 
+class ManageLinkTests(unittest.TestCase):
+ """`manage.py link-crm-admin`, run on the server by deploy/vps/tfsc.sh link-admins, exactly as the installer calls it."""
+ def setUp(self):
+  import tempfile;self.tmp=tempfile.TemporaryDirectory(prefix='tfsc-manage-');self.url='sqlite:///'+self.tmp.name+'/m.db'
+ def tearDown(self):self.tmp.cleanup()
+ def manage(self,*args):
+  import subprocess
+  env={**os.environ,'TFSC_MODE':'local','TFSC_DATA_DIR':self.tmp.name,'DATABASE_URL':self.url}
+  return subprocess.run([sys.executable,'manage.py',*args],cwd=db.APP,env=env,capture_output=True,text=True,timeout=120)
+ def test_link_crm_admin_maps_the_first_super_admin_and_audits_it(self):
+  crm_id=db.uid();r=self.manage('link-crm-admin',crm_id)
+  self.assertNotEqual(r.returncode,0);self.assertIn('Set up the Agreements Super Admin first',r.stderr)
+  e=db.make_engine(self.url)
+  try:
+   with e.begin() as c:
+    for i,role in enumerate(('admin','super_admin','super_admin')):
+     c.execute(db.users.insert().values(id=str(i)*32,email='u'+str(i)+'@example.com',name='User '+str(i),password='x',role=role,companies=[],active=True,reset_required=False,created=1000.0+i))
+   bad=self.manage('link-crm-admin','not-a-crm-id');self.assertNotEqual(bad.returncode,0);self.assertIn('Use the CRM actor ID.',bad.stderr)
+   r=self.manage('link-crm-admin',crm_id.upper());self.assertEqual(r.returncode,0,r.stderr);self.assertIn('u1@example.com',r.stdout)
+   with e.connect() as c:
+    self.assertEqual(c.execute(select(bridge.actors.c.user_id).where(bridge.actors.c.crm_actor_id==crm_id)).scalar_one(),'1'*32)
+    self.assertEqual(c.execute(select(db.audit.c.actor_id).where(db.audit.c.action=='crm.actor_linked')).scalars().all(),['1'*32])
+  finally:e.dispose()
+
 if __name__=='__main__':unittest.main()

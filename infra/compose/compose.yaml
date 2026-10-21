@@ -2,6 +2,9 @@
 #   cp .env.example .env   # fill every secret
 #   docker compose --env-file .env up -d --build
 # Production adds the `edge` profile (Caddy TLS) and sets CRM_MODE=hosted with https origins.
+# The apps, Keycloak and object storage publish their ports on 127.0.0.1 only (PUBLISH_ADDR): Docker's port rules
+# bypass host firewalls such as ufw, so on a public server only the edge's 80/443 are reachable from outside.
+# One VPS, step by step: deploy/vps/README.md (`deploy/vps/tfsc.sh install`).
 name: tfsc-unified
 
 x-crm: &crm
@@ -148,7 +151,7 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
       SMTP_SSL: ${SMTP_SSL:-false}
     volumes: [../keycloak/realm-tfsc.json:/opt/keycloak/data/import/realm-tfsc.json:ro]
-    ports: ["${SSO_PORT:-8081}:8080"]
+    ports: ["${PUBLISH_ADDR:-127.0.0.1}:${SSO_PORT:-8081}:8080"]
     depends_on: { postgres: { condition: service_healthy } }
 
   crm-migrate:
@@ -163,7 +166,7 @@ services:
     restart: unless-stopped
     environment: { RUSTFS_ACCESS_KEY: "${S3_ACCESS_KEY}", RUSTFS_SECRET_KEY: "${S3_SECRET_KEY}" }
     volumes: [objects-data:/data]
-    ports: ["${OBJECTS_PORT:-9000}:9000"]
+    ports: ["${PUBLISH_ADDR:-127.0.0.1}:${OBJECTS_PORT:-9000}:9000"]
 
   # One-shot: create crm-files and the object-lock bucket crm-audit-anchors (verified to have object lock).
   objects-init:
@@ -180,7 +183,7 @@ services:
 
   crm-api:
     <<: *crm
-    ports: ["${CRM_PORT:-8766}:8000"]
+    ports: ["${PUBLISH_ADDR:-127.0.0.1}:${CRM_PORT:-8766}:8000"]
     depends_on:
       crm-migrate: { condition: service_completed_successfully }
       objects-init: { condition: service_completed_successfully }
@@ -211,7 +214,7 @@ services:
 
   agreements:
     <<: *agreements
-    ports: ["${TFSC_PORT:-8765}:8000"]
+    ports: ["${PUBLISH_ADDR:-127.0.0.1}:${TFSC_PORT:-8765}:8000"]
     command: ["uvicorn", "portal:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*"]
     depends_on: { postgres: { condition: service_healthy } }
 
@@ -225,7 +228,7 @@ services:
     profiles: [trial]
     image: axllent/mailpit:v1.27.7
     restart: unless-stopped
-    ports: ["${MAILPIT_PORT:-8025}:8025"]
+    ports: ["${PUBLISH_ADDR:-127.0.0.1}:${MAILPIT_PORT:-8025}:8025"]
 
   # Metrics, dashboards and traces (profile `observability`): Prometheus scrapes the CRM's /metrics with
   # CRM_METRICS_TOKEN and evaluates infra/observability/alerts.yml; Grafana shows the provisioned TFSC dashboard;

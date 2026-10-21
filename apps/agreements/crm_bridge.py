@@ -85,6 +85,11 @@ async def signed(request,c):
  if not link:raise HTTPException(403,'Map this CRM actor to an agreements account first.')
  return body,current_actor(c,link['user_id'])
 
+def link_actor(c,a,crm_id,uid):
+ """Map a CRM actor to an agreements account (Super Admin in the portal, or `manage.py link-crm-admin` on the server)."""
+ if not re.fullmatch(r'[a-f0-9]{32}',crm_id):raise HTTPException(400,'Use the CRM actor ID.')
+ current_actor(c,uid);c.execute(delete(actors).where(actors.c.crm_actor_id==crm_id));c.execute(actors.insert().values(crm_actor_id=crm_id,user_id=uid,created=time.time()));db.log(c,a,'crm.actor_linked',detail={'crm_actor_id':crm_id,'tfsc_user_id':uid})
+
 def install(app):
  @app.post('/api/integrations/v1/crm/status')
  async def client_status(request:Request):
@@ -99,9 +104,7 @@ def install(app):
   with db.engine.begin() as c:
    a=sec.get_actor(request,c)
    if a['role']!='super_admin':raise HTTPException(403,'Super Admin access required.')
-   crm_id=str(payload.get('crm_actor_id',''));uid=payload.get('tfsc_user_id')
-   if not re.fullmatch(r'[a-f0-9]{32}',crm_id):raise HTTPException(400,'Use the CRM actor ID.')
-   current_actor(c,uid);c.execute(delete(actors).where(actors.c.crm_actor_id==crm_id));c.execute(actors.insert().values(crm_actor_id=crm_id,user_id=uid,created=time.time()));db.log(c,a,'crm.actor_linked',detail={'crm_actor_id':crm_id,'tfsc_user_id':uid});return {'ok':True}
+   link_actor(c,a,str(payload.get('crm_actor_id','')),payload.get('tfsc_user_id'));return {'ok':True}
  @app.post('/api/integrations/v1/crm/handoffs')
  async def receive_handoff(request:Request):
   import portal
