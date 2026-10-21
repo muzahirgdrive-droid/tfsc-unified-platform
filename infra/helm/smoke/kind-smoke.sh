@@ -46,8 +46,13 @@ up() {
     kind create cluster --name "$CLUSTER" --config "$STATE/kind.yaml" --wait 120s
   fi
   say "images (loaded from the local Docker, never pulled by the node)"
-  for img in "${IMAGES[@]}"; do docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img"; done
-  kind load docker-image --name "$CLUSTER" "${IMAGES[@]}"
+  # one platform per image: `kind load` imports --all-platforms, which fails for multi-platform images whose other
+  # platforms were never downloaded ("content digest ... not found")
+  platform=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')
+  for img in "${IMAGES[@]}"; do
+    docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img"
+    docker save --platform "$platform" "$img" | docker exec -i "$CLUSTER-control-plane" ctr --namespace=k8s.io images import --snapshotter=overlayfs - >/dev/null
+  done
 
   say "ingress-nginx ($INGRESS_NGINX)"
   k apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/$INGRESS_NGINX/deploy/static/provider/kind/deploy.yaml" >/dev/null
