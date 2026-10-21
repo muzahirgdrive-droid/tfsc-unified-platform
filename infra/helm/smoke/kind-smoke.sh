@@ -107,7 +107,7 @@ EOF
   k -n "$NS" get pods -o wide
 }
 
-curl_() { curl -sS --cacert "$STATE/tls.crt" --resolve crm.tfsc.test:443:127.0.0.1 --resolve agreements.tfsc.test:443:127.0.0.1 "$@"; }
+curl_() { curl -sS --noproxy '*' --cacert "$STATE/tls.crt" --resolve crm.tfsc.test:443:127.0.0.1 --resolve agreements.tfsc.test:443:127.0.0.1 "$@"; }
 check() {  # check <description> <command...>: run, print PASS/FAIL, count failures
   if "${@:2}"; then echo "PASS  $1"; else echo "FAIL  $1"; failures=$((failures + 1)); fi
 }
@@ -121,7 +121,7 @@ test_() {
   health=$(curl_ https://crm.tfsc.test/api/health)
   head=$(basename "$(printf '%s\n' "$root"/apps/crm-api/migrations/versions/[0-9]*.py | sort | tail -n 1)" .py)
   check "CRM health through the ingress over verified TLS, database at $head" grep -q "\"database\":\"$head\"" <<<"$health"
-  check "Agreements health through the ingress" bash -c "curl -sS --cacert '$STATE/tls.crt' --resolve agreements.tfsc.test:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://agreements.tfsc.test/api/health | grep -qx 200"
+  check "Agreements health through the ingress" bash -c "curl -sS --noproxy '*' --cacert '$STATE/tls.crt' --resolve agreements.tfsc.test:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://agreements.tfsc.test/api/health | grep -qx 200"
   check "migration job completed" bash -c "kubectl --context kind-$CLUSTER -n $NS get jobs -o jsonpath='{range .items[*]}{.metadata.name}={.status.succeeded}{\"\\n\"}{end}' | grep -q 'crm-migrate-.*=1'"
   check "storage-init job completed (buckets, object lock checked)" bash -c "kubectl --context kind-$CLUSTER -n $NS get jobs -o jsonpath='{range .items[*]}{.metadata.name}={.status.succeeded}{\"\\n\"}{end}' | grep -q 'crm-storage-init-.*=1'"
   check "HPA and PodDisruptionBudget exist" bash -c "kubectl --context kind-$CLUSTER -n $NS get hpa/$REL-crm-api pdb/$REL-crm-api >/dev/null"
