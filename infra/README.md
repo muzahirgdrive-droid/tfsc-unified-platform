@@ -11,10 +11,14 @@
 | `load/` | k6 load profiles (`crm.js`, `run.sh`), SSE fan-out harness (`sse_fanout.py`), synthetic data generator (`gen_data.py`); results and method in docs/PERFORMANCE.md |
 
 ## Compose: production on one VPS
+The deployment ZIP (`tools/make_vps_bundle.sh`) wraps this in an installer and a step-by-step guide:
+[deploy/vps/README.md](../deploy/vps/README.md) (`deploy/vps/tfsc.sh install`). By hand:
 ```
 cd infra/compose && cp .env.example .env    # fill every secret; https origins; KC_COMMAND=start
 docker compose --env-file .env --profile edge up -d --build
 ```
+Only the edge publishes on all interfaces (80/443); the apps, Keycloak and object storage publish on `PUBLISH_ADDR`
+(default `127.0.0.1`), because Docker's port rules bypass host firewalls such as ufw.
 DNS: `CRM_DOMAIN`, `TFSC_DOMAIN`, `SSO_DOMAIN` point at the server; Caddy obtains certificates.
 First Super Admin: set `CRM_ALLOW_LOCAL_LOGIN=1`, read the one-time key with
 `docker compose exec crm-api python -c "from tfsc_crm.domain import bootstrap; print(bootstrap.read_setup_key())"`,

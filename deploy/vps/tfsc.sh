@@ -265,23 +265,23 @@ print(r[0].hex if r else "")
 cmd_finish_setup() {
   [ -f "$ENV_FILE" ] || die "Not installed yet: sudo $0 install"
   if [ "$(env_get CRM_ALLOW_LOCAL_LOGIN)" = 0 ]; then echo "Password sign-in is already off; everyone signs in with SSO."; return; fi
-  echo "This turns off the CRM's built-in password sign-in; afterwards everyone, you included, signs in with SSO."
-  echo "Before you continue: in the CRM open People, select yourself, click 'Send sign-in invitation', and finish the"
-  echo "email (set a password and the authenticator app), so you can still sign in."
+  echo "This turns off the CRM's own password sign-in for everyone except the Super Admin: from now on people sign in"
+  echo "with SSO. Your setup password stays as an emergency (break-glass) sign-in for when SSO is down; keep it in"
+  echo "your password manager. Before you continue, check that 'Sign in with company SSO' works for you."
   confirm "Turn off password sign-in now?" || { echo "Nothing changed."; return; }
   sed -i 's/^CRM_ALLOW_LOCAL_LOGIN=.*/CRM_ALLOW_LOCAL_LOGIN=0/' "$ENV_FILE"
   dc up -d
-  echo "Done: the CRM accepts SSO sign-in only."
+  echo "Done: people sign in to the CRM with SSO; only the Super Admin's emergency password still works."
 }
 
 cmd_signatures() {
   local dir=${1-} name ext n=0
   [ -n "$dir" ] && [ -d "$dir" ] || die "Usage: $0 signatures /path/to/folder (with 'Naeem Abbas.png/.json' and 'Danish Ather.png/.json')"
-  dc exec -T agreements mkdir -p /app/private-assets/signatures
+  dc exec -T agreements sh -c 'umask 077 && mkdir -p /app/private-assets/signatures'
   for name in 'Naeem Abbas' 'Danish Ather'; do
     for ext in png json; do
       [ -f "$dir/$name.$ext" ] || continue
-      dc exec -T agreements sh -c 'cat > "/app/private-assets/signatures/$1"' _ "$name.$ext" < "$dir/$name.$ext"
+      dc exec -T agreements sh -c 'umask 077 && cat > "/app/private-assets/signatures/$1"' _ "$name.$ext" < "$dir/$name.$ext"
       n=$((n + 1))
     done
   done
@@ -309,7 +309,7 @@ Usage: $0 <command>
   status             what is running, the public HTTPS addresses, the latest backups
   setup-keys         show the one-time setup keys again (until each Super Admin exists)
   link-admins        link the CRM Super Admin to the Agreements Super Admin (after both are set up)
-  finish-setup       turn off the CRM's bootstrap password sign-in after you can sign in with SSO
+  finish-setup       SSO only from now on (the Super Admin keeps an emergency password sign-in)
   signatures DIR     install the authorized signature images for issued agreements
   backup             take a full backup now (encrypted), followed by the automatic restore test
   logs [service]     follow the logs (all services, or e.g. crm-api, agreements, keycloak, edge)
@@ -333,7 +333,7 @@ main() {
     link-admins) cmd_link_admins ;;
     finish-setup) cmd_finish_setup ;;
     signatures) cmd_signatures "${1-}" ;;
-    backup) dc exec -T backup tfsc-backup backup full ;;
+    backup) dc exec -T backup sh -c 'tfsc-backup backup full && tfsc-backup restore-test' ;;
     logs) dc logs -f --tail 200 "$@" ;;
     update) cmd_update ;;
     restart) dc restart ;;

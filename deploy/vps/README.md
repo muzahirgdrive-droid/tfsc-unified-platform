@@ -8,7 +8,7 @@ restore test. HTTPS certificates are obtained and renewed automatically (Caddy w
 
 | | |
 |---|---|
-| Server | Ubuntu 24.04 or 22.04 LTS, x86_64, **4 vCPU, 8 GB RAM, 80 GB SSD** or more. @@RAM@@ |
+| Server | Ubuntu 24.04 or 22.04 LTS, x86_64, **4 vCPU, 8 GB RAM, 80 GB SSD** or more. Measured on a test install: about 2.4 GB in use with everything idle (virus scanner 0.95 GB, sign-in service 0.58 GB); document generation, the nightly restore test and virus-signature updates add to that. |
 | Access | SSH as root (or a user with `sudo`) |
 | Domain | A domain you control, with four addresses pointing at the server (step 1) |
 | Email | An SMTP account to send invitations and password resets (host, port, user, password or app key, sender address) |
@@ -65,7 +65,8 @@ Unattended install (no questions): `DOMAIN=example.com SMTP_HOST=smtp.example.co
 4. In the CRM: **People** > select yourself > **Send sign-in invitation**. Open the email, choose your sign-in password
    and add the authenticator app (required for Supervisors and above).
 5. Sign out of the CRM and sign in again with **Sign in with company SSO**. Once that works:
-   `sudo ./tfsc.sh finish-setup` (turns off the CRM's setup password sign-in; from now on everyone uses SSO).
+   `sudo ./tfsc.sh finish-setup`. From then on everyone signs in with SSO; only your setup password still works as an
+   emergency sign-in for the Super Admin (for example if the sign-in service is down), so keep it in the password manager.
 
 Then add your team in **People** (each person gets an invitation email) and, in **People > Agreements access**,
 choose who may use Agreements. The setup keys are shown again with `./tfsc.sh setup-keys` until they are used.
@@ -133,6 +134,22 @@ Data lives in Docker volumes and is kept; database changes are applied automatic
 
 ## What was tested, and what was not
 
-@@TESTED@@
+Tested on 2026-10-21 by installing this ZIP with `tfsc.sh install` on a fresh Docker host (4 vCPU, 16 GB) with test
+addresses (`*.tfsc.test`), certificates from Caddy's own test authority instead of Let's Encrypt, and a mail catcher
+instead of a real mail server:
+
+- install unattended in about 4 minutes on that host (base images already downloaded); only ports 80 and 443 reachable from outside; all three HTTPS
+  addresses answering; the first encrypted backup and its restore test passed on their own;
+- both setup keys work once; `link-admins`; the invitation email; setting a password and the authenticator app; CRM
+  sign-in with SSO (password + code); an agent invited, signed in to the CRM and to Agreements with SSO; giving the
+  agent Agreements access;
+- `finish-setup`: password sign-in refused for everyone but the Super Admin's emergency password;
+- `signatures` (with placeholder files), `backup`, `status`, and `update` from one release to the next with the steps
+  above: data kept, everyone still signs in.
+
+Not tested from here: real Let's Encrypt certificates (they need public DNS pointing at a real server), a real mail
+provider, Ubuntu itself and the installer's Docker installation step (Docker was already present), a specific hosting
+provider's firewall, and load on a server of the recommended size (the measured load
+results are in `docs/PERFORMANCE.md`).
 
 More detail: `infra/README.md` (all services and options), `docs/runbooks/` (cutover, backups, legacy workbook import).

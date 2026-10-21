@@ -6,13 +6,14 @@ from sqlalchemy import select
 parser=argparse.ArgumentParser();parser.add_argument('command',choices=['init','setup-key','check','install-signatures','link-crm-admin']);parser.add_argument('value',nargs='?');args=parser.parse_args()
 db.init_db()
 if args.command=='install-signatures':
-    source=db.APP/'private-assets'/'signatures';target=db.DATA/'signatures';target.mkdir(parents=True,exist_ok=True)
+    source=db.APP/'private-assets'/'signatures';target=db.DATA/'signatures';target.mkdir(parents=True,exist_ok=True);target.chmod(0o700)
     copied=0
     for name in ('Naeem Abbas','Danish Ather'):
         for suffix in ('.png','.json'):
             src=source/(name+suffix);dst=target/(name+suffix)
             if src.is_file() and not dst.exists():
                 with dst.open('xb') as output:output.write(src.read_bytes())
+                dst.chmod(0o600)  # private to the app user, whatever the caller's umask
                 copied+=1
     print(str(copied)+' authorized signature assets installed; existing assets were not overwritten.')
 elif args.command=='setup-key':
