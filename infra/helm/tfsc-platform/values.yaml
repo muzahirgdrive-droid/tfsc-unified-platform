@@ -28,7 +28,9 @@ crm:
     resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
   dispatcher: { replicas: 2, resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } } }
   scheduler: { replicas: 1, resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: 500m, memory: 512Mi } } }
-  dataVolume: { size: 5Gi, storageClass: "" }   # setup key + audit-anchor sink (ship anchors to object-lock storage)
+  # setup key + audit-anchor sink (ship anchors to object-lock storage). Shared by all CRM pods: ReadWriteMany on a
+  # multi-node cluster; ReadWriteOnce works when every pod runs on one node (single-node test clusters).
+  dataVolume: { size: 5Gi, storageClass: "", accessMode: ReadWriteMany }
 
 agreements:
   origin: https://agreements.example.com

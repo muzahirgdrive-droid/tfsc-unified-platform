@@ -29,7 +29,8 @@ RUN --mount=type=secret,id=build_ca,required=false \
 COPY apps/crm-api/ /app
 COPY --from=web /src/apps/crm-web/dist /app/web/dist
 RUN useradd --create-home --uid 10002 crm && mkdir -p /data && chown -R crm:crm /app /data
-USER crm
+# numeric, so Kubernetes runAsNonRoot can verify that the user is not root
+USER 10002:10002
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD python -c "import os,urllib.request,urllib.parse; r=urllib.request.Request('http://127.0.0.1:8000/api/health',headers={'Host':urllib.parse.urlsplit(os.environ['CRM_ORIGIN']).netloc}); urllib.request.urlopen(r,timeout=3)" || exit 1
 CMD ["uvicorn", "tfsc_crm.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*"]

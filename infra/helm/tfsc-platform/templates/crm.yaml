@@ -4,7 +4,7 @@ metadata:
   name: {{ .Release.Name }}-crm-data
   labels: {{- include "tfsc.labels" . | nindent 4 }}
 spec:
-  accessModes: [ReadWriteMany]
+  accessModes: [{{ .Values.crm.dataVolume.accessMode }}]
   {{- with .Values.crm.dataVolume.storageClass }}
   storageClassName: {{ . }}
   {{- end }}

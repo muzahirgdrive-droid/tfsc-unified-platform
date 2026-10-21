@@ -16,6 +16,7 @@ RUN --mount=type=secret,id=build_ca,required=false \
     pip install --no-cache-dir /opt/packages/bridge-contract/python
 COPY apps/agreements/ /app
 RUN useradd -m -u 10001 tfsc && mkdir -p /data /contracts && chown -R tfsc:tfsc /app /data /contracts
-USER tfsc
+# numeric, so Kubernetes runAsNonRoot can verify that the user is not root
+USER 10001:10001
 EXPOSE 8000
 CMD ["uvicorn","portal:app","--host","0.0.0.0","--port","8000","--workers","2","--no-access-log"]

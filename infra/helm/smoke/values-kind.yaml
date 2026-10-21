@@ -1,0 +1,50 @@
+# Values for the kind smoke test: the images built from this repository (loaded into the node, never pulled), small
+# replica counts and requests for one node, the test-only dependencies from deps.yaml, *.tfsc.test hosts.
+image:
+  crm: { repository: tfsc-crm, tag: "2", pullPolicy: Never }
+  agreements: { repository: tfsc-agreements, tag: "4", pullPolicy: Never }
+
+crm:
+  origin: https://crm.tfsc.test
+  ssoIssuer: https://sso.tfsc.test/realms/tfsc   # no Keycloak in the smoke test: sign-in uses the break-glass password login
+  allowLocalLogin: true
+  api:
+    replicas: 2
+    workers: 1
+    resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
+    autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 3, targetCPUUtilizationPercentage: 65 }
+  bulk:
+    enabled: true
+    replicas: 1
+    workers: 1
+    resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: "1", memory: 768Mi } }
+  dispatcher: { replicas: 1, resources: { requests: { cpu: 20m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } } }
+  scheduler: { replicas: 1, resources: { requests: { cpu: 20m, memory: 128Mi }, limits: { cpu: 500m, memory: 512Mi } } }
+  dataVolume: { size: 1Gi, storageClass: "", accessMode: ReadWriteOnce }
+
+agreements:
+  origin: https://agreements.tfsc.test
+  api: { replicas: 1, resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: "1", memory: 1Gi } } }
+  worker: { replicas: 1, resources: { requests: { cpu: 50m, memory: 256Mi }, limits: { cpu: "1", memory: 1Gi } } }
+  contractsVolume: { size: 1Gi, storageClass: "", accessMode: ReadWriteOnce }
+
+files:
+  storage: s3
+  endpoint: http://rustfs.tfsc-deps.svc:9000
+  publicEndpoint: https://files.tfsc.test
+  bucket: crm-files
+  anchorBucket: crm-audit-anchors
+
+clamav:
+  enabled: true
+  resources: { requests: { cpu: 50m, memory: 1Gi }, limits: { cpu: "1", memory: 2Gi } }
+
+ingress:
+  enabled: true
+  className: nginx
+  crmHost: crm.tfsc.test
+  agreementsHost: agreements.tfsc.test
+  tls: [{ secretName: tfsc-tls, hosts: [crm.tfsc.test, agreements.tfsc.test] }]
+
+observability:
+  prometheusNamespace: monitoring
