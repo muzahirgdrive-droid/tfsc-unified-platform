@@ -26,6 +26,12 @@ INGRESS_NGINX=${INGRESS_NGINX:-controller-v1.13.3}
 STATE=${STATE:-$here/.state}   # generated secrets and the test certificate (gitignored)
 IMAGES=(tfsc-crm:2 tfsc-agreements:4 postgres:16-alpine redis:7-alpine rustfs/rustfs:1.0.1 clamav/clamav:1.4.6)
 k() { kubectl --context "kind-$CLUSTER" "$@"; }
+load_image() {  # one platform per image: `kind load` imports --all-platforms, which fails for multi-platform images
+  # whose other platforms were never downloaded ("content digest ... not found")
+  docker image inspect "$1" >/dev/null 2>&1 || docker pull -q "$1" >/dev/null
+  docker save --platform "$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" "$1" \
+    | docker exec -i "$CLUSTER-control-plane" ctr --namespace=k8s.io images import --snapshotter=overlayfs - >/dev/null
+}
 say() { printf '\n== %s\n' "$*"; }
 rnd() { openssl rand -hex 24; }
 
@@ -46,16 +52,18 @@ up() {
     kind create cluster --name "$CLUSTER" --config "$STATE/kind.yaml" --wait 120s
   fi
   say "images (loaded from the local Docker, never pulled by the node)"
-  # one platform per image: `kind load` imports --all-platforms, which fails for multi-platform images whose other
-  # platforms were never downloaded ("content digest ... not found")
-  platform=$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')
-  for img in "${IMAGES[@]}"; do
-    docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img"
-    docker save --platform "$platform" "$img" | docker exec -i "$CLUSTER-control-plane" ctr --namespace=k8s.io images import --snapshotter=overlayfs - >/dev/null
-  done
+  for img in "${IMAGES[@]}"; do load_image "$img"; done
 
   say "ingress-nginx ($INGRESS_NGINX)"
-  k apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/$INGRESS_NGINX/deploy/static/provider/kind/deploy.yaml" >/dev/null
+  # The node pulls nothing itself (behind some proxies it cannot): the manifest's images are pulled here and loaded,
+  # and the manifest is applied with tag references (its pinned digests name multi-platform indexes).
+  curl -sSfL -o "$STATE/ingress-nginx.yaml" \
+    "https://raw.githubusercontent.com/kubernetes/ingress-nginx/$INGRESS_NGINX/deploy/static/provider/kind/deploy.yaml"
+  sed -n 's/^ *image: *//p' "$STATE/ingress-nginx.yaml" | sort -u | while read -r img; do
+    docker image inspect "${img%@*}" >/dev/null 2>&1 || { docker pull -q "$img" >/dev/null && docker tag "$img" "${img%@*}"; }
+    load_image "${img%@*}"
+  done
+  sed 's/\(image: *[^@ ]*\)@sha256:[0-9a-f]*/\1/' "$STATE/ingress-nginx.yaml" | k apply -f - >/dev/null
   k -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=300s
 
   say "secrets and certificate"
