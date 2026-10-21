@@ -296,7 +296,7 @@ cmd_update() {
   [ -f "$ENV_FILE" ] || die "No settings in $ENV_FILE. Copy infra/compose/.env (and backup-offsite.env, if you use it) from the previous release folder first."
   build_images
   say "Restarting with the new version (database changes are applied automatically)"
-  dc up -d --remove-orphans
+  dc up -d
   wait_ready
   docker image prune -f >/dev/null
   echo "Updated."
