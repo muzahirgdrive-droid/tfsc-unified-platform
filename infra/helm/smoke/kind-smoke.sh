@@ -14,6 +14,7 @@
 # Needs docker, kind, kubectl, helm, openssl, curl, and the images built from this repository:
 #   docker build -f apps/crm-api/Dockerfile -t tfsc-crm:2 . && docker build -f apps/agreements/Dockerfile -t tfsc-agreements:4 .
 # Behind a TLS-inspecting proxy, KIND_EXTRA_CA=/path/to/full-ca-bundle.crt becomes the node's trust store.
+# On a cgroup v1 host the kubelet is allowed to start anyway (Kubernetes 1.35 refuses cgroup v1 by default).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -34,6 +35,9 @@ up() {
     cp "$here/kind.yaml" "$STATE/kind.yaml"
     if [ -n "${KIND_EXTRA_CA:-}" ]; then
       printf '    extraMounts:\n      - { hostPath: %s, containerPath: /etc/ssl/certs/ca-certificates.crt, readOnly: true }\n' "$KIND_EXTRA_CA" >> "$STATE/kind.yaml"
+    fi
+    if docker info --format '{{.CgroupVersion}}' | grep -qx 1; then  # Kubernetes >= 1.35 refuses cgroup v1 unless told
+      printf 'kubeadmConfigPatches:\n  - |\n    kind: KubeletConfiguration\n    failCgroupV1: false\n' >> "$STATE/kind.yaml"
     fi
     kind create cluster --name "$CLUSTER" --config "$STATE/kind.yaml" --wait 120s
   fi
