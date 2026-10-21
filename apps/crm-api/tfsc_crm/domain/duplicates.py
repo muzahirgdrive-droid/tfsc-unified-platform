@@ -182,7 +182,7 @@ def set_state(c: Connection, org_id: uuid.UUID, phone_key: str | None, state: st
         return
     order = ['none', 'followup', 'strong_pending', 'strong_confirmed', 'lead', 'meeting', 'signed', 'client']
     reg = lock_registry(c, org_id, phone_key)
-    (c.info.get('registry_cache') or {}).pop(phone_key, None)  # the state changes in SQL below: re-read next time
+    cache = c.info.get('registry_cache') or {}
     if only_upgrade and order.index(state) < order.index(reg['state']):
         return
     vals: dict = {'state': state, 'state_owner_id': owner_id}
@@ -190,4 +190,14 @@ def set_state(c: Connection, org_id: uuid.UUID, phone_key: str | None, state: st
         vals.update(protected_lead_id=lead_id, protected_owner_id=owner_id)
     elif not only_upgrade:
         vals.update(protected_lead_id=None, protected_owner_id=None)
+    from . import rollups
+    if phone_key in cache and set(vals) == {'state', 'state_owner_id'} and rollups.all_or_nothing(c):
+        # all-or-nothing batch holding this row locked: keep the cached row current and write once at the flush
+        reg.update(vals)
+        rollups.defer(c, _STATE, {'org_id': org_id, 'phone_key': phone_key, **vals})
+        return
+    cache.pop(phone_key, None)  # the state changes in SQL below: re-read next time
     c.execute(m.phone_registry.update().where(m.phone_registry.c.org_id == org_id, m.phone_registry.c.phone_key == phone_key).values(**vals))
+
+
+_STATE = text('UPDATE phone_registry SET state = :state, state_owner_id = :state_owner_id WHERE org_id = :org_id AND phone_key = :phone_key')

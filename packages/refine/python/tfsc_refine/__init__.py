@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
+from functools import lru_cache
 from typing import Any
 
 import phonenumbers
@@ -295,6 +296,16 @@ def _phone_digits_text(raw: Any) -> str:
     return s
 
 
+@lru_cache(maxsize=65536)
+def _nanp_valid(digits: str) -> bool | None:
+    """phonenumbers' verdict for a 10-digit NANP number (None: unparseable). The costly part of refining a phone; the
+    same number is refined more than once per save (registry locks, then the row), so the verdict is cached."""
+    try:
+        return bool(phonenumbers.is_valid_number(phonenumbers.parse('+1' + digits, None)))
+    except phonenumbers.NumberParseException:
+        return None
+
+
 def _parse_one(text: str) -> tuple[str, str | None, str | None, bool, list[Issue]]:
     issues: list[Issue] = []
     ext = None
@@ -310,15 +321,14 @@ def _parse_one(text: str) -> tuple[str, str | None, str | None, bool, list[Issue
         digits = digits[1:]
     if len(digits) != 10:
         return text.strip(), None, ext, False, [Issue('phone', 'red', 'invalid', 'Phone must have 10 digits (U.S.).')]
-    try:
-        p = phonenumbers.parse('+1' + digits, None)
-    except phonenumbers.NumberParseException:
+    valid = _nanp_valid(digits)
+    if valid is None:
         return text.strip(), None, ext, False, [Issue('phone', 'red', 'invalid', 'Phone could not be read as a U.S. number.')]
     if digits[0] in '01':
         return text.strip(), None, ext, False, [Issue('phone', 'red', 'impossible', 'A U.S. area code cannot start with 0 or 1.')]
     display = f'({digits[0:3]}) {digits[3:6]}-{digits[6:]}'
     toll_free = digits[:3] in _TOLL_FREE
-    if not toll_free and not phonenumbers.is_valid_number(p):
+    if not toll_free and not valid:
         issues.append(Issue('phone', 'amber', 'unverified', 'This number does not match an assigned U.S. area code/exchange. Please double-check.'))
     if toll_free:
         issues.append(Issue('phone', 'green', 'toll_free', 'Toll-free number.'))

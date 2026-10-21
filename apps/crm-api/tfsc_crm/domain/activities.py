@@ -88,6 +88,7 @@ def refine_input(row: dict[str, Any], c: Connection, org_id: uuid.UUID) -> dict:
 
 
 _INSERT = m.activities.insert()  # parameter form: compiled once and cached
+_FOLLOWUP = m.followups.insert()
 
 
 def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'manual', owner_id: uuid.UUID | None = None,
@@ -147,13 +148,16 @@ def create(c: Connection, actor: Actor, row: dict[str, Any], *, source: str = 'm
     cfg.ensure_partition(c, 'activities', bd)
     for k in ('deleted_at', 'deleted_by', 'delete_reason', 'conflict', 'prospect_id', 'legacy_id'):
         values.setdefault(k, None)
-    c.execute(_INSERT, values)
     from . import rollups
+    if not rollups.defer_insert(c, _INSERT, dict(values)):  # inside a batch: one multi-row INSERT at the flush
+        c.execute(_INSERT, values)
     if reg is not None:
         duplicates.record_contact(c, actor.org_id, reg, values, now)
     if followup_needed_task:
-        c.execute(m.followups.insert().values(id=uuid7(), org_id=actor.org_id, activity_id=aid, activity_date=bd, phone_key=pkey,
-                                              owner_id=owner_id, due_at=next_due, status='open', created_at=now, updated_at=now))
+        fu = {'id': uuid7(), 'org_id': actor.org_id, 'activity_id': aid, 'activity_date': bd, 'phone_key': pkey, 'owner_id': owner_id,
+              'due_at': next_due, 'status': 'open', 'created_at': now, 'updated_at': now}
+        if not rollups.defer_insert(c, _FOLLOWUP, fu):
+            c.execute(_FOLLOWUP, fu)
         if pkey and not historical and dup.severity not in ('amber', 'red') and reg is not None and reg['state'] in ('none', 'followup'):
             duplicates.set_state(c, actor.org_id, pkey, 'followup', owner_id)
     scoring.apply(c, actor.org_id, values, pts, now, old=0, write_row=False)

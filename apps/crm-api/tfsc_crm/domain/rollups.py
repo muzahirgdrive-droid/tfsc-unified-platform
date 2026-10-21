@@ -53,7 +53,7 @@ HOUR_COLS = ('attempts', 'connected', 'points')
 # and written with one statement per table at the end. Each row stages into its own buffer (`row(c)`), which is merged
 # only when that row's savepoint commits, so a rejected row can never leave a delta behind.
 def _new_stage() -> dict[str, Any]:
-    return {'day': {}, 'hour': {}, 'ledger': [], 'deferred': []}
+    return {'day': {}, 'hour': {}, 'ledger': [], 'inserts': [], 'deferred': []}
 
 
 def defer(c: Connection, statement: Any, params: dict) -> bool:
@@ -65,13 +65,30 @@ def defer(c: Connection, statement: Any, params: dict) -> bool:
     return True
 
 
+def defer_insert(c: Connection, statement: Any, params: dict) -> bool:
+    """Queue a new row for one multi-row INSERT at the batch flush. Only on the all-or-nothing fast path (`batched(c,
+    all_or_nothing=True)`): a failing INSERT then aborts the whole block, which is retried one savepoint per row with
+    immediate writes. False otherwise (write now)."""
+    batch = c.info.get('rollup_batch')
+    st = stage(c)
+    if not batch or not batch.get('all_or_nothing') or st is None:
+        return False
+    st['inserts'].append((statement, params))
+    return True
+
+
+def all_or_nothing(c: Connection) -> bool:
+    batch = c.info.get('rollup_batch')
+    return bool(batch and batch.get('all_or_nothing'))
+
+
 def stage(c: Connection) -> dict[str, Any] | None:
     return c.info.get('rollup_row') or c.info.get('rollup_batch')
 
 
 @contextmanager
-def batched(c: Connection) -> Iterator[None]:
-    c.info['rollup_batch'] = _new_stage()
+def batched(c: Connection, *, all_or_nothing: bool = False) -> Iterator[None]:
+    c.info['rollup_batch'] = {**_new_stage(), 'all_or_nothing': all_or_nothing}
     try:
         yield
         flush(c, c.info['rollup_batch'])
@@ -100,6 +117,7 @@ def row(c: Connection) -> Iterator[None]:
         for k in HOUR_COLS:
             tgt[k] += e[k]
     batch['ledger'].extend(staged['ledger'])
+    batch['inserts'].extend(staged['inserts'])
     batch['deferred'].extend(staged['deferred'])
 
 
@@ -136,14 +154,15 @@ def flush(c: Connection, st: dict[str, Any]) -> None:
         c.execute(_HOUR_SQL, hours)
     if st['ledger']:
         c.execute(m.score_ledger.insert(), st['ledger'])
-    i = 0
-    deferred = st['deferred']
-    while i < len(deferred):  # consecutive writes of the same statement go out as one executemany, order preserved
-        j = i
-        while j < len(deferred) and deferred[j][0] is deferred[i][0]:
-            j += 1
-        c.execute(deferred[i][0], [p for _s, p in deferred[i:j]])
-        i = j
+    # New rows first (activities, follow-ups: one multi-row INSERT per table), then the deferred updates. Writes are grouped
+    # per statement, in their original order within each statement. That is safe for what is deferred today: the
+    # registry's contact facts (record_contact) and its pipeline state (set_state) touch different columns.
+    for key in ('inserts', 'deferred'):
+        groups: dict[Any, list[dict]] = {}
+        for statement, params in st[key]:
+            groups.setdefault(statement, []).append(params)
+        for statement, params_list in groups.items():
+            c.execute(statement, params_list)
     st.update(_new_stage())
 
 

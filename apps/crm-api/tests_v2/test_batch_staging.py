@@ -91,3 +91,62 @@ def test_duplicate_rules_inside_one_batch_match_row_by_row_saves(ws):
     assert fo[0] == 'followup' and str(fo[1]) == str(ws['c'].id) and str(fo[2]) == ids[3]
     assert th[0] == 'followup' and str(th[1]) == str(ws['b'].id)  # someone else's follow-up is not taken over
     assert [str(f) for f in flags] == [ids[0]]
+
+
+def test_a_batch_writes_each_table_with_one_statement(ws):
+    """Activities and follow-ups of a paste go out as one multi-row INSERT each, registry facts and states as one
+    executemany each: the statement count does not grow with the number of rows."""
+    from sqlalchemy import event
+
+    from tfsc_crm.db.session import engine, system_tx
+    seen: list[str] = []
+
+    def before(conn, cursor, statement, parameters, context, executemany):
+        seen.append(statement.split('(')[0].strip())
+    rows = [{'name': f'multirow clinic {i}', 'phone': new_phone(), 'called': 'Yes', 'followup_needed': 'Yes' if i % 2 else '',
+             'next_followup': '2026-12-03' if i % 2 else ''} for i in range(300)]
+    event.listen(engine(), 'before_cursor_execute', before)
+    try:
+        r = ws['c'].post('/api/activities/batch', json={'request_key': 'multirow-insert-01', 'rows': rows, 'source': 'grid'})
+    finally:
+        event.remove(engine(), 'before_cursor_execute', before)
+    assert r.status_code == 200 and r.json()['saved'] == 300
+    assert seen.count('INSERT INTO activities') == 1 and seen.count('INSERT INTO followups') == 1
+    assert sum(s.startswith('UPDATE phone_registry') for s in seen) == 2 and len(seen) < 30
+    ids = [x['activity_id'] for x in r.json()['rows']]
+    with system_tx() as c:
+        n_fu = c.execute(text("SELECT count(*) FROM followups WHERE activity_id = ANY(CAST(:ids AS uuid[])) AND status = 'open'"), {'ids': ids}).scalar_one()
+        states = c.execute(text('SELECT p.state, count(*) FROM phone_registry p JOIN activities a ON a.phone_key = p.phone_key AND a.org_id = p.org_id '
+                                'WHERE a.id = ANY(CAST(:ids AS uuid[])) GROUP BY p.state'), {'ids': ids}).all()
+    assert n_fu == 150 and dict(states) == {'followup': 150, 'none': 150}
+
+
+def test_a_failure_while_flushing_the_batch_falls_back_to_row_by_row(ws, monkeypatch, caplog):
+    """The multi-row INSERTs run at the flush: if that fails, nothing of the fast path stays and every row is saved again
+    one savepoint each (no duplicates, totals reconcile)."""
+    import logging
+
+    from tfsc_crm.db.session import system_tx
+    from tfsc_crm.domain import rollups
+    from tfsc_crm.pacific import business_date
+    real, calls = rollups.flush, []
+
+    def flaky(c, st):
+        calls.append(len(st['inserts']))
+        if len(calls) == 1:
+            raise RuntimeError('simulated failure in the multi-row INSERT')
+        return real(c, st)
+    monkeypatch.setattr(rollups, 'flush', flaky)
+    rows = [{'name': f'flush clinic {i}', 'phone': new_phone(), 'called': 'Yes', 'followup_needed': 'Yes', 'next_followup': '2026-12-04'}
+            for i in range(20)]
+    with caplog.at_level(logging.WARNING, logger='tfsc_crm.file_import'):
+        r = ws['c'].post('/api/activities/batch', json={'request_key': 'flush-fallback-01', 'rows': rows, 'source': 'grid'})
+    assert r.status_code == 200 and r.json()['saved'] == 20 and 'saving row by row' in caplog.text
+    assert calls[0] == 40 and calls[1] == 0  # fast path staged 20 activities + 20 follow-ups; the fallback writes them directly
+    with system_tx() as c:
+        n = c.execute(text('SELECT count(*) FROM activities WHERE import_batch_id = :b'), {'b': r.json()['batch_id']}).scalar_one()
+        fu = c.execute(text('SELECT count(*) FROM followups f JOIN activities a ON a.id = f.activity_id WHERE a.import_batch_id = :b'),
+                       {'b': r.json()['batch_id']}).scalar_one()
+        org = c.execute(text("SELECT org_id FROM users WHERE email = 'c@crm.test'")).scalar_one()
+        assert rollups.reconcile(c, org, business_date(), fix=False) == []
+    assert n == 20 and fu == 20

@@ -148,7 +148,7 @@ def save_rows(c: Connection, actor: Actor, batch_id: uuid.UUID, rows: list[tuple
     are saved again one savepoint each, so one bad row can never take the others down."""
     locked = duplicates.lock_registries(c, actor.org_id, [r.get('phone') for _, r in rows])  # outside the savepoint: kept on fallback
     try:
-        with c.begin_nested(), rollups.batched(c), duplicates.cached_registry(c, locked):
+        with c.begin_nested(), rollups.batched(c, all_or_nothing=True), duplicates.cached_registry(c, locked):
             return [process_row(c, actor, batch_id, n, r, source, owner_id, savepoint=False) for n, r in rows]
     except Exception:
         log.warning('batch %s: a row failed after writing; saving row by row', batch_id, exc_info=True)
