@@ -14,7 +14,8 @@
 # Needs docker, kind, kubectl, helm, openssl, curl, and the images built from this repository:
 #   docker build -f apps/crm-api/Dockerfile -t tfsc-crm:2 . && docker build -f apps/agreements/Dockerfile -t tfsc-agreements:4 .
 # Behind a TLS-inspecting proxy, KIND_EXTRA_CA=/path/to/full-ca-bundle.crt becomes the node's trust store.
-# On a cgroup v1 host the kubelet is allowed to start anyway (Kubernetes 1.35 refuses cgroup v1 by default).
+# On a cgroup v1 host the kubelet is allowed to start anyway (Kubernetes 1.35 refuses cgroup v1 by default), and where
+# root may not lower OOM scores (no CAP_SYS_RESOURCE, some sandboxes) containerd keeps pod OOM scores at its own level.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -38,6 +39,9 @@ up() {
     fi
     if docker info --format '{{.CgroupVersion}}' | grep -qx 1; then  # Kubernetes >= 1.35 refuses cgroup v1 unless told
       printf 'kubeadmConfigPatches:\n  - |\n    kind: KubeletConfiguration\n    failCgroupV1: false\n' >> "$STATE/kind.yaml"
+    fi
+    if ! (echo -1 > /proc/self/oom_score_adj) 2>/dev/null; then  # no CAP_SYS_RESOURCE: pods may not get negative OOM scores
+      printf 'containerdConfigPatches:\n  - |-\n    [plugins."io.containerd.grpc.v1.cri"]\n      restrict_oom_score_adj = true\n' >> "$STATE/kind.yaml"
     fi
     kind create cluster --name "$CLUSTER" --config "$STATE/kind.yaml" --wait 120s
   fi
