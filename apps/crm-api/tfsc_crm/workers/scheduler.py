@@ -189,7 +189,8 @@ def start_background(poll_s: float = 60.0) -> Callable[[], None]:
 
 
 if __name__ == '__main__':  # pragma: no cover - process entrypoint
-    logging.basicConfig(level=logging.INFO)
+    from ..telemetry import configure
+    configure('tfsc-crm-scheduler')
     import time
     while True:
         run_due()

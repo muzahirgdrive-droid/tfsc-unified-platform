@@ -122,8 +122,13 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        storage.py (db|s3), security/antivirus.py (clamd INSTREAM), anchors to object-lock bucket + version-aware verify,
        migration 0006; compose objects (RustFS: MinIO publishes no images any more) + objects-init + clamav; Helm
        files.* + storage-init job + clamav. Local S3 tests: CRM_TEST_S3_ENDPOINT (RustFS container).
-5. [ ] Observability: structured JSON logs, OpenTelemetry traces (OTLP), Sentry (API + web) when configured,
-       Prometheus + Grafana dashboards in compose (§4.2)
+5. [x] Observability: structured JSON logs, OpenTelemetry traces (OTLP), Sentry (API + web) when configured,
+       Prometheus + Grafana dashboards in compose (§4.2). telemetry.py in both apps (JSON logs with request/trace ids,
+       route-template access lines, OTLP traces incl. a custom SQL span hook because the SQLAlchemy instrumentation does
+       not support 2.1, query strings stripped from spans, scrubbed Sentry); metrics shared across uvicorn workers
+       (CRM_METRICS_DIR); web Sentry lazy-loaded (src/lib/errors.ts); infra/observability (Prometheus, 6 alert rules,
+       Grafana "TFSC CRM" dashboard); compose --profile observability (Prometheus, Grafana, Jaeger); Helm
+       observability.* + optional ServiceMonitor. Sentry checked by unit tests only (no live project).
 6. [ ] Backups: pgBackRest (encrypted, PITR) in compose + automated restore test into an isolated database (§4.2)
 7. [ ] Performance: batch activity INSERTs per paste; re-measure; larger dataset and more concurrent users than
        before, within this VM's limits (PERFORMANCE.md stays measured-only)

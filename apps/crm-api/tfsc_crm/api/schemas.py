@@ -73,6 +73,7 @@ class AuthStatus(Out):
     local_login: bool
     oidc: bool
     invitations: bool = False  # Keycloak emails invitations for new SSO users
+    sentry_dsn: str | None = None  # browser error reporting, when configured
 
 
 class ClockItem(Out):

@@ -24,4 +24,10 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 - { name: CRM_ANCHOR_BUCKET, value: {{ .Values.files.anchorBucket | quote }} }
 - { name: CRM_S3_URL_TTL, value: {{ .Values.files.urlTtlSeconds | quote }} }
 - { name: CRM_CLAMAV, value: {{ ternary (printf "%s-clamav:3310" .Release.Name) .Values.clamav.address .Values.clamav.enabled | quote }} }
+- { name: CRM_LOG_FORMAT, value: json }
+- { name: CRM_LOG_LEVEL, value: {{ .Values.observability.logLevel | quote }} }
+- { name: CRM_METRICS_DIR, value: /run/crm-metrics }
+- { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ .Values.observability.otlpEndpoint | quote }} }
+- { name: CRM_SENTRY_DSN, value: {{ .Values.observability.sentry.crmDsn | quote }} }
+- { name: CRM_SENTRY_DSN_WEB, value: {{ .Values.observability.sentry.crmWebDsn | quote }} }
 {{- end -}}

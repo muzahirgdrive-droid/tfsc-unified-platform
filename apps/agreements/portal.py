@@ -24,10 +24,15 @@ async def lifespan(app):
     db.init_db()
     yield
 app=FastAPI(title='TFSC Compliance',version=VERSION,lifespan=lifespan,docs_url=None,redoc_url=None)
+import logging, uuid
+import telemetry
+telemetry.configure('tfsc-agreements',VERSION,not db.LOCAL,engine=db.engine,app=app)
+access=logging.getLogger('tfsc.access')
 
 @app.middleware('http')
 async def boundary(request,call_next):
     from urllib.parse import urlsplit
+    started=time.perf_counter();rid=uuid.uuid4().hex;telemetry.request_id.set(rid)
     host=request.headers.get('host','')
     allowed={urlsplit(ORIGIN).netloc}
     if db.LOCAL:allowed.add('localhost:'+str(urlsplit(ORIGIN).port or 80))
@@ -55,6 +60,9 @@ async def boundary(request,call_next):
     response.headers['Referrer-Policy']='same-origin'
     response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     if not db.LOCAL:response.headers['Strict-Transport-Security']='max-age=31536000'
+    response.headers['X-Request-Id']=rid
+    route=getattr(request.scope.get('route'),'path','unmatched')
+    if route!='/api/health':access.info('request',extra={'method':request.method,'route':route,'status':response.status_code,'duration_ms':round((time.perf_counter()-started)*1000,1)})
     return response
 
 @app.exception_handler(HTTPException)

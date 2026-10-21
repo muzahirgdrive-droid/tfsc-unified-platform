@@ -2139,6 +2139,8 @@ export interface components {
             local_login: boolean;
             /** Oidc */
             oidc: boolean;
+            /** Sentry Dsn */
+            sentry_dsn?: string | null;
             /** Setup Required */
             setup_required: boolean;
         };

@@ -74,7 +74,7 @@ spec:
   selector: { matchLabels: { app.kubernetes.io/component: crm-{{ $name }} } }
   template:
     metadata:
-      labels: { app.kubernetes.io/component: crm-{{ $name }}, app.kubernetes.io/part-of: tfsc-platform }
+      labels: { app.kubernetes.io/component: crm-{{ $name }}, app.kubernetes.io/part-of: tfsc-platform{{ if or (eq $name "api") (eq $name "bulk") }}, tfsc.metrics: crm{{ end }} }
     spec:
       securityContext: {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       {{- with $.Values.imagePullSecrets }}
@@ -96,8 +96,8 @@ spec:
           env: {{- include "tfsc.crmEnv" $ | nindent 12 }}
           resources: {{- toYaml $cfg.resources | nindent 12 }}
           securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
-          volumeMounts: [{ name: data, mountPath: /data }]
-      volumes: [{ name: data, persistentVolumeClaim: { claimName: {{ $.Release.Name }}-crm-data } }]
+          volumeMounts: [{ name: data, mountPath: /data }, { name: metrics, mountPath: /run/crm-metrics }]
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: {{ $.Release.Name }}-crm-data } }, { name: metrics, emptyDir: { medium: Memory, sizeLimit: 16Mi } }]
 {{- end }}
 ---
 apiVersion: v1

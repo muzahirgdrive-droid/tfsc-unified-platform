@@ -98,4 +98,7 @@ def run():
             if job:process(job)
             else:time.sleep(1)
         except Exception:logging.exception('Worker queue error');time.sleep(3)
-if __name__=='__main__':run()
+if __name__=='__main__':
+    import telemetry
+    telemetry.configure('tfsc-agreements-worker','4.0.0',not db.LOCAL,engine=db.engine)
+    run()

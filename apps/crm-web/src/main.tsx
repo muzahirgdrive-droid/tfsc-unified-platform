@@ -4,10 +4,13 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/lib/auth';
+import { startErrorReporting } from '@/lib/errors';
 import { router } from './router';
 import './styles/app.css';
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: (n, e) => n < 2 && !String(e.message).includes('40'), refetchOnWindowFocus: true } } });
+
+void startErrorReporting();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

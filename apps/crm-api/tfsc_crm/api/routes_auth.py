@@ -6,6 +6,7 @@ import secrets
 from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import func, select, text, update
 
+from .. import VERSION
 from ..config import get_settings
 from ..db import models as m
 from ..db.session import system_tx, tx
@@ -35,7 +36,7 @@ def health() -> Health:
             rev = c.execute(text('SELECT version_num FROM alembic_version')).scalar_one_or_none() or 'unmigrated'
     except Exception:
         rev = 'unavailable'
-    return Health(app='TFSC Sales CRM', version='2.0.0-dev', mode=s.mode, database=rev)
+    return Health(app='TFSC Sales CRM', version=VERSION, mode=s.mode, database=rev)
 
 
 @router.get('/time', response_model=TimeOut)
@@ -49,7 +50,7 @@ def auth_status() -> AuthStatus:
     from ..integrations import keycloak
     from ..security import oidc
     return AuthStatus(setup_required=bootstrap.setup_required(), local_login=gs().allow_local_login, oidc=oidc.enabled(),
-                      invitations=keycloak.configured())
+                      invitations=keycloak.configured(), sentry_dsn=gs().sentry_dsn_web or None)
 
 
 def _session(request: Request, response: Response, user: dict) -> SessionOut:

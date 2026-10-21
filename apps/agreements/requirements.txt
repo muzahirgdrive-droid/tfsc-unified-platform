@@ -7,3 +7,9 @@ pypdf==6.20.1
 httpx==0.28.1
 Authlib==1.9.1
 alembic==1.16.5
+opentelemetry-api==1.45.0
+opentelemetry-sdk==1.45.0
+opentelemetry-exporter-otlp-proto-http==1.45.0
+opentelemetry-instrumentation-fastapi==0.66b0
+opentelemetry-instrumentation-httpx==0.66b0
+sentry-sdk==2.71.0

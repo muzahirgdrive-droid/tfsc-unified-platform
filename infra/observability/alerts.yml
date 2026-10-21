@@ -1,0 +1,35 @@
+# Alert rules (§23). Who receives them is an owner decision: point an Alertmanager at Prometheus (not bundled).
+# Health checks and metric scrapes are left out of the request-based rules: they would dilute error rates and latency.
+groups:
+  - name: tfsc-crm
+    rules:
+      - alert: CrmDown
+        expr: up{job="crm"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "CRM {{ $labels.pool }} pool is not answering scrapes" }
+      - alert: CrmDatabaseDown
+        expr: crm_db_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "The CRM cannot reach PostgreSQL" }
+      - alert: CrmServerErrors
+        expr: sum(rate(crm_http_requests_total{route!~"/api/health|/metrics",status=~"5.."}[5m])) / clamp_min(sum(rate(crm_http_requests_total{route!~"/api/health|/metrics"}[5m])), 1e-9) > 0.02
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "More than 2% of CRM requests fail with 5xx" }
+      - alert: CrmSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(crm_http_request_duration_seconds_bucket{route!~"/api/health|/metrics",pool="interactive"}[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Interactive CRM requests p95 above 1 s (target 300 ms reads, §24)" }
+      - alert: CrmOutboxDeadLetters
+        expr: crm_outbox_dead > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Outbox events gave up after retries (TFSC, Keycloak or Google); see Security Center" }
+      - alert: CrmOutboxBacklog
+        expr: crm_outbox_pending > 500
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Outbox backlog is growing (dispatcher down or a target unreachable)" }

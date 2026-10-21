@@ -17,12 +17,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from . import observability
+from . import VERSION, observability, telemetry
 from .config import get_settings
 from .domain.activities import RowRejected
 
-VERSION = '2.0.0-dev'
 log = logging.getLogger('tfsc_crm')
+access = logging.getLogger('tfsc_crm.access')
 
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
        "font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; "
@@ -32,6 +32,7 @@ MAX_BODY = 32_000_000
 
 def create_app() -> FastAPI:
     s = get_settings()
+    telemetry.configure('tfsc-crm')
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -53,6 +54,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title='TFSC Sales CRM', version=VERSION, lifespan=lifespan,
                   docs_url='/api/docs' if not s.hosted else None, redoc_url=None, openapi_url='/api/openapi.json')
 
+    csp = CSP
+    if s.sentry_dsn_web:  # the browser may send error reports to the configured Sentry host only
+        dsn = urlsplit(s.sentry_dsn_web)
+        csp = CSP.replace("connect-src 'self'", f"connect-src 'self' {dsn.scheme}://{dsn.hostname}")
     allowed_hosts = {urlsplit(s.origin).netloc}
     if not s.hosted:
         allowed_hosts |= {'testserver', 'localhost', '127.0.0.1', f'localhost:{urlsplit(s.origin).port or 80}', f'127.0.0.1:{urlsplit(s.origin).port or 80}'}
@@ -61,6 +66,9 @@ def create_app() -> FastAPI:
     async def boundary(request: Request, call_next):
         started = time.perf_counter()
         rid = request.headers.get('x-request-id') or uuid.uuid4().hex
+        if not (len(rid) <= 64 and rid.replace('-', '').isalnum()):  # never echo or log an arbitrary header value
+            rid = uuid.uuid4().hex
+        telemetry.request_id.set(rid)
         # /metrics is scraped by pod/service address and guarded by its bearer token instead of the Host check.
         if request.headers.get('host', '') not in allowed_hosts and request.url.path != '/metrics':
             return JSONResponse({'error': 'Invalid application host.'}, 403)
@@ -79,14 +87,18 @@ def create_app() -> FastAPI:
             response = JSONResponse({'error': 'The request could not be completed. Please retry.', 'request_id': rid}, 500)
         response.headers.update({
             'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
-            'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': CSP, 'X-Request-Id': rid,
+            'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': csp, 'X-Request-Id': rid,
             'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
             'Server-Timing': f'app;dur={(time.perf_counter() - started) * 1000:.1f}',
         })
         if s.hosted:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        route = request.scope.get('route')
-        observability.observe(request.method, getattr(route, 'path', 'unmatched'), response.status_code, time.perf_counter() - started)
+        route = getattr(request.scope.get('route'), 'path', 'unmatched')
+        took = time.perf_counter() - started
+        observability.observe(request.method, route, response.status_code, took)
+        if route not in ('/api/health', '/metrics'):
+            access.info('request', extra={'method': request.method, 'route': route, 'status': response.status_code,
+                                          'duration_ms': round(took * 1000, 1)})
         return response
 
     @app.get('/metrics', include_in_schema=False)
@@ -144,6 +156,7 @@ def create_app() -> FastAPI:
             return JSONResponse({'app': 'TFSC Sales CRM', 'status': 'Frontend build required: npm run build in apps/crm-web.'}, 503)
         return FileResponse(index)
 
+    telemetry.instrument_app(app)
     return app
 
 

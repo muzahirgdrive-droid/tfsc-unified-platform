@@ -1,0 +1,32 @@
+{{- if .Values.observability.serviceMonitor.enabled }}
+# One target per CRM API pod (interactive and bulk); /metrics answers 404 without the bearer token.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-crm
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+    {{- with .Values.observability.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector: { matchLabels: { app.kubernetes.io/component: crm-metrics } }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.observability.serviceMonitor.interval }}
+      authorization: { type: Bearer, credentials: { name: {{ .Values.crm.existingSecret }}, key: CRM_METRICS_TOKEN } }
+      relabelings:
+        - { targetLabel: job, replacement: crm }   # the dashboard and alert rules select job="crm"
+        - { sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component], regex: crm-api, targetLabel: pool, replacement: interactive }
+        - { sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component], regex: crm-bulk, targetLabel: pool, replacement: bulk }
+---
+# Headless service over both API pools, only for scraping each pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-crm-metrics
+  labels: {{- include "tfsc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: crm-metrics
+spec:
+  clusterIP: None
+  selector: { tfsc.metrics: crm }
+  ports: [{ name: http, port: 8000, targetPort: http }]
+{{- end }}

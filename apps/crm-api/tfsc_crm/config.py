@@ -27,6 +27,7 @@ class Settings:
     allow_local_login: bool = field(default_factory=lambda: _bool('CRM_ALLOW_LOCAL_LOGIN', True))
     web_dist: str = field(default_factory=lambda: os.getenv('CRM_WEB_DIST', ''))
     sentry_dsn: str = field(default_factory=lambda: os.getenv('CRM_SENTRY_DSN', ''))
+    sentry_dsn_web: str = field(default_factory=lambda: os.getenv('CRM_SENTRY_DSN_WEB', ''))  # browser errors (public DSN)
     # OIDC / Keycloak (§21). Empty issuer = SSO off (local break-glass login only).
     oidc_issuer: str = field(default_factory=lambda: os.getenv('CRM_OIDC_ISSUER', '').rstrip('/'))
     oidc_internal_url: str = field(default_factory=lambda: os.getenv('CRM_OIDC_INTERNAL_URL', '').rstrip('/'))

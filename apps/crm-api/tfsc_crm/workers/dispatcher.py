@@ -100,7 +100,8 @@ def start_background(poll_s: float = 0.25):
 
 
 def run_forever(poll_s: float = 0.25) -> None:  # pragma: no cover - process entrypoint
-    logging.basicConfig(level=logging.INFO)
+    from ..telemetry import configure
+    configure('tfsc-crm-dispatcher')
     while True:
         try:
             if not process_once():

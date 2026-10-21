@@ -48,6 +48,10 @@ spec:
             - { name: TFSC_OIDC_ISSUER, value: {{ $.Values.crm.ssoIssuer | quote }} }
             - { name: TFSC_OIDC_INTERNAL_URL, value: {{ $.Values.crm.ssoInternalUrl | quote }} }
             - { name: TFSC_OIDC_CLIENT_ID, value: {{ $.Values.agreements.oidcClientId | quote }} }
+            - { name: TFSC_LOG_FORMAT, value: json }
+            - { name: TFSC_LOG_LEVEL, value: {{ $.Values.observability.logLevel | quote }} }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $.Values.observability.otlpEndpoint | quote }} }
+            - { name: TFSC_SENTRY_DSN, value: {{ $.Values.observability.sentry.agreementsDsn | quote }} }
           resources: {{- toYaml $cfg.resources | nindent 12 }}
           securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
           volumeMounts: [{ name: contracts, mountPath: /contracts }, { name: scratch, mountPath: /data }]

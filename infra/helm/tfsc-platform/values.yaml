@@ -55,6 +55,18 @@ clamav:
   address: ""
   resources: { requests: { cpu: 200m, memory: 1536Mi }, limits: { cpu: "1", memory: 3Gi } }
 
+# Logs, traces, metrics and error reports (§4.2, §23). Logs are JSON lines on stdout for the cluster's log agent.
+observability:
+  logLevel: INFO
+  otlpEndpoint: ""        # OTLP/HTTP collector, e.g. http://otel-collector.observability.svc:4318 ("" = no tracing)
+  sentry:                 # "" = off. DSNs only allow sending events; the web one is public by design (the browser uses it)
+    crmDsn: ""
+    crmWebDsn: ""
+    agreementsDsn: ""
+  # Prometheus Operator: scrape every CRM API pod's /metrics with the CRM_METRICS_TOKEN from crm.existingSecret.
+  serviceMonitor: { enabled: false, interval: 30s, labels: {} }
+  prometheusNamespace: monitoring   # allowed through the network policy to scrape the CRM pods
+
 ingress:
   enabled: true
   className: nginx

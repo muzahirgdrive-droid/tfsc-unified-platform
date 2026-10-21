@@ -118,3 +118,14 @@ start doing all the work from where you stop with all the chat history as well."
   (real clamd refused EICAR, also inside a ZIP); daily anchors in an object-lock bucket with COMPLIANCE retention,
   verified version by version (forged versions and delete markers are caught). RustFS instead of MinIO (MinIO's
   Docker Hub repository no longer exists). Tests: v2 170 with S3 (167 + skips without).
+- P8.5 done. JSON logs from every CRM and Agreements process with request and trace ids; one access line per
+  request (route template, status, duration; no paths with ids, query strings, bodies or IPs). OpenTelemetry to
+  Jaeger: request, outgoing HTTP and SQL spans for tfsc-crm, -dispatcher, -scheduler, tfsc-agreements(-worker).
+  Checking live traces found two leaks, both fixed and tested: spans carried full URLs with query strings (search
+  terms, OIDC codes; the ASGI middleware re-sets the URL after the span starts, so the filter is the FastAPI server
+  hook plus a start-time processor), and Grafana phoned home (update checks off). Metrics now add up across uvicorn
+  workers. Grafana dashboard reviewed in both themes: titles no longer truncated, legend for the two-pool chart,
+  0 instead of "No data" for errors, probes left out of traffic/latency/tables, reserved status colours. Helm:
+  observability values + optional ServiceMonitor (kubeconform-validated against the CRD schema). Sentry: unit tests
+  only. Tests: v2 174 (+1 Redis SSE skip without CRM_TEST_REDIS_URL; 3 pass with it), pilot 17, agreements 44 (+42
+  subtests), web 22, E2E 49.

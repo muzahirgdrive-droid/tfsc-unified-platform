@@ -25,6 +25,8 @@ def engine() -> Engine:
     if _engine is None:
         s = get_settings()
         _engine = create_engine(s.database_url, pool_pre_ping=True, pool_size=10, max_overflow=20, pool_recycle=1800, hide_parameters=True)
+        from ..telemetry import instrument_engine
+        instrument_engine(_engine)
     return _engine
 
 

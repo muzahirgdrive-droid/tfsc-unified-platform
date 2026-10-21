@@ -1118,6 +1118,17 @@
       "title": "Oidc",
       "type": "boolean"
      },
+     "sentry_dsn": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sentry Dsn"
+     },
      "setup_required": {
       "title": "Setup Required",
       "type": "boolean"

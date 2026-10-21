@@ -37,6 +37,13 @@ x-crm: &crm
     CRM_S3_BUCKET: crm-files
     CRM_ANCHOR_BUCKET: crm-audit-anchors
     CRM_CLAMAV: ${CRM_CLAMAV:-clamav:3310}
+    # Telemetry: JSON logs on stdout; traces when an OTLP endpoint is set (the `observability` profile's Jaeger:
+    # http://jaeger:4318); Sentry when DSNs are set. CRM_METRICS_DIR lets the uvicorn workers add up their metrics.
+    CRM_METRICS_DIR: /tmp/crm-metrics
+    CRM_LOG_FORMAT: ${CRM_LOG_FORMAT:-json}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    CRM_SENTRY_DSN: ${CRM_SENTRY_DSN:-}
+    CRM_SENTRY_DSN_WEB: ${CRM_SENTRY_DSN_WEB:-}
   volumes: [crm-data:/data]
 
 x-agreements: &agreements
@@ -57,6 +64,9 @@ x-agreements: &agreements
     TFSC_OIDC_INTERNAL_URL: http://keycloak:8080/realms/tfsc
     TFSC_OIDC_CLIENT_ID: tfsc-agreements
     TFSC_OIDC_CLIENT_SECRET: ${TFSC_OIDC_CLIENT_SECRET}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    TFSC_SENTRY_DSN: ${TFSC_SENTRY_DSN:-}
+    TFSC_LOG_FORMAT: ${TFSC_LOG_FORMAT:-json}
     DB_POOL_SIZE: "5"
   volumes: [agreements-data:/data, contracts:/contracts]
 
@@ -191,6 +201,43 @@ services:
     restart: unless-stopped
     ports: ["${MAILPIT_PORT:-8025}:8025"]
 
+  # Metrics, dashboards and traces (profile `observability`): Prometheus scrapes the CRM's /metrics with
+  # CRM_METRICS_TOKEN and evaluates infra/observability/alerts.yml; Grafana shows the provisioned TFSC dashboard;
+  # Jaeger receives OTLP traces (set OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318).
+  prometheus:
+    profiles: [observability]
+    image: quay.io/prometheus/prometheus:v3.15.0
+    restart: unless-stopped
+    environment: { CRM_METRICS_TOKEN: "${CRM_METRICS_TOKEN:?set CRM_METRICS_TOKEN}" }
+    entrypoint: ["/bin/sh", "-c", "printf %s \"$$CRM_METRICS_TOKEN\" > /tmp/crm-metrics-token && exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=30d"]
+    volumes: [../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro, ../observability/alerts.yml:/etc/prometheus/alerts.yml:ro, prometheus-data:/prometheus]
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/tfsc-crm.json
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3000}:3000"]
+    depends_on: [prometheus]
+
+  jaeger:
+    profiles: [observability]
+    image: jaegertracing/jaeger:2.21.0
+    restart: unless-stopped
+    ports: ["127.0.0.1:${JAEGER_PORT:-16686}:16686"]
+
   edge:
     profiles: [edge]
     image: caddy:2-alpine
@@ -201,6 +248,8 @@ services:
     depends_on: [crm-api, crm-bulk, agreements, keycloak, objects]
 
 volumes:
+  prometheus-data:
+  grafana-data:
   objects-data:
   clamav-db:
   postgres-data:
