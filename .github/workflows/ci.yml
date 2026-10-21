@@ -161,11 +161,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
       - name: Helm lint + schema validation
         run: |
           docker run --rm -v "$PWD/infra/helm:/charts" alpine/helm:3.16.4 lint /charts/tfsc-platform
           docker run --rm -v "$PWD/infra/helm:/charts" alpine/helm:3.16.4 template t /charts/tfsc-platform > rendered.yaml
           docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -kubernetes-version 1.30.0 - < rendered.yaml
+          # schema validation cannot see a hook list split by YAML flow syntax: migrations must run on upgrades too
+          pip install pyyaml==6.0.2 && python tools/check_helm_hooks.py < rendered.yaml
       - name: Compose file is valid
         working-directory: infra/compose
         run: cp .env.example .env && sed -i 's/=$/=ci-placeholder/' .env && docker compose --env-file .env config -q
