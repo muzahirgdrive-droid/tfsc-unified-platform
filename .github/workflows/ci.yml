@@ -194,3 +194,33 @@ jobs:
             if docker run --rm --entrypoint sh $img -c 'find / -xdev \( -name "*.xlsx" -o -path "*private-assets*" -o -name ".env" \) 2>/dev/null | grep -v /proc' | grep .; then
               echo "private data found in $img"; exit 1; fi
           done
+
+  k8s-smoke:
+    # The Helm chart on a real (kind) cluster: install, end-to-end checks, upgrade, checks again (infra/helm/smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: kind, kubectl, helm (checksums verified)
+        run: |
+          curl -sSfLo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.31.0/kind-linux-amd64
+          echo "$(curl -sSfL https://github.com/kubernetes-sigs/kind/releases/download/v0.31.0/kind-linux-amd64.sha256sum | awk '{print $1}')  kind" | sha256sum -c
+          curl -sSfLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl
+          echo "$(curl -sSfL https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256)  kubectl" | sha256sum -c
+          curl -sSfLo helm.tgz https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz
+          echo "$(curl -sSfL https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz.sha256sum | awk '{print $1}')  helm.tgz" | sha256sum -c
+          tar -xzf helm.tgz --strip-components=1 linux-amd64/helm
+          sudo install kind kubectl helm /usr/local/bin/
+      - name: Build images
+        run: |
+          docker build -f apps/crm-api/Dockerfile -t tfsc-crm:2 .
+          docker build -f apps/agreements/Dockerfile -t tfsc-agreements:4 .
+      - name: Smoke test (install, checks, upgrade, checks)
+        env: { NETPOL_ENFORCER: kube-router }
+        run: infra/helm/smoke/kind-smoke.sh all
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl --context kind-tfsc-smoke get pods -A -o wide || true
+          kubectl --context kind-tfsc-smoke -n tfsc describe pods | tail -n 120 || true
+          kubectl --context kind-tfsc-smoke -n tfsc get events --sort-by=.lastTimestamp | tail -n 40 || true

@@ -115,8 +115,24 @@ kubectl create secret generic tfsc-agreements ...
 helm upgrade --install tfsc infra/helm/tfsc-platform -f my-values.yaml
 ```
 Checked: `helm lint` clean; all 21 rendered objects validate against Kubernetes 1.30 schemas (`kubeconform -strict`),
-23 with `observability.serviceMonitor.enabled` (ServiceMonitor checked against the Prometheus Operator CRD schema).
-Not yet run on a live cluster.
+23 with `observability.serviceMonitor.enabled` (ServiceMonitor checked against the Prometheus Operator CRD schema);
+`tools/check_helm_hooks.py` checks that every hook Job runs on install and upgrade.
+
+**Run on a live cluster (2026-10-21):** `helm/smoke/kind-smoke.sh all` installs the chart on kind (Kubernetes 1.35,
+one node) with ingress-nginx, test-only PostgreSQL/Redis/RustFS (`smoke/deps.yaml`) and secrets generated on the spot,
+then checks through the ingress over TLS verified against the generated certificate: CRM and Agreements health
+(database at the newest migration), migrate and storage-init jobs, HPA and PDB, first Super Admin setup, a live save,
+a 50-row paste served by the bulk pods, a photo scanned by the in-cluster ClamAV and stored in the bucket and read
+back, `/metrics` with its token from a platform pod, and the NetworkPolicy blocking a pod outside the platform. Then
+`helm upgrade` (the new revision's hook jobs must succeed) and the same checks again. A clean run on this sandbox:
+install 50 s after the dependencies, upgrade 43 s, 13/13 checks before and after. CI runs it on every push (`k8s-smoke`).
+Running it found four chart bugs, all fixed: the migrate and storage-init hooks never ran on `helm upgrade` (YAML flow
+syntax cut `pre-install,pre-upgrade` to `pre-install`); named image users fail `runAsNonRoot` (images now use numeric
+UIDs); the CRM data volume demanded ReadWriteMany (now `crm.dataVolume.accessMode`); ClamAV's emptyDir hid the image's
+signatures, so pods downloaded ~110 MB before starting (now seeded by an init container).
+Sandbox-specific switches, not needed on ordinary hosts: `KIND_EXTRA_CA` (TLS-inspecting proxy), kubelet allowed on
+cgroup v1, containerd keeps OOM scores when root lacks CAP_SYS_RESOURCE, images loaded from the host instead of pulled,
+`NETPOL_ENFORCER=kube-router` where the kernel lacks nftables `queue` (kindnet cannot enforce policies there).
 Observability values: `observability.otlpEndpoint` (traces), `observability.sentry.*` (error reports),
 `observability.serviceMonitor` (Prometheus Operator scrapes every CRM API pod with `CRM_METRICS_TOKEN` from the CRM
 secret; the network policy admits `observability.prometheusNamespace`). Logs are JSON on stdout for the cluster's log

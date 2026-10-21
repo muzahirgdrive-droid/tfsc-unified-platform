@@ -165,17 +165,21 @@ sys.stdout.buffer.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBB
   code=$(curl_ -b "$jar" -o /dev/null -w '%{http_code}' -L "https://crm.tfsc.test/api/users/$uid/photo")
   check "photo read back" test "$code" = 200
 
-  probe() {  # probe <name> <labels> <url> <expect>: a one-off pod fetching a URL inside the cluster
+  probe() {  # probe <name> <labels> <url> <expect> [attempts]: a one-off pod fetching a URL inside the cluster
+    # A new pod's address reaches the policy engine's allow lists a moment after it starts: allowed traffic is retried.
     k -n "$NS" delete pod "$1" --ignore-not-found >/dev/null
     k -n "$NS" run "$1" --image tfsc-crm:2 --image-pull-policy Never --restart Never --labels "$2" --command -- python -c \
-      "import sys,urllib.request as u
-try: print(u.urlopen(u.Request('$3', headers={'Authorization': 'Bearer $METRICS'}), timeout=8).status)
-except Exception as e: print(type(e).__name__)" >/dev/null
-    k -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$1" --timeout=90s >/dev/null || true
+      "import time,urllib.request as u
+for i in range(${5:-1}):
+    try: print(u.urlopen(u.Request('$3', headers={'Authorization': 'Bearer $METRICS'}), timeout=8).status); break
+    except Exception as e:
+        if i == ${5:-1} - 1: print(type(e).__name__)
+        else: time.sleep(3)" >/dev/null
+    k -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$1" --timeout=150s >/dev/null || true
     out=$(k -n "$NS" logs "$1" 2>/dev/null | tail -n 1); k -n "$NS" delete pod "$1" --wait=false >/dev/null
     [[ "$out" =~ ^($4)$ ]] || { echo "      ($1 got: $out)"; return 1; }
   }
-  check "/metrics with the token from a platform pod (NetworkPolicy allows)" probe np-allowed app.kubernetes.io/part-of=tfsc-platform "http://$REL-crm:8000/metrics" 200
+  check "/metrics with the token from a platform pod (NetworkPolicy allows)" probe np-allowed app.kubernetes.io/part-of=tfsc-platform "http://$REL-crm:8000/metrics" 200 10
   check "a pod outside the platform cannot reach the API (NetworkPolicy blocks)" probe np-blocked app=outsider "http://$REL-crm:8000/api/health" 'TimeoutError|URLError'
   echo
   if [ "$failures" != 0 ]; then echo "$failures CHECK(S) FAILED"; return 1; fi

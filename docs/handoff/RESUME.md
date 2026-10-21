@@ -140,7 +140,10 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        before, within this VM's limits (PERFORMANCE.md stays measured-only). Commit ee09a84 (fast path stages rows,
        one statement per table at the flush: 1,516 -> 19 statements; NANP verdict cached). PERFORMANCE.md "Round 2":
        3.98 M activities, every run from a fresh template copy, A/B x2 at 550 agents/6 s think, 800 agents at 20 s and 6 s.
-8. [ ] Kubernetes: deploy the Helm chart to a local cluster (kind/k3d) and smoke-test it
+8. [x] Kubernetes: deploy the Helm chart to a local cluster (kind/k3d) and smoke-test it. infra/helm/smoke/kind-smoke.sh
+       (kind 1.35: install, 13 checks through the ingress and in the cluster, upgrade, checks again), CI job k8s-smoke.
+       Found and fixed: hooks never ran on upgrade (YAML flow comma), named image users vs runAsNonRoot, RWX-only CRM
+       volume, ClamAV signatures hidden by emptyDir. Clean run: install 50 s, upgrade 43 s, 13/13 twice.
 9. [ ] Regenerate both §29 handoff ZIPs + the continuation ZIP; update known issues / owner checklist; final report
 
 ## How to run the v2 web app locally

@@ -149,4 +149,12 @@ start doing all the work from where you stop with all the chat history as well."
   think overloads this 4-vCPU box (~4 s p95), reported as such.
 - P8.8 prep (701f3df): images now use numeric UIDs (named users fail runAsNonRoot), crm.dataVolume.accessMode, kind
   smoke-test kit in infra/helm/smoke (first run next).
+- P8.8 done. The chart now runs on a real cluster: kind (Kubernetes 1.35) with ingress-nginx, the chart's ClamAV,
+  RustFS/PostgreSQL/Redis stand-ins; 13 end-to-end checks pass before and after `helm upgrade`; CI job k8s-smoke. Four
+  chart bugs found by running it (see infra/README.md); the worst: migrations never ran on `helm upgrade` because
+  `"helm.sh/hook": pre-install,pre-upgrade` in a YAML flow mapping is cut at the comma (now quoted, plus a CI check that
+  parses the rendered hooks). Getting kind to run in this sandbox took: kubelet on cgroup v1, containerd
+  restrict_oom_score_adj (no CAP_SYS_RESOURCE), images imported per platform, kube-router for NetworkPolicies (kernel
+  without nftables queue). k3s directly on the VM hit the same OOM-score limit. A worker restart mid-phase only needed
+  a stale /var/run/docker.pid removed.
 
