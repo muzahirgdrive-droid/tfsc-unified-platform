@@ -13,6 +13,14 @@ spec:
     metadata:
       labels: { app.kubernetes.io/component: clamav, app.kubernetes.io/part-of: tfsc-platform }
     spec:
+      # The image ships a signature database; the emptyDir below would hide it, so every new pod would first download
+      # ~110 MB (slow, and ClamAV's CDN throttles repeated full downloads). Seed the volume from the image instead;
+      # freshclam then only fetches the updates.
+      initContainers:
+        - name: seed-signatures
+          image: {{ .Values.clamav.image }}
+          command: [sh, -c, "cp -a /var/lib/clamav/. /seed/ && ls /seed"]
+          volumeMounts: [{ name: db, mountPath: /seed }]
       containers:
         - name: clamav
           image: {{ .Values.clamav.image }}
