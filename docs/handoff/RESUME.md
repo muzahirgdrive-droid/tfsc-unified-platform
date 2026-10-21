@@ -149,6 +149,9 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        updated; ZIPs built with tools/make_app_handoffs.py (fresh previews) and tools/make_handoff_zip.sh; the
        auto-resume scheduled task ("TFSC auto-resume") disabled. P8 is complete; further work needs the owner
        (08-OWNER-CHECKLIST.txt).
+10. [x] (asked after P8) A ZIP to deploy on one VPS: `tools/make_vps_bundle.sh` -> TFSC-VPS-Deploy-<date>-<commit>.zip
+       with `tfsc.sh` and START-HERE.md (sources: deploy/vps/). Installed from the ZIP and walked end to end on a test
+       host (test domains, Caddy local CA, mail catcher); four bugs found and fixed (SESSION-LOG, "After P8").
 
 ## How to run the v2 web app locally
 ```

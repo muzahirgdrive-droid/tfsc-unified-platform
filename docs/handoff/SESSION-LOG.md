@@ -161,3 +161,13 @@ start doing all the work from where you stop with all the chat history as well."
   CRM-11, V2-D04, V2-D06, V2-D08; new: V2-R08 policy-enforcing CNI, V2-D10 off-site backups); docs/handoff/P8-REPORT.md;
   CRM previews re-shot; both §29 ZIPs and the continuation ZIP rebuilt and sent; auto-resume scheduled task disabled.
 
+- After P8: VPS deployment package (owner asked for a ZIP to deploy on a VPS). `tools/make_vps_bundle.sh` builds
+  TFSC-VPS-Deploy-<date>-<commit>.zip from the committed tree (refuses .env, workbooks, signature images): the source
+  the images build from, the compose stack, `tfsc.sh` (install with generated secrets, link-admins, finish-setup,
+  signatures, backup, update, status, logs) and START-HERE.md (deploy/vps/README.md). Installing the ZIP on a fresh
+  Docker host (test domains, Caddy local CA, mail catcher) and walking the guide end to end found and fixed:
+  compose published the apps, Keycloak and object storage on every interface (Docker bypasses ufw; now 127.0.0.1 via
+  PUBLISH_ADDR); Agreements SSO answered 503 in hosted mode because Keycloak's dynamic back-channel returns
+  token/JWKS endpoints on the internal http URL (now accepted under TFSC_OIDC_INTERNAL_URL only, tested); no way to
+  link the two Super Admins without IDs neither UI shows (`manage.py link-crm-admin`, tested); installed signature
+  files were world-writable under docker exec's umask (now 700/600). Measured: 2.4 GB memory with everything idle.

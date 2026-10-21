@@ -232,7 +232,7 @@ cmd_install() {
   echo "  1. Open https://$(env_get CRM_DOMAIN)/login and set up the CRM with the CRM setup key below."
   echo "  2. Open https://$(env_get TFSC_DOMAIN)/login and set up Agreements with the Agreements setup key."
   echo "  3. Run: sudo ./tfsc.sh link-admins"
-  echo "  4. In the CRM: People > yourself > 'Send sign-in invitation'; follow the email."
+  echo "  4. In the CRM: People & Teams > yourself > 'Send sign-in invitation'; follow the email."
   echo "  5. Run: sudo ./tfsc.sh finish-setup"
   echo
   print_keys

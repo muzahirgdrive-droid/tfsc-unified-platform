@@ -62,13 +62,13 @@ Unattended install (no questions): `DOMAIN=example.com SMTP_HOST=smtp.example.co
    password. You are now the CRM Super Admin.
 2. Open `https://agreements.example.com/login`. Enter the **Agreements setup key** with your name, email and a password.
 3. On the server: `sudo ./tfsc.sh link-admins`. This lets the CRM hand clients to Agreements under your account.
-4. In the CRM: **People** > select yourself > **Send sign-in invitation**. Open the email, choose your sign-in password
+4. In the CRM: **People & Teams** > select yourself > **Send sign-in invitation**. Open the email, choose your sign-in password
    and add the authenticator app (required for Supervisors and above).
 5. Sign out of the CRM and sign in again with **Sign in with company SSO**. Once that works:
    `sudo ./tfsc.sh finish-setup`. From then on everyone signs in with SSO; only your setup password still works as an
    emergency sign-in for the Super Admin (for example if the sign-in service is down), so keep it in the password manager.
 
-Then add your team in **People** (each person gets an invitation email) and, in **People > Agreements access**,
+Then add your team in **People & Teams** (each person gets an invitation email) and, on their profile under **Agreements access**,
 choose who may use Agreements. The setup keys are shown again with `./tfsc.sh setup-keys` until they are used.
 
 ## 5. Signature images
