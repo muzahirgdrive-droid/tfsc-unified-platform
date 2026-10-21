@@ -14,6 +14,8 @@
 # Needs docker, kind, kubectl, helm, openssl, curl, and the images built from this repository:
 #   docker build -f apps/crm-api/Dockerfile -t tfsc-crm:2 . && docker build -f apps/agreements/Dockerfile -t tfsc-agreements:4 .
 # Behind a TLS-inspecting proxy, KIND_EXTRA_CA=/path/to/full-ca-bundle.crt becomes the node's trust store.
+# NETPOL_ENFORCER=kube-router adds a policy firewall where kindnet cannot enforce NetworkPolicies (kernel without
+# nftables `queue`); without it the NetworkPolicy check fails on such hosts, as it should.
 # On a cgroup v1 host the kubelet is allowed to start anyway (Kubernetes 1.35 refuses cgroup v1 by default), and where
 # root may not lower OOM scores (no CAP_SYS_RESOURCE, some sandboxes) containerd keeps pod OOM scores at its own level.
 set -euo pipefail
@@ -65,6 +67,13 @@ up() {
   done
   sed 's/\(image: *[^@ ]*\)@sha256:[0-9a-f]*/\1/' "$STATE/ingress-nginx.yaml" | k apply -f - >/dev/null
   k -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=300s
+
+  if [ "${NETPOL_ENFORCER:-}" = kube-router ]; then  # kernels without nftables queue: kindnet cannot enforce policies
+    say "NetworkPolicy enforcement: kube-router (firewall only)"
+    load_image cloudnativelabs/kube-router:v2.11.1
+    k apply -f "$here/netpol-kube-router.yaml" >/dev/null
+    k -n kube-system rollout status ds/kube-router --timeout=180s
+  fi
 
   say "secrets and certificate"
   if [ ! -f "$STATE/secrets.env" ]; then
@@ -178,6 +187,12 @@ upgrade() {
   time helm --kube-context "kind-$CLUSTER" upgrade "$REL" "$root/infra/helm/tfsc-platform" -n "$NS" -f "$here/values-kind.yaml" \
     --set observability.logLevel=DEBUG --wait --timeout 15m
   helm --kube-context "kind-$CLUSTER" history "$REL" -n "$NS"
+  rev=$(helm --kube-context "kind-$CLUSTER" status "$REL" -n "$NS" -o json | sed -n 's/.*"version":\([0-9]*\).*/\1/p' | tail -n 1)
+  for job in crm-migrate crm-storage-init; do  # the pre-upgrade hooks of this revision ran and succeeded
+    [ "$(k -n "$NS" get job "$REL-$job-$rev" -o jsonpath='{.status.succeeded}')" = 1 ] \
+      || { echo "FAIL  hook job $REL-$job-$rev did not succeed"; return 1; }
+    echo "PASS  hook job $REL-$job-$rev succeeded"
+  done
   curl_ https://crm.tfsc.test/api/health; echo
 }
 
