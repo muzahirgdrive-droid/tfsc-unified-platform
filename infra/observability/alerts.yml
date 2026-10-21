@@ -33,3 +33,19 @@ groups:
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "Outbox backlog is growing (dispatcher down or a target unreachable)" }
+      # Backups (compose `backup` service; reported only where it runs, so a managed database raises none of these)
+      - alert: BackupMissing
+        expr: time() - max(crm_backup_last_success_timestamp_seconds) > 26 * 3600
+        for: 30m
+        labels: { severity: critical }
+        annotations: { summary: "No successful database backup for more than 26 hours (tfsc-backup status; Security Center -> Backups)" }
+      - alert: RestoreTestFailing
+        expr: max(crm_restore_test_last_ok) == 0 or time() - max(crm_restore_test_last_success_timestamp_seconds) > 50 * 3600
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "The automated restore test failed or has not passed for two days: backups may not be restorable" }
+      - alert: WalArchivingFailing
+        expr: max(crm_wal_archive_failing) == 1
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "WAL archiving is failing: point-in-time recovery stops at the last archived WAL (RPO at risk)" }

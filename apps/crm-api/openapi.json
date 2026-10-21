@@ -1142,6 +1142,129 @@
     "title": "AuthStatus",
     "type": "object"
    },
+   "BackupRunOut": {
+    "properties": {
+     "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+     },
+     "database_bytes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Database Bytes"
+     },
+     "failure": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Failure"
+     },
+     "last_success_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Success At"
+     },
+     "ok": {
+      "title": "Ok",
+      "type": "boolean"
+     },
+     "seconds": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds"
+     },
+     "target": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target"
+     },
+     "type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Type"
+     }
+    },
+    "required": [
+     "ok",
+     "at",
+     "last_success_at"
+    ],
+    "title": "BackupRunOut",
+    "type": "object"
+   },
+   "BackupStatusOut": {
+    "properties": {
+     "backup": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/BackupRunOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "restore_test": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/BackupRunOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "wal": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/WalArchivingOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "title": "BackupStatusOut",
+    "type": "object"
+   },
    "BatchIn": {
     "additionalProperties": false,
     "properties": {
@@ -5094,6 +5217,16 @@
       "title": "Audit Rows",
       "type": "integer"
      },
+     "backups": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/BackupStatusOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "exports_pending": {
       "title": "Exports Pending",
       "type": "integer"
@@ -6912,6 +7045,32 @@
      "head"
     ],
     "title": "VerifyOut",
+    "type": "object"
+   },
+   "WalArchivingOut": {
+    "properties": {
+     "failing": {
+      "title": "Failing",
+      "type": "boolean"
+     },
+     "last_archived_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Archived At"
+     }
+    },
+    "required": [
+     "last_archived_at",
+     "failing"
+    ],
+    "title": "WalArchivingOut",
     "type": "object"
    },
    "WidgetPos": {

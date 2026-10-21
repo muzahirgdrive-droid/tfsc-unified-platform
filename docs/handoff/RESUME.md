@@ -129,7 +129,13 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        (CRM_METRICS_DIR); web Sentry lazy-loaded (src/lib/errors.ts); infra/observability (Prometheus, 6 alert rules,
        Grafana "TFSC CRM" dashboard); compose --profile observability (Prometheus, Grafana, Jaeger); Helm
        observability.* + optional ServiceMonitor. Sentry checked by unit tests only (no live project).
-6. [ ] Backups: pgBackRest (encrypted, PITR) in compose + automated restore test into an isolated database (§4.2)
+6. [x] Backups: pgBackRest (encrypted, PITR) in compose + automated restore test into an isolated database (§4.2).
+       infra/compose/postgres (PostgreSQL 16 alpine + pgBackRest binary, tfsc-backup script), WAL archiving
+       (archive_timeout 60), `backup` service (weekly full, daily diff, restore test after each: PITR to markers in a
+       socket-only scratch server, pg_amcheck, migrations, audit chain), ops.backup_runs -> tfsc_crm/backups.py ->
+       Security Center "Backups" card + crm_backup_* metrics + 3 alerts + Grafana row; off-site repo2 via
+       backup-offsite.env (verified against RustFS over HTTPS); DR restore command; CI runs backup + restore test.
+       Runbook rewritten with measured drills.
 7. [ ] Performance: batch activity INSERTs per paste; re-measure; larger dataset and more concurrent users than
        before, within this VM's limits (PERFORMANCE.md stays measured-only)
 8. [ ] Kubernetes: deploy the Helm chart to a local cluster (kind/k3d) and smoke-test it

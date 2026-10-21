@@ -1,0 +1,258 @@
+#!/bin/sh
+# Scheduled pgBackRest backups and an automated point-in-time restore test for the compose stack (`backup` service).
+#
+#   tfsc-backup loop            init, then a full backup every BACKUP_FULL_EVERY_DAYS days and a differential one every
+#                               BACKUP_EVERY_HOURS hours, started in the BACKUP_HOUR hour (BACKUP_TZ); a restore test
+#                               follows every backup (BACKUP_RESTORE_TEST=0 turns that off)
+#   tfsc-backup init            create the stanza and the ops.backup_runs table, check WAL archiving
+#   tfsc-backup backup [full|diff|incr]
+#   tfsc-backup restore-test    restore to a moment just past, into a throwaway server, and check it (below);
+#                               BACKUP_TEST_REPO=2 tests the off-site repository instead of the local one
+#   tfsc-backup status
+#   tfsc-backup restore [TIME]  disaster recovery: rebuild the live data directory from the repository, to TIME
+#                               (e.g. "2026-10-21 09:30:00-07") or to the last archived WAL; only with PostgreSQL
+#                               stopped: docker compose run --rm --no-deps --user postgres --entrypoint tfsc-backup postgres restore
+#                               BACKUP_RESTORE_REPO=2 restores from the off-site repository (new server, local one lost)
+#
+# Restore test: writes a "before" marker row, notes the time, writes an "after" marker, waits until the WAL holding both
+# is archived, then restores the latest backup + WAL to that time into /restore and starts it as a separate server
+# (Unix socket only, no network, no WAL archiving). It passes only if the "before" marker is there and the "after"
+# marker is not (point-in-time recovery works), the same databases and migration revisions exist, pg_amcheck finds no
+# corrupt table or index, the audit chain links are intact, and the newest audit row of every workspace has the same
+# hash as the live row. Each backup and restore test is recorded in ops.backup_runs in the live crm database; the CRM
+# exports the results as metrics (crm_backup_*), and alert rules watch them.
+set -eu
+
+STANZA=${PGBACKREST_STANZA:-tfsc}
+SOCK=/var/run/postgresql
+SCRATCH=/restore
+FULL_EVERY_DAYS=${BACKUP_FULL_EVERY_DAYS:-7}
+EVERY_HOURS=${BACKUP_EVERY_HOURS:-24}
+AT_HOUR=${BACKUP_HOUR:-2}
+RESTORE_TEST=${BACKUP_RESTORE_TEST:-1}
+
+log() {  # JSON lines like the applications' logs
+    printf '{"ts":"%s","level":"%s","logger":"tfsc-backup","msg":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$(printf %s "$2" | jq -Rs .)"
+}
+
+live() {  # live() DB SQL: one query against the running server, unaligned output
+    psql -X -q -v ON_ERROR_STOP=1 -h "$SOCK" -U crm -d "$1" -Atc "$2"
+}
+
+copy() {  # copy() DB SQL: the same query against the restored server
+    psql -X -q -v ON_ERROR_STOP=1 -h "$SCRATCH/sock" -p 5433 -U crm -d "$1" -Atc "$2"
+}
+
+record() {  # record KIND OK STARTED_EPOCH DETAIL_JSON (values go in as psql variables, never spliced into SQL)
+    psql -X -q -v ON_ERROR_STOP=1 -h "$SOCK" -U crm -d crm -v kind="$1" -v ok="$2" -v started="$3" -v detail="$4" <<'SQL'
+INSERT INTO ops.backup_runs (kind, ok, started_at, finished_at, detail)
+VALUES (:'kind', :'ok'::boolean, to_timestamp(:'started'::double precision), clock_timestamp(), :'detail'::jsonb);
+SQL
+}
+
+init() {
+    mkdir -p /backups/log /backups/lock
+    until pg_isready -q -h "$SOCK" -U crm -d crm; do sleep 2; done
+    PGOPTIONS='-c client_min_messages=warning' psql -X -q -v ON_ERROR_STOP=1 -h "$SOCK" -U crm -d crm <<'SQL'
+CREATE SCHEMA IF NOT EXISTS ops;
+CREATE TABLE IF NOT EXISTS ops.backup_runs (
+    id bigserial PRIMARY KEY,
+    kind text NOT NULL,            -- backup | restore_test | pitr_marker
+    ok boolean NOT NULL,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    finished_at timestamptz NOT NULL DEFAULT now(),
+    detail jsonb NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS ix_backup_runs_kind ON ops.backup_runs (kind, finished_at DESC);
+SQL
+    pgbackrest --stanza="$STANZA" stanza-create
+    pgbackrest --stanza="$STANZA" check
+    log info "stanza $STANZA ready; WAL archiving checked"
+}
+
+repos() {  # repo1 (local volume), plus repo2 when an off-site repository is configured
+    if [ -n "${PGBACKREST_REPO2_TYPE:-}" ]; then echo "1 2"; else echo 1; fi
+}
+
+backup() {
+    type=${1:-diff}
+    for repo in $(repos); do
+        started=$(date +%s)
+        if out=$(pgbackrest --stanza="$STANZA" --repo="$repo" --type="$type" backup 2>&1); then ok=true; else ok=false; fi
+        last='{}'
+        [ "$ok" = true ] && last=$(pgbackrest --stanza="$STANZA" --repo="$repo" info --output=json | jq '.[0].backup[-1] // {}')
+        detail=$(jq -nc --arg type "$type" --arg repo "$repo" --arg out "$out" --argjson last "$last" --argjson s "$(( $(date +%s) - started ))" \
+            '{type: $type, repo: ($repo|tonumber), seconds: $s, label: $last.label, database_bytes: $last.info.size,
+              stored_bytes: $last.info.repository.delta, output: ($out | .[-2000:])}')
+        record backup "$ok" "$started" "$detail"
+        if [ "$ok" = true ]; then log info "backup $type to repo$repo done: $detail"; else log error "backup $type to repo$repo failed: $out"; return 1; fi
+    done
+}
+
+restore_test() {
+    started=$(date +%s)
+    run=$(cat /proc/sys/kernel/random/uuid)
+    fail=""
+    detail='{}'
+    stop_copy() {
+        # shellcheck disable=SC2015  # best effort: the copy may never have started
+        [ -f "$SCRATCH/pgdata/postmaster.pid" ] && pg_ctl -D "$SCRATCH/pgdata" -m immediate -w stop >/dev/null 2>&1 || true
+        rm -rf "$SCRATCH/pgdata" "$SCRATCH/sock" "$SCRATCH/postgres.log"
+    }
+    stop_copy
+    # the target must lie after the end of a backup (its stop time has one-second resolution)
+    repo=${BACKUP_TEST_REPO:-1}
+    last_stop=$( (pgbackrest --stanza="$STANZA" --repo="$repo" info --output=json 2>/dev/null || true) \
+        | jq '[.[0].backup[]? | .timestamp.stop] | max // 0' 2>/dev/null || echo 0)
+    while [ "$(date +%s)" -le $((last_stop + 2)) ]; do sleep 1; done
+    live crm "INSERT INTO ops.backup_runs (kind, ok, detail) VALUES ('pitr_marker', true, jsonb_build_object('run', '$run', 'marker', 'before'))"
+    target=$(live crm "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'")
+    sleep 2
+    live crm "INSERT INTO ops.backup_runs (kind, ok, detail) VALUES ('pitr_marker', true, jsonb_build_object('run', '$run', 'marker', 'after'))"
+    # switch to a new WAL file and wait until the one holding both markers is archived
+    out=""
+    pgbackrest --stanza="$STANZA" check >/dev/null 2>&1 || fail="WAL archiving check failed (pgbackrest check); "
+
+    mkdir -m 700 "$SCRATCH/pgdata" "$SCRATCH/sock"
+    t0=$(date +%s)
+    if [ -z "$fail" ] && ! out=$(pgbackrest --stanza="$STANZA" --repo="$repo" --log-level-console=info restore --pg1-path="$SCRATCH/pgdata" \
+            --type=time --target="$target" --target-action=promote --archive-mode=off 2>&1); then
+        fail="restore failed: $(printf %s "$out" | tail -n 5)"
+    fi
+    set_label=$(printf %s "$out" | sed -n 's/.*restore backup set \([^ ,]*\).*/\1/p' | head -n 1)
+    t1=$(date +%s)
+    # hot_standby=off: no connections (and no need to match the live server's max_connections) until recovery ends
+    if [ -z "$fail" ] && ! pg_ctl -D "$SCRATCH/pgdata" -l "$SCRATCH/postgres.log" -w -t 3600 -o "-c port=5433 -c listen_addresses='' \
+            -c unix_socket_directories=$SCRATCH/sock -c archive_mode=off -c hot_standby=off -c shared_buffers=128MB -c max_connections=20" start >/dev/null; then
+        fail="restored server did not start: $(tail -n 5 "$SCRATCH/postgres.log" 2>/dev/null)"
+    fi
+    if [ -z "$fail" ]; then
+        n=0
+        while [ "$(copy crm 'SELECT pg_is_in_recovery()' 2>/dev/null || echo t)" != f ]; do
+            if ! pg_ctl -D "$SCRATCH/pgdata" status >/dev/null 2>&1; then
+                fail="restored server stopped during recovery: $(tail -n 3 "$SCRATCH/postgres.log" 2>/dev/null)"; break
+            fi
+            n=$((n + 1)); [ "$n" -gt 3600 ] && { fail="recovery did not finish within an hour"; break; }; sleep 1
+        done
+    fi
+    t2=$(date +%s)
+    if [ -z "$fail" ]; then
+        before=$(copy crm "SELECT count(*) FROM ops.backup_runs WHERE detail->>'run' = '$run' AND detail->>'marker' = 'before'")
+        after=$(copy crm "SELECT count(*) FROM ops.backup_runs WHERE detail->>'run' = '$run' AND detail->>'marker' = 'after'")
+        dbs_sql="SELECT string_agg(datname, ',' ORDER BY datname) FROM pg_database WHERE NOT datistemplate"
+        dbs_live=$(live crm "$dbs_sql"); dbs_copy=$(copy crm "$dbs_sql")
+        rev_sql="SELECT coalesce((SELECT string_agg(version_num, ',') FROM alembic_version), '')"
+        crm_rev_ok=true; tfsc_rev_ok=true
+        for db in crm tfsc; do
+            if copy "$db" "SELECT 1 FROM pg_tables WHERE tablename = 'alembic_version'" | grep -q 1; then
+                [ "$(live "$db" "$rev_sql")" = "$(copy "$db" "$rev_sql")" ] || eval "${db}_rev_ok=false"
+            fi
+        done
+        amcheck_ok=true
+        amcheck_out=$(pg_amcheck -h "$SCRATCH/sock" -p 5433 -U crm --all --install-missing --heapallindexed 2>&1) || amcheck_ok=false
+        links_bad=0; tips=""; tips_ok=true
+        if [ "$(copy crm "SELECT to_regclass('public.audit_log') IS NOT NULL")" = t ]; then  # not before the first migration
+            links_bad=$(copy crm "SELECT count(*) FROM (SELECT prev_hash, lag(hash) OVER (PARTITION BY org_id ORDER BY id) AS prev
+                                  FROM audit_log) s WHERE prev IS NOT NULL AND prev_hash <> prev")
+            tips=$(copy crm "SELECT coalesce(string_agg(id || ':' || hash, ',' ORDER BY id), '')
+                             FROM (SELECT DISTINCT ON (org_id) id, hash FROM audit_log ORDER BY org_id, id DESC) t")
+        fi
+        if [ -n "$tips" ]; then
+            ids=$(printf %s "$tips" | tr ',' '\n' | cut -d: -f1 | paste -sd, -)
+            [ "$(live crm "SELECT string_agg(id || ':' || hash, ',' ORDER BY id) FROM audit_log WHERE id IN ($ids)")" = "$tips" ] || tips_ok=false
+        fi
+        counts_sql="SELECT count(*) || ' ' || coalesce(sum((xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I',
+                    n.nspname, c.relname), false, true, '')))[1]::text::bigint), 0)
+                    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+                      AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'"
+        tables=0; rows=0
+        for db in $(printf %s "$dbs_copy" | tr ',' ' '); do
+            [ "$db" = postgres ] && continue
+            # shellcheck disable=SC2046  # two numbers: tables and rows
+            set -- $(copy "$db" "$counts_sql"); tables=$((tables + $1)); rows=$((rows + $2))
+        done
+        [ "$before" = 1 ] || fail="${fail}the 'before' marker is missing; "
+        [ "$after" = 0 ] || fail="${fail}the 'after' marker is present (restore went past the target); "
+        [ "$dbs_live" = "$dbs_copy" ] || fail="${fail}databases differ ($dbs_copy vs live $dbs_live); "
+        [ "$crm_rev_ok" = true ] || fail="${fail}crm migration revision differs; "
+        [ "$tfsc_rev_ok" = true ] || fail="${fail}tfsc migration revision differs; "
+        [ "$amcheck_ok" = true ] || fail="${fail}pg_amcheck: $(printf %s "$amcheck_out" | tail -n 3); "
+        [ "$links_bad" = 0 ] || fail="${fail}$links_bad broken audit chain links; "
+        [ "$tips_ok" = true ] || fail="${fail}audit chain tip differs from the live database; "
+        detail=$(jq -nc --arg target "$target" --arg set "$set_label" --argjson repo "$repo" --arg dbs "$dbs_copy" --argjson tables "$tables" --argjson rows "$rows" \
+            --argjson amcheck "$amcheck_ok" --argjson links "$links_bad" --argjson tips "$tips_ok" --argjson crm_rev "$crm_rev_ok" \
+            --argjson tfsc_rev "$tfsc_rev_ok" --argjson before "$before" --argjson after "$after" \
+            '{target: $target, repo: $repo, backup_set: $set, databases: ($dbs | split(",")), tables: $tables, rows: $rows,
+              checks: {marker_before_present: ($before == 1), marker_after_absent: ($after == 0), crm_revision_equal: $crm_rev,
+                       tfsc_revision_equal: $tfsc_rev, amcheck_ok: $amcheck, audit_links_broken: $links, audit_tip_matches_live: $tips}}')
+    fi
+    t3=$(date +%s)
+    stop_copy
+    ok=true; [ -z "$fail" ] || ok=false
+    detail=$(printf %s "$detail" | jq -c --arg fail "$fail" --argjson r "$((t1 - t0))" --argjson rec "$((t2 - t1))" --argjson c "$((t3 - t2))" \
+        --argjson total "$((t3 - started))" '. + {restore_seconds: $r, recovery_seconds: $rec, check_seconds: $c, total_seconds: $total}
+        + (if $fail == "" then {} else {failure: $fail} end)')
+    record restore_test "$ok" "$started" "$detail"
+    if [ "$ok" = true ]; then log info "restore test passed: $detail"; else log error "restore test FAILED: $detail"; return 1; fi
+}
+
+restore_live() {
+    data=/var/lib/postgresql/data
+    if [ -f "$data/postmaster.pid" ] || pg_isready -q -h "$SOCK" 2>/dev/null; then
+        echo "PostgreSQL is running: stop the postgres service (and the apps) first" >&2; return 1
+    fi
+    if [ -n "${1:-}" ]; then
+        set -- --type=time --target="$1" --target-action=promote
+    else
+        set --
+    fi
+    started=$(date +%s)
+    # --delta reuses intact files of a damaged data directory and rewrites the rest; an empty one is filled completely
+    pgbackrest --stanza="$STANZA" --repo="${BACKUP_RESTORE_REPO:-1}" --delta --log-level-console=info restore "$@"
+    log info "restore done in $(( $(date +%s) - started )) s; start PostgreSQL, then take a full backup (tfsc-backup backup full)"
+}
+
+status() {
+    pgbackrest --stanza="$STANZA" info
+    live crm "SELECT kind, ok, finished_at, detail->>'type', detail->>'failure' FROM ops.backup_runs
+              WHERE kind <> 'pitr_marker' ORDER BY id DESC LIMIT 10"
+}
+
+due() {  # prints full, diff or nothing
+    info=$(pgbackrest --stanza="$STANZA" --repo=1 info --output=json) || return 1
+    now=$(date +%s)
+    last_full=$(printf %s "$info" | jq '[.[0].backup[]? | select(.type == "full") | .timestamp.stop] | max // 0') || return 1
+    last_any=$(printf %s "$info" | jq '[.[0].backup[]? | .timestamp.stop] | max // 0') || return 1
+    hour=$(TZ=${BACKUP_TZ:-UTC} date +%H | sed 's/^0//')
+    in_window=false; [ "$hour" = "$AT_HOUR" ] && in_window=true
+    if [ "$last_full" = 0 ]; then echo full; return; fi  # first run: back up straight away
+    # inside the daily window once ~a day has passed; outside it only if the window was missed (server down)
+    if [ $((now - last_any)) -ge $((EVERY_HOURS * 3600 - 7200)) ] && [ "$in_window" = true ] \
+       || [ $((now - last_any)) -ge $((EVERY_HOURS * 3600 + 7200)) ]; then
+        if [ $((now - last_full)) -ge $((FULL_EVERY_DAYS * 86400 - 7200)) ]; then echo full; else echo diff; fi
+    fi
+}
+
+loop() {
+    until init; do log error "init failed; retrying in 60 s"; sleep 60; done
+    while :; do
+        type=$(due || true)
+        if [ -n "$type" ]; then
+            if backup "$type" && [ "$RESTORE_TEST" = 1 ]; then restore_test || true; fi
+        fi
+        sleep 300
+    done
+}
+
+cmd=${1:-loop}
+[ $# -gt 0 ] && shift
+case "$cmd" in
+    loop) loop ;;
+    init) init ;;
+    backup) backup "${1:-diff}" ;;
+    restore-test) restore_test ;;
+    status) status ;;
+    restore) restore_live "${1:-}" ;;
+    *) echo "usage: tfsc-backup [loop|init|backup [full|diff|incr]|restore-test|status|restore [TIME]]" >&2; exit 2 ;;
+esac

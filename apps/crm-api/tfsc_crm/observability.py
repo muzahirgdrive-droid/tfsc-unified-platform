@@ -151,4 +151,6 @@ def gauges() -> dict[str, float]:
         g['crm_db_up'] = 1
     except Exception:
         g['crm_db_up'] = 0
+    from . import backups
+    g.update(backups.gauges())
     return g

@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import Field
 from sqlalchemy import ColumnElement, func, select, update
 
+from .. import backups
 from ..db import models as m
 from ..db.session import read, system_tx, tx
 from ..domain import audit, exports, offboarding
@@ -29,6 +30,28 @@ class CountOut(Out):
     count: int
 
 
+class WalArchivingOut(Out):
+    last_archived_at: datetime | None
+    failing: bool
+
+
+class BackupRunOut(Out):
+    ok: bool
+    at: datetime
+    last_success_at: datetime | None
+    type: str | None = None             # backup: full | diff | incr
+    database_bytes: int | None = None
+    target: str | None = None           # restore test: the moment restored to
+    seconds: int | None = None          # backup duration; restore test: restore + WAL replay
+    failure: str | None = None
+
+
+class BackupStatusOut(Out):
+    wal: WalArchivingOut | None = None
+    backup: BackupRunOut | None = None
+    restore_test: BackupRunOut | None = None
+
+
 class SecurityOverviewOut(Out):
     open_red_flags: list[CountOut]
     scraping_suspected_7d: int
@@ -45,6 +68,7 @@ class SecurityOverviewOut(Out):
     audit_rows: int
     last_anchor: dict[str, Any] | None
     jobs: list[dict[str, Any]]
+    backups: BackupStatusOut | None = None   # None: the database provider handles backups (nothing recorded here)
 
 
 class AuditRowOut(Out):
@@ -177,7 +201,8 @@ def overview(a: ActorDep) -> SecurityOverviewOut:
         outbox_pending=ob.get('pending', 0), outbox_dead=ob.get('dead', 0), sse_connections=sse, audit_rows=audit_rows,
         last_anchor={'day': last['anchored_for'].isoformat(), 'rows': last['rows'], 'sink': last['sink'], 'head': last['head_hash'][:16],
                      'remote': last['remote_ref'] is not None} if last else None,
-        jobs=[{'job': j['job'], 'last_run': j['last_run'].isoformat() if j['last_run'] else None} for j in jobs])
+        jobs=[{'job': j['job'], 'last_run': j['last_run'].isoformat() if j['last_run'] else None} for j in jobs],
+        backups=BackupStatusOut(**b) if (b := backups.status()) else None)
 
 
 # ------------------------------------------------------------------ audit

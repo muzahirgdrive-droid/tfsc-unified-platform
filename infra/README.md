@@ -2,7 +2,7 @@
 
 | Path | What |
 |---|---|
-| `compose/` | Single-server stack (pilot, §27): PostgreSQL 16, Redis 7, Keycloak 26, CRM (migrate, api, bulk, dispatcher, scheduler), Agreements (api, worker), S3-compatible object storage (`objects`, RustFS) + bucket setup (`objects-init`), ClamAV (`clamav`), optional Caddy TLS edge (`--profile edge`, which routes pastes and imports to `crm-bulk` and serves presigned downloads on `FILES_DOMAIN`), Mailpit for trials (`--profile trial`), Prometheus + Grafana + Jaeger (`--profile observability`) |
+| `compose/` | Single-server stack (pilot, §27): PostgreSQL 16, Redis 7, Keycloak 26, CRM (migrate, api, bulk, dispatcher, scheduler), Agreements (api, worker), S3-compatible object storage (`objects`, RustFS) + bucket setup (`objects-init`), ClamAV (`clamav`), optional Caddy TLS edge (`--profile edge`, which routes pastes and imports to `crm-bulk` and serves presigned downloads on `FILES_DOMAIN`), Mailpit for trials (`--profile trial`), Prometheus + Grafana + Jaeger (`--profile observability`), pgBackRest backups with a daily automated point-in-time restore test (`backup`) |
 | `keycloak/realm-tfsc.json` | Realm import: CRM + Agreements clients (PKCE S256), the CRM's provisioning service account (`tfsc-crm-provisioner`: create users, groups, disable), SMTP settings from `SMTP_*`, brute-force protection, password policy, TOTP required for the `mfa-required` role (group `supervisors-and-above`), `amr` claim, email subjects |
 | `keycloak/dev_seed.py` | Local trials only: creates test users (optionally with a known TOTP secret for automated tests) |
 | `keycloak/trial_seed.py` | Local trials only: bootstraps both Super Admins, links them, invites synthetic users (pairs with `apps/crm-web/e2e/sso-invites.mjs`) |
@@ -41,6 +41,14 @@ possible: emails must match the CRM accounts.
 - RustFS replaces MinIO in the bundled stack: MinIO stopped publishing community images. Any S3-compatible service
   with object lock works (`CRM_S3_ENDPOINT`, `CRM_S3_PUBLIC_ENDPOINT`). For production, give the CRM keys that
   cannot delete objects, and back up the `crm-files` bucket (versioning or replication) with the database.
+
+## Backups (verified on the compose stack 2026-10-21)
+`postgres` is PostgreSQL 16 with pgBackRest (`compose/postgres/`): WAL archived at least every minute, encrypted with
+`BACKUP_PASSPHRASE` (keep a copy off the server). The `backup` service takes a weekly full and a daily differential
+backup and after each one restores the server to a point in time in an isolated scratch copy and checks it (markers,
+migrations, `pg_amcheck`, audit chain). Results in Security Center → Backups, metrics and alerts. Off-site copy:
+`compose/backup-offsite.env` (template next to it). Disaster recovery and the measured drills:
+[docs/runbooks/backups-and-restore.md](../docs/runbooks/backups-and-restore.md).
 
 ## Logs, metrics, traces and error reports (verified on the compose stack 2026-10-20, `--profile observability`)
 - **Logs**: one JSON object per line on stdout from every CRM and Agreements process (`CRM_LOG_FORMAT`/`TFSC_LOG_FORMAT`

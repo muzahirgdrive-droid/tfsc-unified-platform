@@ -129,3 +129,14 @@ start doing all the work from where you stop with all the chat history as well."
   observability values + optional ServiceMonitor (kubeconform-validated against the CRD schema). Sentry: unit tests
   only. Tests: v2 174 (+1 Redis SSE skip without CRM_TEST_REDIS_URL; 3 pass with it), pilot 17, agreements 44 (+42
   subtests), web 22, E2E 49.
+- P8.5 pushed (e399488), CI run 38 green; continuation ZIP regenerated and sent.
+- P8.6 done. pgBackRest on the compose stack: WAL archived at least every minute, AES-256 encrypted repository,
+  weekly full + daily differential, 14 days of PITR. After every backup an automated restore test rebuilds the server
+  at a point in time in an isolated scratch copy and checks markers, databases, migrations, pg_amcheck and the audit
+  chain; results reach the Security Center, metrics and alerts. Building it found and fixed: restore target inside the
+  backup's last second, a hot-standby copy refusing to start (max_connections), pgBackRest's invalid JSON on a wrong
+  passphrase (the failure is now recorded), Alpine's pgbackrest pulling in a whole PostgreSQL 18 (only the binary is
+  copied now). Drills on the trial stack: PITR to a time (later change gone, timeline 2); data volume deleted and
+  restored to the latest WAL (database open in 4 s, stack serving in about 20 s); off-site repo2 over HTTPS restored
+  and checked. Tests: v2 176 (coverage 90%), pilot 17, web 22, E2E 49; CI gains a backup + restore-test step.
+

@@ -71,16 +71,42 @@ x-agreements: &agreements
   volumes: [agreements-data:/data, contracts:/contracts]
 
 services:
+  # PostgreSQL 16 + pgBackRest: every WAL file is archived (encrypted) within a minute (archive_timeout), which with the
+  # backups taken by the `backup` service allows restoring to any moment of the last 14 days.
   postgres:
-    image: postgres:16-alpine
+    build: { context: ./postgres }
+    image: tfsc-postgres:16
     restart: unless-stopped
     environment:
       POSTGRES_USER: crm
       POSTGRES_DB: crm
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes: [postgres-data:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro]
-    command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=300", "-c", "shared_buffers=512MB"]
+      POSTGRES_INITDB_ARGS: --data-checksums   # new servers only: page checksums, verified by every backup
+      PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_PASSPHRASE:?set BACKUP_PASSPHRASE}
+    env_file: [{ path: ./backup-offsite.env, required: false }]   # optional off-site repository (PGBACKREST_REPO2_*)
+    volumes: [postgres-data:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro, backups:/backups, pg-socket:/var/run/postgresql]
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=300", "-c", "shared_buffers=512MB",
+              "-c", "archive_mode=on", "-c", "archive_command=pgbackrest --stanza=tfsc archive-push %p", "-c", "archive_timeout=60"]
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d crm"], interval: 5s, timeout: 5s, retries: 20 }
+
+  # Backups (pgBackRest, AES-256 encrypted): weekly full + daily differential at BACKUP_HOUR (BACKUP_TZ), 14 days kept;
+  # after each backup an automated restore test rebuilds the server at a point in time in an isolated scratch copy and
+  # checks it (infra/compose/postgres/tfsc-backup; results in ops.backup_runs and the crm_backup_* metrics).
+  backup:
+    image: tfsc-postgres:16
+    restart: unless-stopped
+    user: postgres
+    entrypoint: [tfsc-backup]
+    command: [loop]
+    environment:
+      PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_PASSPHRASE:?set BACKUP_PASSPHRASE}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_TZ: ${BACKUP_TZ:-America/Los_Angeles}
+      BACKUP_FULL_EVERY_DAYS: ${BACKUP_FULL_EVERY_DAYS:-7}
+      BACKUP_RESTORE_TEST: ${BACKUP_RESTORE_TEST:-1}
+    env_file: [{ path: ./backup-offsite.env, required: false }]
+    volumes: [postgres-data:/var/lib/postgresql/data:ro, backups:/backups, pg-socket:/var/run/postgresql, restore-scratch:/restore]
+    depends_on: { postgres: { condition: service_healthy } }
 
   redis:
     image: redis:7-alpine
@@ -253,6 +279,9 @@ volumes:
   objects-data:
   clamav-db:
   postgres-data:
+  backups:            # pgBackRest repository (encrypted); copy it off the server or configure an off-site repo2
+  pg-socket:
+  restore-scratch:
   crm-data:
   agreements-data:
   contracts:

@@ -2144,6 +2144,34 @@ export interface components {
             /** Setup Required */
             setup_required: boolean;
         };
+        /** BackupRunOut */
+        BackupRunOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Database Bytes */
+            database_bytes?: number | null;
+            /** Failure */
+            failure?: string | null;
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Seconds */
+            seconds?: number | null;
+            /** Target */
+            target?: string | null;
+            /** Type */
+            type?: string | null;
+        };
+        /** BackupStatusOut */
+        BackupStatusOut: {
+            backup?: components["schemas"]["BackupRunOut"] | null;
+            restore_test?: components["schemas"]["BackupRunOut"] | null;
+            wal?: components["schemas"]["WalArchivingOut"] | null;
+        };
         /** BatchIn */
         BatchIn: {
             /** Request Key */
@@ -3394,6 +3422,7 @@ export interface components {
             active_sessions: number;
             /** Audit Rows */
             audit_rows: number;
+            backups?: components["schemas"]["BackupStatusOut"] | null;
             /** Exports Pending */
             exports_pending: number;
             /** Exports Ready */
@@ -3942,6 +3971,13 @@ export interface components {
             remote_failed: string[];
             /** Rows */
             rows: number;
+        };
+        /** WalArchivingOut */
+        WalArchivingOut: {
+            /** Failing */
+            failing: boolean;
+            /** Last Archived At */
+            last_archived_at: string | null;
         };
         /** WidgetPos */
         WidgetPos: {

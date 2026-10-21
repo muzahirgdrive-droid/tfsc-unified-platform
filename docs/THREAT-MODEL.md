@@ -35,6 +35,8 @@ Each row names the control and where it is tested. "Not covered" lists what a de
 
 - TLS termination and HSTS preload (Caddy/Ingress); keep Keycloak admin console off the public internet.
 - Write-once (object-lock) storage for audit anchors and backups; KMS for `CRM_FIELD_KEY` / bridge secret rotation.
-- WAL archiving / PITR configuration and its restore drill (`docs/runbooks/backups-and-restore.md`).
+- Off-site copy of the encrypted backups and safekeeping of the backup passphrase; on Kubernetes / managed PostgreSQL,
+  the provider's PITR backups (compose: pgBackRest with WAL archiving and a daily automated restore test,
+  `docs/runbooks/backups-and-restore.md`).
 - Endpoint security on agents' PCs: the watermark deters and traces screenshots; it cannot prevent them.
 - Dependency and image scanning in CI (SBOM), and periodic external penetration testing.

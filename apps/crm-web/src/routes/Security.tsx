@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, RotateCcw, ShieldAlert, TriangleAlert } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { ExportsPanel } from '@/components/Exports';
 import { WIDGETS } from '@/components/widgets';
@@ -9,11 +9,15 @@ import { raw } from '@/lib/api';
 import { rankOf, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/cn';
 import { asText } from '@/lib/text';
+import { dual } from '@/lib/time';
 
 type Count = { key: string; count: number };
 type Overview = { open_red_flags: Count[]; scraping_suspected_7d: number; failed_logins_24h: number; failed_logins_by_user: Count[]; active_sessions: number;
   supervisors_without_sso: number; offboarded_30d: number; exports_pending: number; exports_ready: number; outbox_pending: number; outbox_dead: number;
-  sse_connections: number; audit_rows: number; last_anchor: { day: string; rows: number; sink: string; head: string; remote: boolean } | null; jobs: { job: string; last_run: string | null }[] };
+  sse_connections: number; audit_rows: number; last_anchor: { day: string; rows: number; sink: string; head: string; remote: boolean } | null; jobs: { job: string; last_run: string | null }[];
+  backups: Backups | null };
+type BackupRun = { ok: boolean; at: string; last_success_at: string | null; type: string | null; database_bytes: number | null; target: string | null; seconds: number | null; failure: string | null };
+type Backups = { wal: { last_archived_at: string | null; failing: boolean } | null; backup: BackupRun | null; restore_test: BackupRun | null };
 type AuditRow = { id: number; at: string; actor: string | null; action: string; resource: string; resource_id: string | null; ip: string | null; after: Record<string, unknown> | null };
 type Verify = { ok: boolean; rows: number; broken_links: number[]; altered_rows: number[]; anchors: number; anchors_failed: string[]; remote_anchors: number | null; remote_failed: string[] };
 type Session = { id: string; user_id: string; user: string; created_at: string; last_seen_at: string; ip: string | null; user_agent: string | null };
@@ -49,7 +53,7 @@ function OverviewTab({ super: isSuper }: { super: boolean }) {
         <Stat label="Active sessions" value={o?.active_sessions ?? null} definition="Signed-in sessions within the idle (30 min) and absolute (12 h) limits." />
         <Stat label="Supervisor+ without SSO" value={o?.supervisors_without_sso ?? null} definition="Active Supervisor-and-above accounts with no linked Keycloak identity (MFA is enforced by Keycloak)." />
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-4">
         <div className="card p-5"><h3 className="mb-3 font-semibold">Audit chain</h3>
           <dl className="space-y-1 text-sm"><Row k="Entries" v={o?.audit_rows.toLocaleString()} /><Row k="Last daily anchor" v={o?.last_anchor ? `${o.last_anchor.day} · ${o.last_anchor.rows.toLocaleString()} rows` : 'none yet'} />
             <Row k="Anchor head" v={o?.last_anchor?.head ? `${o.last_anchor.head}…` : '—'} /><Row k="Anchor sink" v={o?.last_anchor ? `${o.last_anchor.sink}${o.last_anchor.remote ? ' + object-lock bucket' : ''}` : '—'} /></dl></div>
@@ -58,6 +62,7 @@ function OverviewTab({ super: isSuper }: { super: boolean }) {
             <Row k="Live connections (this node)" v={o?.sse_connections} /><Row k="Exports awaiting approval" v={o?.exports_pending} /><Row k="Offboarded (30 days)" v={o?.offboarded_30d} /></dl></div>
         <div className="card p-5"><h3 className="mb-3 font-semibold">Scheduled jobs</h3>
           <ul className="space-y-1 text-sm">{o?.jobs.length ? o.jobs.map((j) => <li key={j.job} className="flex justify-between gap-2"><span>{j.job.replace('_', ' ')}</span><span className="text-muted">{j.last_run ? new Date(j.last_run).toLocaleString() : 'never'}</span></li>) : <li className="text-muted">No runs recorded yet.</li>}</ul></div>
+        {o && <BackupsCard b={o.backups} />}
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {isSuper && <div>{WIDGETS.system_health!.render({ preset: 'today', scope: 'org', credit: 'event' })}</div>}
@@ -66,6 +71,33 @@ function OverviewTab({ super: isSuper }: { super: boolean }) {
         <div className="card p-5"><h3 className="mb-3 font-semibold">Scraping suspicion</h3>
           {scraping.data?.items.length ? <ul className="space-y-1 text-sm">{scraping.data.items.map((f) => <li key={f.id}>{f.raised_for_name} · {new Date(f.created_at).toLocaleString()} · {f.status}</li>)}</ul> : <p className="text-sm text-muted">No read-budget breaches. More than 500 distinct prospects viewed per hour throttles the user and raises a red flag here.</p>}</div>
       </div>
+    </div>
+  );
+}
+
+// Status is never colour alone: an icon and a word go with it.
+const Status = ({ ok, children }: { ok: boolean; children: ReactNode }) => (
+  <span className={cn('inline-flex items-center gap-1', ok ? 'text-success' : 'font-semibold text-danger')}>
+    {ok ? <CheckCircle2 size={14} aria-hidden /> : <TriangleAlert size={14} aria-hidden />}{children}
+  </span>
+);
+
+function BackupsCard({ b }: { b: Backups | null }) {
+  if (!b) return <div className="card p-5"><h3 className="mb-3 font-semibold">Backups</h3><p className="text-sm text-muted">No backup status is recorded in this database: the database provider takes the backups (docs/runbooks/backups-and-restore.md).</p></div>;
+  const { wal, backup, restore_test: rt } = b;
+  return (
+    <div className="card p-5"><h3 className="mb-3 font-semibold">Backups</h3>
+      <dl className="space-y-2 text-sm">
+        <div><dt className="text-muted">Last backup</dt>
+          <dd>{backup ? <><Status ok={backup.ok}>{backup.ok ? 'Done' : 'Failed'}</Status> <span className="text-muted">{backup.type} · {dual(backup.at)}</span>
+            {!backup.ok && <div className="text-muted">Last good one: {backup.last_success_at ? dual(backup.last_success_at) : 'none'}</div>}</> : <span className="text-muted">none yet</span>}</dd></div>
+        <div><dt className="text-muted">Restore test (point in time, isolated copy)</dt>
+          <dd>{rt ? <><Status ok={rt.ok}>{rt.ok ? 'Passed' : 'Failed'}</Status> <span className="text-muted">{dual(rt.at)}</span>
+            {rt.ok ? <div className="text-muted">Usable again in {rt.seconds ?? '?'} s (restore + WAL replay)</div>
+              : <div className="break-words text-danger" title={rt.failure ?? ''}>{(rt.failure ?? '').slice(0, 160)}</div>}</> : <span className="text-muted">none yet</span>}</dd></div>
+        {wal && <div><dt className="text-muted">WAL archiving (point-in-time recovery)</dt>
+          <dd><Status ok={!wal.failing}>{wal.failing ? 'Failing' : 'Working'}</Status> <span className="text-muted">{wal.last_archived_at ? `last ${dual(wal.last_archived_at)}` : 'nothing archived yet'}</span></dd></div>}
+      </dl>
     </div>
   );
 }

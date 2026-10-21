@@ -173,9 +173,20 @@ jobs:
         run: |
           docker build -f apps/crm-api/Dockerfile -t tfsc-crm:ci .
           docker build -f apps/agreements/Dockerfile -t tfsc-agreements:ci .
+          docker build -t tfsc-postgres:16 infra/compose/postgres
+      - name: Backups (pgBackRest) - first backup and point-in-time restore test on a fresh server
+        working-directory: infra/compose
+        run: |
+          docker compose -p ci-backup --env-file .env up -d postgres backup
+          for i in $(seq 1 60); do
+            docker compose -p ci-backup --env-file .env logs backup | grep -q 'restore test \(passed\|FAILED\)' && break; sleep 5
+          done
+          docker compose -p ci-backup --env-file .env logs backup | tail -n 5
+          docker compose -p ci-backup --env-file .env logs backup | grep -q 'restore test passed'
+          docker compose -p ci-backup --env-file .env down -v
       - name: No private data in images
         run: |
-          for img in tfsc-crm:ci tfsc-agreements:ci; do
+          for img in tfsc-crm:ci tfsc-agreements:ci tfsc-postgres:16; do
             if docker run --rm --entrypoint sh $img -c 'find / -xdev \( -name "*.xlsx" -o -path "*private-assets*" -o -name ".env" \) 2>/dev/null | grep -v /proc' | grep .; then
               echo "private data found in $img"; exit 1; fi
           done

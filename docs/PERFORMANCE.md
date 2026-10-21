@@ -27,7 +27,7 @@ database. A production layout (database, API and bulk on separate hosts) has mor
 | 15,000 concurrent sessions / SSE connections | **15,000 SSE streams** held open from distinct sessions on this one VM, 0 errors | ✓ for SSE. Not run: 15,000 sessions also sending requests |
 | 550 / 10k / 50k user profiles | 550-agent profile run (below). **10k and 50k profiles not run** (see "Not measured") | partial |
 | 100 M activities for the 50k profile test | **Not generated.** Measured at 2.68 M rows | ✗ not measured |
-| 99.9 % availability, RPO ≤ 5 min, RTO ≤ 1 h | Not a load-test result. Backup/PITR runbook + restore drill: `docs/runbooks/backups-and-restore.md` | — |
+| 99.9 % availability, RPO ≤ 5 min, RTO ≤ 1 h | Not a load-test result. RPO: WAL archived at least every 60 s (`archive_timeout`), so about a minute of writes is at risk; restore to the latest WAL kept the last write in the drill. RTO on the compose trial stack (57 MB database, 2026-10-21): data volume deleted → database open in 4 s, CRM healthy at 16 s, whole stack about 20 s. Not measured on a production-size database. Availability: not measured. `docs/runbooks/backups-and-restore.md` | RPO/RTO ✓ at trial size; availability not measured |
 | 2 B activity rows/year capacity | Sizing arithmetic below, from measured bytes/row | arithmetic only |
 
 ## Mixed-load runs (k6, `infra/load/crm.js`)
