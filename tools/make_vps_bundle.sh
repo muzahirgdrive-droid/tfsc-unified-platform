@@ -18,7 +18,7 @@ git archive --format=tar --prefix="$name/" HEAD -- \
   apps/crm-api apps/crm-web apps/agreements packages infra/compose infra/keycloak/realm-tfsc.json infra/observability \
   docs/runbooks deploy/vps .dockerignore \
   ':(exclude)apps/crm-api/tests' ':(exclude)apps/crm-api/tests_v2' ':(exclude)apps/agreements/tests' \
-  ':(exclude)apps/crm-web/e2e' ':(exclude)apps/crm-web/test' ':(exclude)packages/*/python/tests' ':(exclude)packages/*/ts/test' \
+  ':(exclude)apps/agreements/private-assets' ':(exclude)apps/crm-web/e2e' ':(exclude)apps/crm-web/test' ':(exclude)packages/*/python/tests' ':(exclude)packages/*/ts/test' \
   | tar -x -C "$work"
 mv "$work/$name/deploy/vps/README.md" "$work/$name/START-HERE.md"
 mv "$work/$name/deploy/vps/tfsc.sh" "$work/$name/tfsc.sh"
