@@ -10,6 +10,6 @@ TFSC-08,Only supplied service scopes are exact source text,open (deferred),Uncha
 TFSC-09,Word vs LibreOffice pagination,open (risk),CI and E2E render with LibreOffice; visual approval still needed,See 04-KNOWN-ISSUES.csv
 TFSC-10,Signature images are not e-signatures,open (deferred),Unchanged; images stay private (not in git or images),See 04-KNOWN-ISSUES.csv
 TFSC-11,Hosted server cannot pick a laptop folder,accepted (by design),Output under TFSC_OUTPUT_ROOT; authorized downloads,-
-TFSC-12,Bridge/SSO not production load/provider tested,partly resolved,"Bridge v2 verified end to end (API + browser, both apps as real processes); TFSC OIDC not yet exercised with Keycloak",See 04-KNOWN-ISSUES.csv
+TFSC-12,Bridge/SSO not production load/provider tested,resolved,"Bridge v2 verified end to end (API + browser, both apps as real processes); TFSC OIDC sign-in verified with Keycloak on the compose trial stack (P8.3)",-
 TFSC-13,"30-minute lease, no heartbeat; blob growth",open (risk),Unchanged,See 04-KNOWN-ISSUES.csv
 TFSC-14,No email dispatch or e-signature provider,open (deferred),Unchanged,See 04-KNOWN-ISSUES.csv

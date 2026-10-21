@@ -49,8 +49,10 @@ WEB (apps/crm-web: React 19, TypeScript strict, Vite, TanStack Router + Query, T
 - Typed API client generated from apps/crm-api/openapi.json (CI fails on drift).
 
 SCALE (measured, docs/PERFORMANCE.md)
-- One 4-vCPU VM with 2.68 M synthetic activities: 550-agent profile passed every §24 threshold with
-  a separate bulk pool; 15,000 concurrent SSE streams received a celebration with p95 2.80 s.
+- One 4-vCPU VM, 3.98 M synthetic activities (round 2): 800 agents at 20 s think met every §24 p95
+  target; 550 agents at 6 s think met the paste target (pastes write one statement per table) but not
+  pre-dial everywhere; 800 agents at 6 s think saturate the box. 15,000 concurrent SSE streams received a
+  celebration with p95 2.80 s.
 - Not measured: 10k/50k-user profiles, 100 M-row dataset, multi-host, soak, failover.
 - Deployment splits interactive API, bulk pool (pastes/imports), dispatcher and scheduler
   (infra/compose, infra/helm). The API is stateless; scale it horizontally.
@@ -61,6 +63,14 @@ TESTS AND QUALITY GATES (CI: .github/workflows/ci.yml)
   refine vectors, bridge contract, Agreements tests.
 - web: build, typed-client drift, Vitest, TS refine vectors, TS bridge contract.
 - e2e: Playwright desktop + mobile across CRM and TFSC (apps/crm-web/e2e/README.md), axe, snapshots.
-- infra: Helm lint + kubeconform, compose validation, image builds, no private data in images.
+- infra: Helm lint + kubeconform + hook check, compose validation, image builds, no private data in
+  images, first backup + point-in-time restore test on a fresh PostgreSQL.
+- k8s-smoke: the chart on a kind cluster: install, 13 end-to-end checks, helm upgrade, checks again.
+
+OPERATIONS
+- Logs: JSON on stdout with request/trace ids. Traces: OpenTelemetry (OTLP). Metrics: /metrics (token),
+  Prometheus + Grafana dashboard + 9 alert rules in infra/observability. Errors: Sentry when configured.
+- Backups (compose): pgBackRest, encrypted, WAL every minute, 14 days of point-in-time recovery, daily
+  automated restore test (Security Center -> Backups). Files in S3-compatible storage, scanned by ClamAV.
 
 UNFINISHED / LIMITS: see 04-KNOWN-ISSUES.csv and 08-OWNER-CHECKLIST.txt.

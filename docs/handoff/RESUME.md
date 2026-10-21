@@ -144,7 +144,11 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        (kind 1.35: install, 13 checks through the ingress and in the cluster, upgrade, checks again), CI job k8s-smoke.
        Found and fixed: hooks never ran on upgrade (YAML flow comma), named image users vs runAsNonRoot, RWX-only CRM
        volume, ClamAV signatures hidden by emptyDir. Clean run: install 50 s, upgrade 43 s, 13/13 twice.
-9. [ ] Regenerate both §29 handoff ZIPs + the continuation ZIP; update known issues / owner checklist; final report
+9. [x] Regenerate both §29 handoff ZIPs + the continuation ZIP; update known issues / owner checklist; final report.
+       docs/handoff/P8-REPORT.md; apps/*/04-KNOWN-ISSUES.csv, 04b, 08-OWNER-CHECKLIST.txt, crm/02-ARCHITECTURE.txt
+       updated; ZIPs built with tools/make_app_handoffs.py (fresh previews) and tools/make_handoff_zip.sh; the
+       auto-resume scheduled task ("TFSC auto-resume") disabled. P8 is complete; further work needs the owner
+       (08-OWNER-CHECKLIST.txt).
 
 ## How to run the v2 web app locally
 ```

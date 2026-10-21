@@ -1,10 +1,8 @@
 ID,Type,Priority,Area,Issue,Next action
-TFSC-V2-01,confirmed bug,low,reviews UI,"/reviews renders mostly unstyled (its container/card classes have no CSS), and approval uses a browser prompt() for the reason.",Style the page with the portal CSS and replace prompt() with an inline reason field; keep the E2E selectors stable.
 TFSC-02,risk,high,data model,Client identity is owner + normalized-name hash; the same practice can exist under several owners. One CRM client may map to owner-specific TFSC clients.,Owner decision on a canonical client identity before merging records; then a migration with an audit trail.
 TFSC-03,risk,high,worker,File publication and the database commit are separate resources; a crash can leave orphan files.,Add a reconciliation job that compares published folders with documents rows and quarantines orphans.
 TFSC-05,risk,high,rendering,Hash checks do not freeze asset bytes for the whole render; file-change races deserve review.,Copy assets into the job staging folder and hash the copies before rendering.
 TFSC-09,risk,high,rendering,Word and LibreOffice (with the installed fonts) can paginate differently; hosted Linux uses LibreOffice.,"Owner approves LibreOffice output against the Word originals, or runs a Windows renderer host (see 08-OWNER-CHECKLIST)."
-TFSC-12,risk,medium,SSO,"The optional TFSC OIDC adapter was not exercised against the Keycloak realm in this project (the CRM side was, in a real browser).",Sign in to TFSC through the realm's Agreements client on the compose trial stack and add it to the SSO script.
 TFSC-13,risk,medium,worker,30-minute job lease without heartbeat; large blobs in the database grow backups.,Add a heartbeat and measure document storage per month; move bytes to object storage if needed.
 TFSC-06,deferred,medium,reviews UI,"Review UI shows metadata and the draft details, not a paginated legal-document proof.",Render a PDF preview of the exact revision for the reviewer.
 TFSC-07,deferred,medium,lists,First 100 reviews / first 50 clients; pagination and filtering incomplete.,Add server-side pagination and search.
@@ -12,3 +10,5 @@ TFSC-08,deferred,high,content,Only the supplied service scopes are exact source 
 TFSC-10,deferred,medium,signatures,Signature images can be copied and are not electronic execution proof.,Choose an e-signature provider if execution must be electronic (owner).
 TFSC-11,deferred,low,hosting,A hosted server cannot choose a folder on a browser user's laptop; output stays under TFSC_OUTPUT_ROOT.,By design; downloads go through authorized /files links.
 TFSC-14,deferred,medium,email,No email dispatch or client e-signature provider configured.,Owner provides SMTP / provider; then wire notifications.
+TFSC-V2-01,resolved,-,reviews UI,"/reviews uses the portal styling, an inline required decision reason (no browser prompt), state badges; axe WCAG 2 A/AA clean (P8.1).",-
+TFSC-12,resolved,-,SSO,"TFSC sign-in through the Keycloak realm verified in a real browser on the compose trial stack, for users granted Agreements before and after their first sign-in (P8.3).",-

@@ -157,4 +157,7 @@ start doing all the work from where you stop with all the chat history as well."
   restrict_oom_score_adj (no CAP_SYS_RESOURCE), images imported per platform, kube-router for NetworkPolicies (kernel
   without nftables queue). k3s directly on the VM hit the same OOM-score limit. A worker restart mid-phase only needed
   a stale /var/run/docker.pid removed.
+- P8.9 done. Known issues, legacy status and the owner checklist brought up to date (resolved: TFSC-V2-01, TFSC-12,
+  CRM-11, V2-D04, V2-D06, V2-D08; new: V2-R08 policy-enforcing CNI, V2-D10 off-site backups); docs/handoff/P8-REPORT.md;
+  CRM previews re-shot; both §29 ZIPs and the continuation ZIP rebuilt and sent; auto-resume scheduled task disabled.
 

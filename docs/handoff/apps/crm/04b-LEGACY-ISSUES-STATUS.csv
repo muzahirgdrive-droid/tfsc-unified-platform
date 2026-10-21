@@ -9,7 +9,7 @@ CRM-07,No round-robin auto-allocation,deferred,Setting exists without allocation
 CRM-08,Fixed roles; supervisor cannot create accounts,partly resolved,"Managers+ create accounts; scoped capabilities per role, authorization matrix test over every endpoint",Custom roles only if needed (V2-D07)
 CRM-09,Weekdays only; no holidays/leave,resolved,work_calendar + user_leave; calls/day metric excludes holidays and leave,-
 CRM-10,Manual status snapshot; no durable events,resolved,"Transactional outbox + dispatcher (retries, dead letters) + inbox dedupe",-
-CRM-11,Concurrent handoff / revocation races untested,partly resolved,"Bridge contract tests (replay, expiry, nonce, signature); 100-way conversion race; Agreement Lock; E2E handoff",Add a concurrent same-lead handoff test against a running TFSC
+CRM-11,Concurrent handoff / revocation races untested,resolved,"Bridge contract tests (replay, expiry, nonce, signature); 100-way conversion race; Agreement Lock; E2E handoff; concurrent same-lead handoff test against a running TFSC with 2 workers (it found a race, fixed with a per-client advisory lock, P8.1)",-
 CRM-12,No real Google / Vonage verification,deferred,Google OAuth adapter + mock provider; Vonage via tel:/URI template,Owner credentials (V2-D01/V2-D02)
 CRM-13,"No recovery/invite service, no RLS, no tamper-resistant audit sink",partly resolved,"Keycloak SSO (recovery via Keycloak), RLS on org tables, hash-chained audit + daily anchors",SMTP (V2-D03) and object-lock anchor shipping (V2-D04)
 CRM-14,org_id filtering is not multitenant isolation,accepted risk,RLS is defence in depth for a single-company deployment,See V2-R06
