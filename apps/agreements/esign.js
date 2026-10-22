@@ -644,7 +644,8 @@
     const head = el("div", "esign-mailbox-head"); head.append(el("h3", "", box.entity), chip(tone, label)); body.append(head);
     if (!box.secrets_available) body.append(el("p", "esign-alert", "The server has no TFSC_SECRET_KEY, so passwords cannot be stored. Run sudo ./tfsc.sh update on the server."));
     const form = el("form", "esign-mailbox-form");
-    const modes = [["mailbox", "Send from this company's own mailbox (recommended)"], ["relay", "Send through the platform's mail server; replies go to the mailbox"], ["off", "Not connected"]];
+    const modes = [["mailbox", "Send from this company's own mailbox (recommended)"], ["relay", "Send through the platform's mail server; replies go to the mailbox"], ["off", "Not connected"]]
+      .filter(([mode]) => mode !== "relay" || box.relay_available || box.mode === "relay");
     const mode = select(modes, box.mode); mode.name = "mode";
     const address = input(box.address, "email", {name: "address", maxLength: 200}), display = input(box.display_name, "text", {name: "display_name", maxLength: 150});
     form.append(field("How this company sends email", mode));

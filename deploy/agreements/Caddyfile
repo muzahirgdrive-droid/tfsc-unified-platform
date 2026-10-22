@@ -1,0 +1,5 @@
+# HTTPS for TFSC Agreements: Caddy obtains and renews the certificate for TFSC_DOMAIN (Let's Encrypt).
+{$TFSC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy agreements:8000
+}

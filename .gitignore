@@ -71,6 +71,7 @@ web_modules/
 !.env.example
 # off-site backup repository keys (template: infra/compose/backup-offsite.env.example)
 infra/compose/backup-offsite.env
+deploy/agreements/backup-offsite.env
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
