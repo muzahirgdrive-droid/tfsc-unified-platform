@@ -126,6 +126,7 @@ def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
     box['mode'] = payload.get('mode', box['mode'])
     if box['mode'] not in ('mailbox', 'relay', 'off'):
         raise ValueError('Choose how this company sends email.')
+    previous = dict(box)
     box['address'] = valid_email(text('address', 200)) if text('address', 200) else ''
     box['display_name'] = text('display_name', 150) or f"{get_entity(entity_name)['short']} Compliance"
     if re.search(r'[\r\n<>"]', box['display_name']):
@@ -133,7 +134,9 @@ def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
     box['auth'] = payload.get('auth', box['auth'])
     if box['auth'] not in ('password', 'google_sa'):
         raise ValueError('Choose app password or Google service account.')
-    box['login'] = text('login', 200) or box['address']
+    # The sign-in name follows the address unless it was set to something else on purpose.
+    login = str(payload.get('login') or '').strip()[:200]
+    box['login'] = box['address'] if not login or (login == previous['login'] and previous['login'] == previous['address']) else login
     for key in ('smtp_host', 'imap_host'):
         box[key] = text(key, 200)
         if box[key] and not re.fullmatch(r'[A-Za-z0-9.-]{1,200}', box[key]):
@@ -178,7 +181,7 @@ def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
             raise ValueError('Upload the Google service account key (JSON).')
     if box['mode'] == 'relay' and not box['address']:
         raise ValueError('Enter the address that receives replies.')
-    if box['address'] != load(c, entity_name)['address'] or not box['imap_enabled']:
+    if box['address'] != previous['address'] or box['login'] != previous['login'] or not box['imap_enabled']:
         box['imap_uidvalidity'] = box['imap_last_uid'] = None
     box.update(updated=time.time(), updated_by=actor['id'], smtp_error=None, imap_error=None)
     values = {k: v for k, v in box.items() if k in mailboxes.c}

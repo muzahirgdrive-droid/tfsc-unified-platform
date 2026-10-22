@@ -662,6 +662,9 @@
     own.append(passwordBlock, saBlock);
     const advanced = el("details", "esign-more"); advanced.append(el("summary", "", "Mail servers (Google Workspace is filled in)"));
     const login = input(box.login, "text", {name: "login", maxLength: 200});
+    let follow = box.login === box.address;
+    address.addEventListener("input", () => { if (follow) login.value = address.value.trim(); });
+    login.addEventListener("input", () => { follow = login.value.trim() === address.value.trim(); });
     const smtp = el("div", "esign-three"); smtp.append(field("SMTP server", input(box.smtp_host, "text", {name: "smtp_host"})), field("Port", input(box.smtp_port, "number", {name: "smtp_port"})),
       field("Security", select([["starttls", "STARTTLS"], ["ssl", "SSL/TLS"], ["none", "None (test server only)"]], box.smtp_security)));
     smtp.lastChild.querySelector("select").name = "smtp_security";

@@ -86,7 +86,7 @@ class Base(unittest.TestCase):
     def connect_mailbox(self, entity=SCRIBE, address='compliance@scribealign.test', **extra):
         self.login(self.super)
         index = list(portal.ENTITIES).index(entity)
-        body = dict(mode='mailbox', address=address, auth='password', login=address, secret='abcd efgh ijkl mnop', smtp_host='127.0.0.1', smtp_port=self.smtp.port,
+        body = dict(mode='mailbox', address=address, auth='password', login=extra.pop('login', address), secret='abcd efgh ijkl mnop', smtp_host='127.0.0.1', smtp_port=self.smtp.port,
                     smtp_security='none', imap_enabled=False, imap_host='127.0.0.1', imap_port=1143, imap_security='none', signer_email='naeem@scribealign.test') | extra
         r = self.post(f'/api/esign/mailboxes/{index}', body)
         self.assertEqual(r.status_code, 200, r.text)
@@ -465,6 +465,17 @@ class Permissions(Base):
             self.assertNotIn('smtp_host', visible['mailboxes'][0])
         self.login(self.ehs_user)
         self.assertEqual([m['entity'] for m in self.api.get('/api/esign/mailboxes').json()['mailboxes']], [EHS])
+
+    def test_sign_in_name_follows_the_address_unless_set(self):
+        self.connect_mailbox(address='compliance@scribealign.test', login=None)
+        with db.engine.connect() as c:
+            self.assertEqual(mailer.load(c, SCRIBE)['login'], 'compliance@scribealign.test')
+        self.connect_mailbox(address='team@scribealign.test', login='compliance@scribealign.test')
+        with db.engine.connect() as c:
+            self.assertEqual(mailer.load(c, SCRIBE)['login'], 'team@scribealign.test', 'a login that only followed the old address moves with it')
+        self.connect_mailbox(address='team@scribealign.test', login='service@scribealign.test')
+        with db.engine.connect() as c:
+            self.assertEqual(mailer.load(c, SCRIBE)['login'], 'service@scribealign.test', 'a login set on purpose is kept')
 
     def test_unencrypted_mail_servers_only_on_private_networks(self):
         self.login(self.super)
