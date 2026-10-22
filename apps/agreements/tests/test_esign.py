@@ -625,6 +625,7 @@ class Mail(Base):
 
         class FakeImap:
             mailbox = {5: b'From: a@b.test\r\nSubject: old\r\n\r\nold mail\r\n'}
+            arrived = {5: time.time() - 3600}
 
             def select(self, name, readonly=False):
                 assert readonly, 'the inbox is always opened read-only'
@@ -639,6 +640,8 @@ class Mail(Base):
                         return 'OK', [' '.join(str(u) for u in self.mailbox).encode()]
                     low = int(args[1].split()[1].split(':')[0])
                     return 'OK', [' '.join(str(u) for u in self.mailbox if u >= low).encode()]
+                if 'INTERNALDATE' in args[1]:
+                    return 'OK', [f'{u} (UID {u} INTERNALDATE "{time.strftime("%d-%b-%Y %H:%M:%S +0000", time.gmtime(self.arrived[u]))}")'.encode() for u in self.mailbox]
                 uid = int(args[0])
                 body = self.mailbox[uid]
                 if 'HEADER' in args[1]:
@@ -657,8 +660,16 @@ class Mail(Base):
             with db.engine.begin() as c:
                 c.execute(update(t.mailboxes).values(imap_last_poll=0))
             self.assertEqual(mailer.poll_inboxes(), 1)
+            detail = self.api.get(f"/api/esign/envelopes/{env['id']}").json()
+            self.assertEqual(detail['replies'][0]['snippet'], 'Question about fees.')
+            # Reconnecting the mailbox: a reply that arrives before the first check is still read.
+            self.connect_mailbox(imap_enabled=True, login='inbox-reader@scribealign.test')
+            fake.mailbox[7] = reply.replace(b'<r2@client.test>', b'<r3@client.test>').replace(b'Question about fees.', b'Second question.')
+            fake.arrived[6] = time.time() - 600
+            fake.arrived[7] = time.time() + 1
+            self.assertEqual(mailer.poll_inboxes(), 1)
         detail = self.api.get(f"/api/esign/envelopes/{env['id']}").json()
-        self.assertEqual(detail['replies'][0]['snippet'], 'Question about fees.')
+        self.assertEqual([r['snippet'] for r in detail['replies']], ['Question about fees.', 'Second question.'])
 
     def test_refused_recipient_fails_without_endless_retries(self):
         self.smtp.reject_rcpt = '550 5.1.1 No such user'

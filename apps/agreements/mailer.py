@@ -181,8 +181,8 @@ def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
             raise ValueError('Upload the Google service account key (JSON).')
     if box['mode'] == 'relay' and not box['address']:
         raise ValueError('Enter the address that receives replies.')
-    if box['address'] != previous['address'] or box['login'] != previous['login'] or not box['imap_enabled']:
-        box['imap_uidvalidity'] = box['imap_last_uid'] = None
+    if box['address'] != previous['address'] or box['login'] != previous['login'] or not box['imap_enabled'] or box['mode'] != previous['mode']:
+        box['imap_uidvalidity'] = box['imap_last_uid'] = box['imap_last_poll'] = None
     box.update(updated=time.time(), updated_by=actor['id'], smtp_error=None, imap_error=None)
     values = {k: v for k, v in box.items() if k in mailboxes.c}
     if c.execute(select(mailboxes.c.entity).where(mailboxes.c.entity == entity_name)).first():
@@ -668,12 +668,11 @@ def _poll(name: str) -> int:
         validity = int(imap.response('UIDVALIDITY')[1][0])
         last = box['imap_last_uid']
         if box['imap_uidvalidity'] != validity or last is None:
-            # First connection (or the mailbox was rebuilt): start from now, never import old mail.
-            status, data = imap.uid('SEARCH', None, 'ALL')
-            uids = [int(x) for x in (data[0] or b'').split()]
+            # First connection (or the mailbox was rebuilt): start where the settings were saved. Older mail is never
+            # imported; mail that arrived since then (a reply before this first check) is read below.
+            last = _starting_uid(imap, box['updated'])
             with db.engine.begin() as c:
-                c.execute(update(mailboxes).where(mailboxes.c.entity == name).values(imap_uidvalidity=validity, imap_last_uid=max(uids, default=0)))
-            return 0
+                c.execute(update(mailboxes).where(mailboxes.c.entity == name).values(imap_uidvalidity=validity, imap_last_uid=last))
         status, data = imap.uid('SEARCH', None, f'UID {last + 1}:*')
         uids = sorted(int(x) for x in (data[0] or b'').split() if int(x) > last)[:100]
         for uid in uids:
@@ -698,6 +697,27 @@ def _poll(name: str) -> int:
         except Exception:  # noqa: BLE001
             pass
     return count
+
+
+def _starting_uid(imap, since: float) -> int:
+    """Highest UID that arrived before `since` (only the latest 200 messages are examined)."""
+    status, data = imap.uid('SEARCH', None, 'ALL')
+    uids = sorted(int(x) for x in (data[0] or b'').split())
+    if not uids:
+        return 0
+    recent = uids[-200:]
+    status, data = imap.uid('FETCH', f'{recent[0]}:{recent[-1]}', '(INTERNALDATE)')
+    arrived = {}
+    for item in data or []:
+        raw = item[0] if isinstance(item, tuple) else item
+        if not isinstance(raw, bytes):
+            continue
+        uid = re.search(rb'UID (\d+)', raw)
+        when = imaplib.Internaldate2tuple(raw)
+        if uid and when:
+            arrived[int(uid.group(1))] = time.mktime(when)
+    older = [u for u in recent if u in arrived and arrived[u] < since]
+    return max(older) if older else (recent[0] - 1 if len(uids) <= 200 else recent[0])
 
 
 def _maybe_ours(header: bytes) -> bool:
