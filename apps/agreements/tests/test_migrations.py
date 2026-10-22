@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 import database as db
@@ -30,17 +31,20 @@ class MigrationTests(unittest.TestCase):
         with self.engine.connect() as c:
             diff = compare_metadata(MigrationContext.configure(c), db.meta)
             self.assertEqual(diff, [])
-            self.assertEqual(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one(), migrate.BASELINE)
+            head = ScriptDirectory.from_config(migrate.config()).get_current_head()
+            self.assertEqual(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one(), head)
 
     def test_pre_alembic_install_is_stamped_and_keeps_rows(self):
         with self.engine.begin() as c:
-            db.meta.create_all(c)
+            # An install from before Alembic has exactly the baseline tables.
+            db.meta.create_all(c, tables=[t for t in db.meta.sorted_tables if t.name in migrate.BASELINE_TABLES])
             c.execute(db.settings.insert().values(key='keep_me', value={'ok': True}))
         with self.engine.begin() as c:
             self.assertEqual(migrate.upgrade_to_head(c, db.meta), 'stamped')
         with self.engine.begin() as c:
             self.assertEqual(migrate.upgrade_to_head(c, db.meta), 'current')
             self.assertEqual(c.execute(text("SELECT count(*) FROM settings WHERE key = 'keep_me'")).scalar_one(), 1)
+            self.assertEqual(compare_metadata(MigrationContext.configure(c), db.meta), [])
 
     def test_downgrade_removes_every_table(self):
         with self.engine.begin() as c:

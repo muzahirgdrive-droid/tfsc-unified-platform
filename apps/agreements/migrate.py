@@ -14,6 +14,9 @@ from sqlalchemy import inspect
 
 APP = Path(__file__).resolve().parent
 BASELINE = '0001_agreements_baseline'
+BASELINE_TABLES = {'audit', 'clients', 'contracts', 'crm_account_links', 'crm_actor_links', 'crm_bridge_handoffs', 'crm_bridge_nonces', 'crm_client_links',
+                   'crm_provision_requests', 'agreement_reviews', 'documents', 'jobs', 'oidc_accounts', 'oidc_states', 'sessions', 'settings', 'tfsc_outbox',
+                   'throttle', 'users'}
 
 
 def config(connection=None) -> Config:
@@ -30,7 +33,9 @@ def upgrade_to_head(connection, metadata) -> str:
     kind = 'current' if 'alembic_version' in tables else ('stamped' if 'users' in tables else 'fresh')
     cfg = config(connection)
     if kind == 'stamped':
-        metadata.create_all(connection)  # pre-Alembic install: same behaviour as before for any missing table
+        # pre-Alembic install: create any missing table of the baseline the same way as before; later tables come from
+        # their own migrations
+        metadata.create_all(connection, tables=[t for t in metadata.sorted_tables if t.name in BASELINE_TABLES])
         command.stamp(cfg, BASELINE)
     command.upgrade(cfg, 'head')
     return kind

@@ -91,6 +91,8 @@ def process(job):
 
 def run():
     db.init_db()
+    import esign_worker
+    esign_worker.start()  # email, envelope completion, reminders and inbox reading run beside document generation
     while True:
         try:
             if db.LOCAL and (db.DATA/'stop-request.json').exists():return

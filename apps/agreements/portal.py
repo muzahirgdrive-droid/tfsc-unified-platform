@@ -40,13 +40,15 @@ async def boundary(request,call_next):
     if request.method not in ('GET','HEAD'):
         if request.headers.get('origin') not in (None,ORIGIN) or request.headers.get('sec-fetch-site')=='cross-site':
             return JSONResponse({'error':'Request origin was rejected.'},403)
+        # PDF uploads to an e-signature draft (base64, up to 15 MB of PDF) are the only large bodies.
+        limit=21_000_000 if re.fullmatch(r'/api/esign/envelopes/[a-f0-9]{32}/documents',request.url.path) else 2_800_000
         try:
-            if int(request.headers.get('content-length','0'))>2_800_000:
+            if int(request.headers.get('content-length','0'))>limit:
                 return JSONResponse({'error':'Request is too large.'},413)
             chunks=[];size=0
             async for chunk in request.stream():
                 size+=len(chunk)
-                if size>2_800_000:return JSONResponse({'error':'Request is too large.'},413)
+                if size>limit:return JSONResponse({'error':'Request is too large.'},413)
                 chunks.append(chunk)
             request._body=b''.join(chunks)
         except Exception:return JSONResponse({'error':'Invalid request body.'},400)
@@ -412,8 +414,10 @@ import crm_bridge_v2
 crm_bridge_v2.install(app)
 import oidc_support
 oidc_support.install(app,db,sec,session_response,ORIGIN,'TFSC',sec.get_actor)
-PUBLIC={'styles.css','tfsc.css','portal.css','login.js'}
-PRIVATE={'app.js','studio.js','portal.js','reviews.js'}
+import esign
+esign.install(app)
+PUBLIC={'styles.css','tfsc.css','portal.css','login.js','sign.js','sign.css','verify.js'}
+PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):
     if name in PRIVATE:
@@ -422,5 +426,5 @@ def static_file(name:str,request:Request):
     return FileResponse(db.APP/name)
 @app.get('/assets/{name:path}')
 def asset(name:str):
-    if name not in ('tfsc-logo.png','fonts/Poppins-Regular.ttf','fonts/Poppins-SemiBold.ttf'):raise HTTPException(404,'Not found.')
+    if name not in ('tfsc-logo.png','fonts/Poppins-Regular.ttf','fonts/Poppins-SemiBold.ttf','fonts/sig-mrdafoe.ttf','fonts/sig-sacramento.ttf','fonts/sig-greatvibes.ttf'):raise HTTPException(404,'Not found.')
     return FileResponse(db.APP/'assets'/name)
