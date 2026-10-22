@@ -171,3 +171,21 @@ start doing all the work from where you stop with all the chat history as well."
   token/JWKS endpoints on the internal http URL (now accepted under TFSC_OIDC_INTERNAL_URL only, tested); no way to
   link the two Super Admins without IDs neither UI shows (`manage.py link-crm-admin`, tested); installed signature
   files were world-writable under docker exec's umask (now 700/600). Measured: 2.4 GB memory with everything idle.
+
+- After the VPS package: Agreements corrections, Mutual NDA and DocuSign-style e-signature (owner asked 2026-10-22).
+  Corrections: the BAA always said Georgia law; each company now has a default governing state (Scribe Align Nevada,
+  EHS Missouri, 24-7 Georgia) and the Governing law box drives the BAA, Services Agreement and NDA; the company side of
+  every execution block is dated with the effective date. New Mutual NDA (nda_content.py, needs counsel approval; the
+  CRM handoff can request it). E-signature (esign*.py, mailer.py, secretbox.py, sign.*, esign.*, verify.*; Alembic
+  0002_esign): envelopes from generated agreements or uploaded PDFs, recipients who sign / view / receive a copy in a
+  signing order with optional access codes, client fields placed automatically on generated agreements, field editor,
+  disclosure consent, adopt typed / drawn / uploaded signature, decline, reminders, expiry, correct, void, resend,
+  templates, stamped completed PDFs, Certificate of Completion, hash-chained audit trail, /verify. Each company sends
+  from its own compliance mailbox (all three domains are Google Workspace: app password or service-account XOAUTH2)
+  through a transactional outbox, and the worker reads that inbox read-only for replies (attachments ClamAV-scanned)
+  and bounces. Verified: 85 Agreements tests (SQLite and PostgreSQL), browser runs of the whole flow, a real SMTP+IMAP
+  server (GreenMail), and an upgrade of the installed previous VPS release to the new ZIP (key added to .env, 0002 on
+  PostgreSQL, old agreement signed electronically, worker container completed it, ClamAV kept a clean reply attachment
+  and blocked EICAR, HTTPS browser signing with Secure path-scoped cookie). The stack test found two bugs, both fixed:
+  the mailbox sign-in name stayed at the default address when the address changed, and a reply that arrived before the
+  first inbox check was skipped. Not tested: Gmail itself (owner checks with Send test email / Check inbox).

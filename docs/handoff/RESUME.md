@@ -153,6 +153,11 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        with `tfsc.sh` and START-HERE.md (sources: deploy/vps/). Installed from the ZIP and walked end to end on a test
        host (test domains, Caddy local CA, mail catcher); four bugs found and fixed (SESSION-LOG, "After P8").
 
+11. [x] (asked 2026-10-22) Agreements: governing state per company drives BAA/Services/NDA; company signature dated
+       with the effective date; Mutual NDA; DocuSign-style e-signature with company compliance mailboxes (SMTP send,
+       IMAP replies/bounces), Certificate of Completion, /verify. Owner to do: connect the three Google Workspace mailboxes
+       (START-HERE step 5) and have counsel review LEGAL_REVIEW.md "Version 4.1".
+
 ## How to run the v2 web app locally
 ```
 tools/dev_services.sh start
