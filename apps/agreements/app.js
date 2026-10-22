@@ -455,6 +455,8 @@
 
   function renderResults(result) {
     $("generation-results").hidden = false;
+    $("send-signature").hidden = !result.contract_id;
+    $("send-signature").onclick = () => window.esignFromContract?.(result.contract_id);
     $("result-id").textContent = `Reference ${result.contract_id}`;
     $("result-folder").textContent = result.folder;
     const files = $("result-files");
@@ -631,7 +633,7 @@
       $("app-version").textContent = `Local edition · v${config.version || "1.0"}`;
       renderCatalog(); renderSelected(); documentSelectionChanged();
       await refreshClients();
-      form.hidden = false; state.dirty = false;
+      form.hidden = (document.body.dataset.view || "builder") !== "builder"; state.dirty = false;
       const linkedClient=new URLSearchParams(location.search).get('client');
       if(linkedClient&&/^[a-f0-9]{32}$/.test(linkedClient))await window.openClientDraft(linkedClient);
     } catch (error) { announce(error.message, true); }

@@ -56,7 +56,8 @@ async def boundary(request,call_next):
     except Exception:
         import logging;logging.exception('Application request failed')
         response=JSONResponse({'error':'The request could not be completed. Please try again.'},500)
-    response.headers['Cache-Control']='no-store'
+    # Routes may allow private caching (immutable e-signature page images); everything else is never cached.
+    if 'cache-control' not in response.headers:response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
     response.headers['Referrer-Policy']='same-origin'
@@ -160,6 +161,8 @@ def home(request:Request):
     return HTMLResponse((db.APP/'index.html').read_text(encoding='utf-8').replace('__CSRF_TOKEN__',a['_csrf']))
 @app.get('/login')
 def login_page():return FileResponse(db.APP/'login.html')
+@app.get('/favicon.ico')
+def favicon():return Response(status_code=204)
 
 @app.get('/api/config')
 def config(request:Request):
@@ -213,7 +216,9 @@ def history(id:str,request:Request,page:int=0):
         result=[]
         for r in rows[:20]:
             docs=c.execute(select(db.documents.c.id,db.documents.c.name,db.documents.c.kind,db.documents.c.agreement,db.documents.c.sha256).where(db.documents.c.contract_id==r['id'])).mappings().all()
-            result.append(dict(id=r['id'],entity=r['entity'],created=r['created'],owner='Legacy record (author unavailable)' if r['legacy'] else r['owner'],files=[dict(x,url='/files/'+x['id']) for x in docs]))
+            from esign_db import envelopes as env_table
+            sent=c.execute(select(env_table.c.id,env_table.c.ref,env_table.c.status).where(env_table.c.contract_id==r['id'],env_table.c.status!='template').order_by(env_table.c.created)).mappings().all()
+            result.append(dict(id=r['id'],entity=r['entity'],created=r['created'],owner='Legacy record (author unavailable)' if r['legacy'] else r['owner'],files=[dict(x,url='/files/'+x['id']) for x in docs],envelopes=[dict(x) for x in sent]))
         return {'client':dict(id=client['id'],name=client['name'],address=client['address']),'contracts':result,'has_more':len(rows)>20}
 @app.get('/api/clients/{id}/activity')
 def activity(id:str,request:Request,page:int=0):

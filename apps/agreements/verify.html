@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="light"><title>Verify a signed document</title>
+<link rel="stylesheet" href="/sign.css"><script src="/verify.js" defer></script></head>
+<body>
+  <header class="sign-bar"><div class="sign-brand"><strong>TFSC Agreements</strong><span>Document verification</span></div></header>
+  <main>
+    <section class="notice-card">
+      <h1>Verify a completed document</h1>
+      <p>Choose a completed PDF or Certificate of Completion. Its fingerprint (SHA-256) is calculated on your computer; the file itself is not uploaded.</p>
+      <p><input type="file" id="file" accept="application/pdf"></p>
+      <p id="result" role="status"></p>
+    </section>
+  </main>
+</body>
+</html>

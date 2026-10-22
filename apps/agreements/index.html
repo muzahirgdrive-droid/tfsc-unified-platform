@@ -9,9 +9,11 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/tfsc.css">
   <link rel="stylesheet" href="/portal.css">
+  <link rel="stylesheet" href="/esign.css">
   <script src="/portal.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/studio.js" defer></script>
+  <script src="/esign.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#contract-form">Skip to contract form</a>
@@ -26,7 +28,7 @@
       <button type="button" data-step="terms-panel"><span>04</span>Agreement terms</button>
       <button type="button" data-step="output-panel"><span>05</span>Sign &amp; export</button>
     </nav>
-    <button class="workspace-switch" id="show-history" type="button">▱ Client &amp; contract history</button><button class="workspace-switch" id="show-users" type="button" hidden>♙ Users &amp; permissions</button>
+    <button class="workspace-switch" id="show-history" type="button">▱ Client &amp; contract history</button><button class="workspace-switch" id="show-esign" type="button">✎ Signatures<span class="nav-count" id="esign-count" hidden></span></button><button class="workspace-switch" id="show-users" type="button" hidden>♙ Users &amp; permissions</button><button class="workspace-switch" id="show-mailboxes" type="button" hidden>✉ Company mailboxes</button>
     <div class="sidebar-bottom"><span class="avatar">TF</span><div>TFSC COMPLIANCE<small>Private company workspace</small></div></div>
   </aside>
   <header class="app-header">
@@ -86,13 +88,15 @@
         <aside class="summary-column" aria-label="Agreement summary">
           <div class="summary-card"><div class="summary-top"><p class="eyebrow">YOUR AGREEMENT</p><span class="live-indicator">Live summary</span></div><h2 id="summary-client">New client</h2><p class="summary-entity">SCRIBE ALIGN LLC</p><dl class="summary-facts"><div><dt>Effective date</dt><dd id="summary-date">Today</dd></div><div><dt>Documents</dt><dd id="summary-documents">BAA + Services</dd></div><div><dt>Selected services</dt><dd id="summary-count">0</dd></div></dl><div id="summary-service-list" class="summary-services"></div><div class="pricing-summary" id="pricing-summary" hidden></div><div class="summary-format"><span class="format-icon" aria-hidden="true">Aa</span><p><strong>Your original letterhead.</strong><br>Times New Roman · Editable Word<br>PDF · Page X of Y</p></div><button class="button button-primary generate-button" type="submit" id="generate-button"><span id="generate-label">Generate agreements</span><span aria-hidden="true">↗</span></button><div class="secondary-actions"><button class="button button-quiet" type="button" id="preview-button">Preview text</button><button class="button button-quiet" type="button" id="save-client">Save draft</button></div><p class="review-note">Review the wording and commercial details before sending for signature.</p></div>
           <div class="privacy-note"><span class="privacy-dot" aria-hidden="true"></span><p><strong>Made for your local workspace</strong><br>Drafts and documents are saved on this computer. Enter business details only; patient information is not needed.</p></div>
-          <div class="results-card" id="generation-results" hidden aria-live="polite"><div class="success-mark" aria-hidden="true">✓</div><h2>Your documents are ready.</h2><p id="result-id"></p><div id="result-files"></div><div class="saved-location"><strong>Saved to</strong><p id="result-folder"></p></div><div id="result-warnings"></div></div>
+          <div class="results-card" id="generation-results" hidden aria-live="polite"><div class="success-mark" aria-hidden="true">✓</div><h2>Your documents are ready.</h2><p id="result-id"></p><div id="result-files"></div><button type="button" class="button button-primary send-signature" id="send-signature" hidden>Send for signature ↗</button><div class="saved-location"><strong>Saved to</strong><p id="result-folder"></p></div><div id="result-warnings"></div></div>
         </aside>
       </div>
     </form>
     <div class="step-actions"><button type="button" class="button button-quiet" id="step-back">← Back</button><span id="step-caption">Client information</span><button type="button" class="button button-primary" id="step-next">Continue →</button></div>
     <section id="history-view" class="portal-view" hidden><div class="history-toolbar"><div><p class="eyebrow">YOUR RECORDS</p><h2>Client &amp; contract history</h2></div><button type="button" class="button button-quiet" id="import-legacy" hidden>Import existing local contracts</button></div><p class="portal-note">Every revision is retained. Downloads come from the database, even if the original output folder is unavailable.</p><div class="portal-toolbar"><input id="history-search" type="search" placeholder="Search client name" aria-label="Search client history"><button type="button" class="button button-primary" id="history-refresh">Search</button></div><div class="history-grid"><div><div id="history-clients" class="client-list"></div><div class="portal-paging"><button type="button" class="button button-quiet" id="clients-prev">Previous</button><span id="clients-page"></span><button type="button" class="button button-quiet" id="clients-next">Next</button></div></div><div class="history-detail" id="history-detail"><p class="empty-state">Select a client to view contracts and activity.</p></div></div><h3>Recent generation jobs</h3><div id="jobs-list" class="jobs-list"></div></section>
     <section id="users-view" class="portal-view" hidden><div class="history-toolbar"><div><p class="eyebrow">WORKSPACE ACCESS</p><h2>Users &amp; permissions</h2></div><button type="button" class="button button-primary" id="add-user">Create user</button></div><p class="portal-note">Assign contracting companies and manage the users in your team.</p><div class="portal-toolbar"><input id="users-search" type="search" placeholder="Search name or email" aria-label="Search users"><button type="button" class="button button-quiet" id="users-refresh">Search</button></div><div class="panel"><div class="panel-body"><table class="portal-table"><thead><tr><th>User</th><th>Role</th><th>Companies</th><th>Status</th><th>Manage</th></tr></thead><tbody id="users-table"></tbody></table></div></div><div class="portal-paging"><button class="button button-quiet" id="users-prev" type="button">Previous</button><span id="users-page"></span><button class="button button-quiet" id="users-next" type="button">Next</button></div></section>
+    <section id="esign-view" class="portal-view" hidden></section>
+    <section id="mailbox-view" class="portal-view" hidden></section>
     <footer class="app-footer"><span>TFSC <span class="footer-divider">/</span> COMPLIANCE</span><span id="app-version">Local edition</span></footer>
   </main>
 

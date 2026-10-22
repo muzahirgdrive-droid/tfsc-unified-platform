@@ -214,15 +214,20 @@ def create(c, actor: dict, payload: dict) -> dict:
         rows = c.execute(select(db.documents).where(db.documents.c.contract_id == contract['id'], db.documents.c.kind == 'pdf')
                          .order_by(db.documents.c.agreement)).mappings().all()
         order = {'baa': 0, 'services': 1, 'nda': 2}
+        names = {'baa': 'Business Associate Agreement', 'services': 'Services Agreement', 'nda': 'Mutual NDA'}
+        client_label = re.sub(r'[\\/:*?"<>|]+', '', client['name'] if client else '').strip()
         for row in sorted(rows, key=lambda r: order.get(r['agreement'], 9)):
             crm_bridge.check_download(c, row)
-            add_document(c, envelope, row['name'], bytes(row['body']), 'generated', row['id'], row['agreement'])
-            titles.append({'baa': 'Business Associate Agreement', 'services': 'Services Agreement', 'nda': 'Mutual NDA'}.get(row['agreement'], row['name']))
+            title = names.get(row['agreement'], re.sub(r'\.pdf$', '', row['name'], flags=re.I))
+            friendly = (f'{title} - {client_label}' if client_label else title)[:180] + '.pdf'
+            add_document(c, envelope, friendly, bytes(row['body']), 'generated', row['id'], row['agreement'])
+            titles.append(title)
         if not rows:
             raise HTTPException(400, 'This contract has no PDF documents to send.')
         _default_setup(c, envelope, contract, box)
     client_name = (client['name'] if client else '') or ''
-    subject = f"Please sign: {' and '.join(titles) if titles else 'documents'}" + (f' - {client_name}' if client_name else '')
+    listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else (titles[0] if titles else 'documents')
+    subject = f'Please sign: {listed}' + (f' - {client_name}' if client_name else '')
     signatory = (contract['payload'].get('client_signatory') if contract else '') or ''
     message = (f"Hello{' ' + signatory if signatory else ''},\n\nPlease review and sign the attached agreement{'s' if len(titles) != 1 else ''} from "
                f"{entity['name']}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
@@ -700,7 +705,8 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
                sender_email=box['address'] or owner['email'], company=entity['name'], company_short=entity['short'],
                recipient=dict(name=r['name'], email=r['email'], role=r['role'], status=r['status'], note=r['note']),
                verified=bool(session['verified']), consent=bool(r['consent_at']), ersd=ersd(entity, box['address']), can_act=can_act,
-               adopted=dict(signature=bool(r['signature_png']), initials=bool(r['initials_png'])), csrf=session['csrf'])
+               adopted=dict(signature=_data_url(r['signature_png']), initials=_data_url(r['initials_png'])), csrf=session['csrf'],
+               timezone=entity['timezone'], expires_at=envelope['expires_at'], role_label=ROLE_LABELS[r['role']])
     if not session['verified']:
         return out
     out['documents'] = docs
@@ -712,6 +718,10 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
         out['others'] = [dict(o, done=o['status'] in DONE_STATUSES) for o in others]
     out['completed'] = status == 'completed'
     return out
+
+
+def _data_url(png) -> str:
+    return 'data:image/png;base64,' + base64.b64encode(bytes(png)).decode() if png else ''
 
 
 def mark_delivered(c, r: dict, envelope: dict, request: Request) -> None:
@@ -1105,7 +1115,7 @@ def detail(c, actor: dict, envelope: dict) -> dict:
     names = {r['id']: r['name'] for r in rs}
     history = [{'at': e['at'], 'kind': e['kind'], 'label': LABELS.get(e['kind'], e['kind']), 'actor': e['actor'], 'ip': e['ip'], 'recipient': names.get(e['recipient_id'], ''),
                 'detail': e['detail']} for e in trail]
-    mails = [{k: m[k] for k in ('kind', 'to_addrs', 'state', 'last_error', 'sent_at', 'created', 'attempts')}
+    mails = [{k: m[k] for k in ('kind', 'to_addrs', 'cc_addrs', 'bcc_addrs', 'state', 'last_error', 'sent_at', 'created', 'attempts')}
              for m in c.execute(select(outbox).where(outbox.c.envelope_id == envelope['id']).order_by(outbox.c.created)).mappings()]
     replies = []
     for m in c.execute(select(inbound).where(inbound.c.envelope_id == envelope['id']).order_by(inbound.c.received)).mappings():
@@ -1245,7 +1255,8 @@ def install(app) -> None:  # noqa: C901  (route table)
         if not 1 <= page <= pages:
             raise HTTPException(404, 'Page not found.')
         png = esign_pdf.render_page(raw, page, PAGE_DPI, db.DATA / 'esign-cache' / document_id / f'{page}.png')
-        return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
+        # A document's pages never change (documents are immutable once added), so the browser may keep them.
+        return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
     @app.get('/api/esign/documents/{document_id}/file')
     def api_document(document_id: str, request: Request, final: int = 0):
@@ -1498,7 +1509,7 @@ def install(app) -> None:  # noqa: C901  (route table)
         if not 1 <= page <= pages:
             raise HTTPException(404, 'Page not found.')
         png = esign_pdf.render_page(raw, page, PAGE_DPI, db.DATA / 'esign-cache' / document_id / f'{page}.png')
-        return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
+        return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
     @app.get('/sign/r/{recipient_id}/document/{document_id}')
     def sign_document(recipient_id: str, document_id: str, request: Request):

@@ -1,0 +1,100 @@
+/* Electronic signature screens inside the portal (Signatures, envelope details, field editor, company mailboxes). */
+#esign-view,#mailbox-view{padding-bottom:40px}
+.nav-count{display:inline-block;min-width:18px;padding:0 6px;margin-left:6px;border-radius:9px;background:#e5547a;color:#fff;font-size:10px;line-height:18px;text-align:center}
+.esign-boxes{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 10px}
+.esign-box{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:18px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer}
+.esign-box[aria-selected=true]{background:var(--navy);border-color:var(--navy);color:#fff}
+.esign-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.esign-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px 10px 6px 0;box-shadow:var(--shadow)}
+.esign-row-main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 170px 180px;gap:14px;align-items:center;background:none;border:0;text-align:left;padding:10px 14px;cursor:pointer;color:inherit;font:inherit}
+.esign-row-main div:first-child{display:flex;flex-direction:column;min-width:0}
+.esign-row-main strong{font-size:14px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.esign-row-main small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.esign-row-status{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.esign-when{text-align:right}
+.esign-meta{color:var(--muted);font-size:12px;margin:2px 0 0}
+.esign-chip{display:inline-block;border-radius:12px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.2px;background:#eef2f8;color:#3c4b66;white-space:nowrap}
+.esign-sent,.esign-completing,.esign-delivered{background:#e7f2fb;color:#155f91}
+.esign-completed,.esign-signed{background:#e3f5ea;color:#1b6d3f}
+.esign-declined,.esign-voided,.esign-expired,.esign-auth_failed{background:#fdeaec;color:#9b1c27}
+.esign-draft,.esign-template,.esign-created{background:#f1f2f6;color:#4d5568}
+.esign-attention{color:#b4232f;font-weight:700}
+.esign-alert{background:#fff4e5;border:1px solid #f2c27c;color:#7a4a00;border-radius:8px;padding:10px 14px;margin:10px 0}
+.esign-integrity{color:#1b6d3f;font-size:12px;margin:0 0 8px}
+.esign-back{margin:4px 0 10px}
+.esign-detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.esign-detail-head h2{margin:0}
+.esign-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+.esign-actions input{min-height:38px;border:1px solid var(--line);border-radius:7px;padding:0 10px}
+.esign-danger{color:#b4232f!important}
+.esign-table td small,.esign-table td strong{display:block}
+.esign-table td small{color:var(--muted);font-size:11px}
+.esign-docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.esign-doc{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.esign-doc small{color:var(--muted)}
+.esign-reply{background:#fff;border:1px solid var(--line);border-left:4px solid #1475a5;border-radius:8px;padding:10px 14px;margin:0 0 8px;display:flex;flex-direction:column;gap:4px}
+.esign-reply-bounce{border-left-color:#b4232f}
+.esign-reply small{color:var(--muted)}
+.esign-snippet{white-space:pre-wrap;margin:4px 0;font-size:13px}
+.esign-history{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--line)}
+.esign-history li{position:relative;padding:4px 0 10px 12px}
+.esign-history li::before{content:"";position:absolute;left:-20px;top:9px;width:10px;height:10px;border-radius:50%;background:#1475a5}
+.esign-history strong{display:block;font-size:13px}
+.esign-history small{color:var(--muted);font-size:11px}
+.esign-dialog{max-width:640px}
+.esign-dialog .dialog-body{display:flex;flex-direction:column;gap:10px;max-height:72vh;overflow:auto}
+.esign-dialog-error{color:#b4232f;margin:0}
+.esign-correct{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.esign-correct legend{font-weight:700;padding:0 4px}
+/* editor */
+.esign-editor-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.esign-editor-top .esign-actions{margin:0}
+.esign-subject{flex:1;min-width:220px;min-height:42px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:16px;font-weight:600;color:var(--navy)}
+.esign-editor{display:grid;grid-template-columns:310px minmax(0,1fr);gap:16px;align-items:start;margin-top:10px}
+.esign-side{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px}
+.esign-panel{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.esign-panel summary{font-weight:700;color:var(--navy);cursor:pointer;font-size:13px}
+.esign-panel[open] summary{margin-bottom:8px}
+.esign-panel .field{margin-bottom:8px}
+.esign-panel .field label{font-size:11px}
+.esign-panel input:not([type=checkbox]),.esign-panel select,.esign-panel textarea,.esign-mailbox input:not([type=checkbox]),.esign-mailbox select,.esign-dialog input:not([type=checkbox]),.esign-dialog textarea,.esign-dialog select{width:100%;min-height:34px;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;font-size:13px}
+.esign-hint{color:var(--muted);font-size:12px;margin:0 0 8px}
+.esign-placing{background:#fff7d6;border-radius:6px;padding:6px 8px;font-size:12px;margin:8px 0 0}
+.esign-two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.esign-three{display:grid;grid-template-columns:2fr 1fr 1.2fr;gap:8px}
+.esign-recipient{border:1px solid var(--line);border-left:5px solid var(--who);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.esign-recipient.active{box-shadow:0 0 0 2px var(--who)}
+.esign-recipient-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.esign-who{flex:1;text-align:left;background:none;border:0;font-weight:700;color:var(--navy);cursor:pointer;padding:2px 0;font:inherit;font-weight:700}
+.esign-more summary{font-size:12px;color:var(--teal);cursor:pointer;margin:2px 0 6px}
+.esign-palette{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.esign-tool{border:1px solid var(--line);border-left:4px solid var(--who);background:#fff;border-radius:6px;padding:7px 8px;text-align:left;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink)}
+.esign-tool.on{background:var(--who);color:#fff}
+.esign-doc-line{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)}
+.esign-pages{min-width:0}
+.esign-doc-title{margin:6px 0;color:var(--muted);font-size:13px}
+.esign-page{position:relative;background:#fff;box-shadow:0 3px 14px #1a2b4d1f;margin:0 auto 16px;max-width:900px;user-select:none}
+.esign-page img{display:block;width:100%;height:100%;pointer-events:none}
+.esign-page.placing{cursor:crosshair}
+.esign-page-number{position:absolute;right:8px;bottom:-18px;font-size:10px;color:var(--muted)}
+.esign-field{position:absolute;border:2px solid var(--who);background:color-mix(in srgb,var(--who) 22%,transparent);border-radius:3px;cursor:move;display:flex;align-items:center;overflow:hidden;touch-action:none}
+.esign-field.selected{outline:2px dashed var(--navy);outline-offset:2px;z-index:2}
+.esign-field-label{font-size:10px;font-weight:700;color:#1d2b4f;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.esign-handle{position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;background:var(--who);cursor:nwse-resize}
+/* mailboxes */
+.esign-mailbox{margin:0 0 16px}
+.esign-mailbox-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.esign-mailbox-head h3{margin:0}
+.esign-mailbox-form{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.esign-notify{border:1px solid var(--line);border-radius:8px;padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px}
+.esign-notify legend{font-weight:700;font-size:12px;padding:0 4px}
+.esign-test-result{font-size:13px;margin:4px 0}
+.esign-test-result.good{color:#1b6d3f}.esign-test-result.bad{color:#b4232f}
+.esign-mailbox-status p{margin:4px 0}
+@media (max-width:1100px){.esign-editor{grid-template-columns:1fr}.esign-side{position:static;max-height:none}.esign-row-main{grid-template-columns:1fr}.esign-when{text-align:left}}
+@media (max-width:640px){.esign-two,.esign-three{grid-template-columns:1fr}.esign-row{flex-direction:column;align-items:stretch;padding:6px}}
+body[data-view=esign] .page-intro,body[data-view=mailboxes] .page-intro{display:none}
+body[data-view=esign] .sidebar-current,body[data-view=mailboxes] .sidebar-current{background:transparent;color:#64748b;box-shadow:none}
+body[data-view=esign] .sidebar-current .nav-dot,body[data-view=mailboxes] .sidebar-current .nav-dot{display:none}
+.esign-mailbox .esign-actions input{width:260px;flex:0 1 260px}
+.esign-table td small{word-break:break-all}

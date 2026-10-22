@@ -1,4 +1,96 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="csrf-token" content="__CSRF__"><title>Review and sign</title>
-<link rel="stylesheet" href="/sign.css"><script src="/sign.js" defer></script></head>
-<body><main id="sign-app" data-message-title="__MESSAGE_TITLE__" data-message-body="__MESSAGE_BODY__"></main></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="__CSRF__">
+  <meta name="color-scheme" content="light">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Review and sign</title>
+  <link rel="stylesheet" href="/sign.css">
+  <script src="/sign.js" defer></script>
+</head>
+<body>
+  <header class="sign-bar">
+    <div class="sign-brand"><strong id="company">TFSC Agreements</strong><span id="envelope-ref"></span></div>
+    <div class="sign-actions" id="top-actions" hidden>
+      <button type="button" class="btn btn-finish" id="finish" disabled>Finish</button>
+      <div class="menu">
+        <button type="button" class="btn btn-ghost" id="more" aria-haspopup="true" aria-expanded="false">Other actions ▾</button>
+        <div class="menu-list" id="more-menu" role="menu" hidden>
+          <button type="button" role="menuitem" id="finish-later">Finish later</button>
+          <button type="button" role="menuitem" id="download-original">Download PDF</button>
+          <button type="button" role="menuitem" id="print">Print</button>
+          <button type="button" role="menuitem" id="show-disclosure">View electronic record disclosure</button>
+          <button type="button" role="menuitem" id="decline-open" class="danger">Decline to sign</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="sign-app" data-message-title="__MESSAGE_TITLE__" data-message-body="__MESSAGE_BODY__">
+    <section class="notice-card" id="message-card" hidden><h1 id="message-title"></h1><p id="message-body"></p></section>
+    <div id="loading" class="loading">Loading your documents…</div>
+    <div class="alert" id="error" role="alert" hidden></div>
+
+    <section class="gate" id="code-gate" hidden>
+      <h1>Enter the access code</h1>
+      <p>The sender protected these documents with an access code. Use the code they gave you; it is not in the email.</p>
+      <form id="code-form"><label for="code">Access code</label><input id="code" autocomplete="one-time-code" maxlength="60" required><button class="btn btn-primary" type="submit">Validate</button></form>
+    </section>
+
+    <section class="banner" id="consent-banner" hidden>
+      <div class="banner-text"><strong>Please read the <button type="button" class="link" id="consent-read">Electronic Record and Signature Disclosure</button>.</strong>
+        <label class="check"><input type="checkbox" id="consent-check"> I agree to use electronic records and signatures.</label></div>
+      <button type="button" class="btn btn-primary" id="consent-continue" disabled>Continue</button>
+    </section>
+
+    <section class="banner banner-info" id="intro-banner" hidden>
+      <div class="banner-text"><strong id="intro-title"></strong><span id="intro-body"></span></div>
+      <button type="button" class="btn btn-primary" id="viewer-complete" hidden>Complete</button>
+    </section>
+
+    <details class="message" id="sender-message" hidden><summary><span id="sender-line"></span></summary><p id="sender-text"></p><p id="sender-note" class="note" hidden></p></details>
+
+    <section class="done-card" id="done-card" hidden>
+      <div class="done-mark" aria-hidden="true">✓</div>
+      <h1 id="done-title"></h1>
+      <p id="done-body"></p>
+      <div class="done-links" id="done-links"></div>
+    </section>
+
+    <div class="documents" id="documents"></div>
+    <button type="button" class="guide" id="guide" hidden>Start</button>
+  </main>
+
+  <dialog id="adopt-dialog" class="dialog dialog-wide" aria-labelledby="adopt-title">
+    <form method="dialog" id="adopt-form">
+      <header><h2 id="adopt-title">Adopt your signature</h2><p>Confirm your name, initials and signature.</p></header>
+      <div class="adopt-names"><label>Full name<input id="adopt-name" maxlength="150" required></label><label>Initials<input id="adopt-initials" maxlength="6" required></label></div>
+      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="type" aria-selected="true">Select style</button><button type="button" role="tab" data-tab="draw" aria-selected="false">Draw</button><button type="button" role="tab" data-tab="upload" aria-selected="false">Upload</button></div>
+      <div class="tab-panel" id="tab-type"><div id="styles" class="styles" role="radiogroup" aria-label="Signature style"></div></div>
+      <div class="tab-panel" id="tab-draw" hidden>
+        <div class="draw-grid"><div><span>Draw your signature</span><canvas id="draw-signature" width="600" height="180" aria-label="Draw your signature"></canvas><button type="button" class="link" data-clear="draw-signature">Clear</button></div>
+        <div><span>Draw your initials</span><canvas id="draw-initials" width="240" height="180" aria-label="Draw your initials"></canvas><button type="button" class="link" data-clear="draw-initials">Clear</button></div></div>
+      </div>
+      <div class="tab-panel" id="tab-upload" hidden><label>Signature image (PNG or JPEG)<input type="file" id="upload-signature" accept="image/png,image/jpeg"></label><img id="upload-preview" alt="" hidden><p class="hint">Your initials use the first style above.</p></div>
+      <p class="legal">By selecting Adopt and sign, I agree that the signature and initials will be the electronic representation of my signature and initials for all purposes when I (or my agent) use them on documents, including legally binding contracts.</p>
+      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="adopt-confirm" class="btn btn-primary">Adopt and sign</button></div>
+      <p class="alert" id="adopt-error" hidden></p>
+    </form>
+  </dialog>
+
+  <dialog id="decline-dialog" class="dialog" aria-labelledby="decline-title">
+    <form method="dialog">
+      <header><h2 id="decline-title">Decline to sign</h2><p>The sender will be notified and the documents will be closed. Tell them why.</p></header>
+      <label for="decline-reason">Reason for declining</label><textarea id="decline-reason" rows="4" maxlength="1000" required></textarea>
+      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="decline-confirm" class="btn btn-danger">Decline to sign</button></div>
+      <p class="alert" id="decline-error" hidden></p>
+    </form>
+  </dialog>
+
+  <dialog id="disclosure-dialog" class="dialog dialog-wide" aria-labelledby="disclosure-title">
+    <form method="dialog"><header><h2 id="disclosure-title">Electronic record and signature disclosure</h2></header><div id="disclosure-text" class="disclosure"></div><div class="dialog-actions"><button class="btn btn-primary">Close</button></div></form>
+  </dialog>
+</body>
+</html>
