@@ -49,6 +49,9 @@ spec:
             - { name: TFSC_OIDC_INTERNAL_URL, value: {{ $.Values.crm.ssoInternalUrl | quote }} }
             - { name: TFSC_OIDC_CLIENT_ID, value: {{ $.Values.agreements.oidcClientId | quote }} }
             - { name: TFSC_LOG_FORMAT, value: json }
+            # E-signature: TFSC_SECRET_KEY (encrypts company mailbox passwords) comes from the existing secret; reply
+            # attachments are scanned by the same clamd as CRM uploads.
+            - { name: TFSC_CLAMAV, value: {{ ternary (printf "%s-clamav:3310" $.Release.Name) $.Values.clamav.address $.Values.clamav.enabled | quote }} }
             - { name: TFSC_LOG_LEVEL, value: {{ $.Values.observability.logLevel | quote }} }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $.Values.observability.otlpEndpoint | quote }} }
             - { name: TFSC_SENTRY_DSN, value: {{ $.Values.observability.sentry.agreementsDsn | quote }} }

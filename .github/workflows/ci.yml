@@ -60,7 +60,9 @@ jobs:
         run: python -m pytest -q packages/bridge-contract/python --cov=tfsc_bridge --cov-fail-under=85
       - name: Agreements tests
         working-directory: apps/agreements
-        run: python -m pytest -q
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends poppler-utils
+          python -m pytest -q
 
   web:
     runs-on: ubuntu-latest

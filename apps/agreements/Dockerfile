@@ -4,7 +4,8 @@
 # with `python manage.py install-signatures`.
 FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TFSC_BRIDGE_SCHEMAS=/opt/packages/bridge-contract/schemas
-RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation2 fontconfig && rm -rf /var/lib/apt/lists/*
+# poppler-utils draws the page images used to place and sign e-signature fields.
+RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation2 fontconfig poppler-utils && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY apps/agreements/requirements.txt ./
 RUN --mount=type=secret,id=build_ca,required=false \

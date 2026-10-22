@@ -1,3 +1,31 @@
+# Version 4.1 changes for counsel (October 22, 2026)
+
+These changes were made at the owner's instruction. They are drafting and software changes, not legal advice.
+
+- **Governing law follows each company.** The approved BAA source named Georgia law for every company. Clause 6.9 now
+  uses the state in the "Governing law" box, which starts at the contracting company's state: Scribe Align Nevada,
+  Extended Health Services Missouri, 24-7 Consultancy Georgia. The same state governs the Services Agreement and the
+  NDA. The exact source sentence is replaced once; the rest of the BAA is unchanged. Confirm each company's choice
+  and any forum language with counsel. Drafts saved earlier keep the state they were saved with.
+- **Company signature date.** The company side of every execution block is now dated with the agreement's effective
+  date (the BAA uses its own effective date when it differs). The client's line is dated when the client signs; with
+  electronic signature the actual signing date is filled in automatically. The earlier note below recommended the
+  actual execution date for both parties; confirm that dating the company signature as of the effective date suits
+  the BAA's "as of the date last written below" wording.
+- **Mutual Nondisclosure Agreement (new).** `nda_content.py` is new drafting, not an approved client source: mutual
+  obligations, a purpose statement, a disclosure period and a separate survival period (both set per agreement),
+  return or destruction, legally required disclosure, PHI excluded and left to a BAA, equitable relief, the shared
+  governing state, and counterparts and electronic signatures. Approve it before first use.
+- **Electronic signature.** Clients sign in TFSC Agreements after accepting an Electronic Record and Signature
+  Disclosure (`esign.ersd`, new drafting covering paper copies, withdrawal of consent, scope, contact changes and
+  system requirements) intended for the ESIGN Act and UETA consumer-consent model. Signers are authenticated by the
+  emailed link and, optionally, an access code the sender gives them separately. Each completed envelope has a
+  Certificate of Completion with the audit trail (time, IP address, consent, signature adoption, signing) and SHA-256
+  fingerprints of every document; completed PDFs can be checked at /verify. There is no PKI digital seal from a
+  trusted certificate authority, and this is not a qualified electronic signature in the EU sense. Review the
+  disclosure text, the access-code practice for sensitive agreements, and record retention. Envelopes are for
+  business contracts; do not send PHI through them.
+
 # Version 3 source-preservation note
 
 The active BAA now uses the user's October 6 sample with Georgia law. The older

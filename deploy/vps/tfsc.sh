@@ -120,6 +120,8 @@ CRM_FIELD_KEY='$(head -c 32 /dev/urandom | base64)'
 BRIDGE_SECRET='$(hexsecret)'
 CRM_OIDC_CLIENT_SECRET='$(hexsecret)'
 TFSC_OIDC_CLIENT_SECRET='$(hexsecret)'
+# Encrypts the company mailbox passwords used for e-signature email. Changing it means entering them again.
+TFSC_SECRET_KEY='$(hexsecret)'
 CRM_KEYCLOAK_CLIENT_SECRET='$(hexsecret)'
 SMTP_HOST='${SMTP_HOST:-mailpit}'
 SMTP_PORT='${SMTP_PORT:-1025}'
@@ -145,6 +147,13 @@ EOF
   chmod 600 "$ENV_FILE"
   umask 022
   echo "Settings and generated secrets written to $ENV_FILE"
+}
+
+ensure_env_keys() {   # settings that later releases need: generated once, kept from then on
+  grep -q '^TFSC_SECRET_KEY=' "$ENV_FILE" && return 0
+  say "Adding TFSC_SECRET_KEY (encrypts the company mailbox passwords) to $ENV_FILE"
+  printf "# Added by tfsc.sh on %s: encrypts the company mailbox passwords for e-signature email.\nTFSC_SECRET_KEY='%s'\n" "$(date -u +%Y-%m-%dT%H:%MZ)" "$(hexsecret)" >> "$ENV_FILE"
+  echo "Save the updated $ENV_FILE in your password manager."
 }
 
 open_firewall() {
@@ -219,6 +228,7 @@ cmd_install() {
   need_docker
   if [ -f "$ENV_FILE" ]; then
     say "Keeping the existing settings in $ENV_FILE"
+    ensure_env_keys
   else
     write_env
   fi
@@ -234,6 +244,7 @@ cmd_install() {
   echo "  3. Run: sudo ./tfsc.sh link-admins"
   echo "  4. In the CRM: People & Teams > yourself > 'Send sign-in invitation'; follow the email."
   echo "  5. Run: sudo ./tfsc.sh finish-setup"
+  echo "  6. In Agreements: Company mailboxes > connect each company's compliance mailbox (START-HERE.md, step 5)."
   echo
   print_keys
   echo
@@ -294,6 +305,7 @@ cmd_signatures() {
 cmd_update() {
   [ "$(id -u)" = 0 ] || die "Run as root: sudo $0 update"
   [ -f "$ENV_FILE" ] || die "No settings in $ENV_FILE. Copy infra/compose/.env (and backup-offsite.env, if you use it) from the previous release folder first."
+  ensure_env_keys
   build_images
   say "Restarting with the new version (database changes are applied automatically)"
   dc up -d

@@ -1,3 +1,25 @@
+# Electronic signature (version 4.1, October 22, 2026)
+
+DocuSign-style signing inside TFSC Agreements (hosted edition: signers must reach the public address).
+
+| Module | What it does |
+|---|---|
+| `esign_db.py` | Tables: envelopes, documents (original and completed PDF), recipients, fields, hash-chained events, signing tokens and sessions; company mailboxes, mail outbox, inbound mail and its attachments (Alembic `0002_esign`). |
+| `esign.py` | Envelope lifecycle (draft, sent, completing, completed, declined, voided, expired, templates), routing order, the signer API under `/sign/r/<recipient>/`, completion, reminders and expiry (`sweep`), sender API under `/api/esign/`, `/verify`. |
+| `esign_pdf.py` | PDF inspection, page images (poppler `pdftoppm`), automatic placement on generated agreements (the two-column signature table), stamping completed fields (rotation-aware), the Certificate of Completion. |
+| `mailer.py` | Per-company mailbox settings (secrets sealed by `secretbox.py`), Google app password or service-account XOAUTH2, transactional outbox and SMTP sending with retries, email templates, IMAP polling (read-only) for replies and bounce notices, ClamAV scanning of reply attachments. |
+| `esign_worker.py` | The background loop in `worker.py`: send email, complete envelopes, reminders and expiry, read inboxes. |
+| `esign.js`, `esign.css` | Sender screens: Signatures folders, envelope details, field editor, Company mailboxes. |
+| `sign.html`, `sign.js`, `sign.css` | The recipient's signing page (no account). `verify.html`, `verify.js`: fingerprint check of a completed PDF. |
+
+Design rules: every email is queued in the same transaction as the change that causes it; envelope changes lock the
+envelope row (PostgreSQL `FOR UPDATE`, SQLite `BEGIN IMMEDIATE`), so parallel signers complete exactly once; signing
+links are random tokens stored only as SHA-256 hashes and removed from stored email copies once sent; a signing
+session cookie is scoped to one recipient's path; signature images are decoded and re-encoded server-side; everything
+read from an inbox is data and is shown as text. Tests: `tests/test_esign.py` (lifecycle, permissions, failures,
+mail, PDF) with a fake SMTP server in `tests/esign_support.py`; they pass on SQLite and PostgreSQL
+(`TEST_DATABASE_URL=postgresql+psycopg://.../tfsc_test`).
+
 # Alpha Bridge Compliance
 
 Version 3.0.1: all companies now use automatic PAGE and NUMPAGES fields, displayed as Page X of Y. Verified every page of all six example PDFs and refreshed total-page caches in the DOCX files.
@@ -178,9 +200,8 @@ If changing the template, update the hash only after inspecting a fresh render.
    encrypted persistence, audit controls, tenant isolation and a suitable document
    conversion service before exposing any endpoint beyond loopback.
 
-There is no e-signature integration, email sending, scheduled legal update feed or
-automatic PDF regeneration after a user manually edits the Word output. Those
-features should be treated as separate future work.
+Electronic signature and email were added in version 4.1 (see "Electronic signature" at the top). There is no
+scheduled legal update feed or automatic PDF regeneration after a user manually edits the Word output.
 
 ## Package contents and privacy
 

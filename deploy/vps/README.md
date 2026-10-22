@@ -1,8 +1,8 @@
 # TFSC platform on one server (VPS)
 
-This package installs the whole platform on one Linux server with Docker: the Sales CRM, TFSC Agreements, company
-sign-in (SSO with Keycloak), file storage with a virus scan of every upload, and encrypted backups with a nightly
-restore test. HTTPS certificates are obtained and renewed automatically (Caddy with Let's Encrypt).
+This package installs the whole platform on one Linux server with Docker: the Sales CRM, TFSC Agreements (with
+electronic signature, sent from each company's compliance mailbox), company sign-in (SSO with Keycloak), file storage
+with a virus scan of every upload, and encrypted backups with a nightly restore test. HTTPS certificates are obtained and renewed automatically (Caddy with Let's Encrypt).
 
 ## What you need
 
@@ -13,6 +13,7 @@ restore test. HTTPS certificates are obtained and renewed automatically (Caddy w
 | Domain | A domain you control, with four addresses pointing at the server (step 1) |
 | Email | An SMTP account to send invitations and password resets (host, port, user, password or app key, sender address) |
 | Safe place | A password manager for the generated secrets |
+| Mailboxes | The three compliance mailboxes (Google Workspace): compliance@scribealign.com, compliance@extendedhealthservices.us, compliance@24-7consultancyllc.com, each with an app password (step 5) |
 | Later | The signature images for issued agreements; optionally an S3 bucket elsewhere for off-site backup copies |
 
 ## 1. Point four addresses at the server
@@ -28,6 +29,8 @@ At your DNS provider, create four **A records** with the server's public IP addr
 
 If your provider has a firewall in its control panel, allow incoming TCP **22, 80 and 443**. The installer opens 80
 and 443 in `ufw` when it is active. Everything else stays closed: the apps listen on the server itself only.
+Outgoing connections to `smtp.gmail.com:587` and `imap.gmail.com:993` must be allowed for the compliance mailboxes
+(some providers block outgoing mail ports on new accounts until you ask them to open them).
 
 ## 2. Copy this ZIP to the server and unpack it
 
@@ -71,7 +74,33 @@ Unattended install (no questions): `DOMAIN=example.com SMTP_HOST=smtp.example.co
 Then add your team in **People & Teams** (each person gets an invitation email) and, on their profile under **Agreements access**,
 choose who may use Agreements. The setup keys are shown again with `./tfsc.sh setup-keys` until they are used.
 
-## 5. Signature images
+## 5. Connect the company compliance mailboxes
+
+Agreements sends signing requests, reminders and completed documents from each company's compliance mailbox, and reads
+that inbox (read-only) for client replies and bounce notices, which appear on the envelope. All three domains use
+Google Workspace. Do this once for each of compliance@scribealign.com, compliance@extendedhealthservices.us and
+compliance@24-7consultancyllc.com:
+
+1. Sign in to Google as that mailbox. Under Google Account > Security, turn on **2-Step Verification**.
+2. Open https://myaccount.google.com/apppasswords, create an app password named "TFSC Agreements" and copy the
+   16 characters.
+3. In Agreements: **Company mailboxes** > the company > "Send from this company's own mailbox", sign-in method
+   **App password**, paste it, keep "Read replies and bounce notices" on, and **Save**. The server settings for
+   Google Workspace are filled in.
+4. Select **Send test email**, then **Check inbox**. Both must report success; the message shows the real reason if not.
+5. If the company signs electronically (instead of the saved signature image), enter the signer's email
+   (Naeem Abbas or Danish Ather) in "Company signer's email".
+
+If your Google Workspace administrator has turned off app passwords, use **Google Workspace service account** instead:
+create a service account and a JSON key in Google Cloud, then in the Google Admin console (Security > Access and data
+control > API controls > Domain-wide delegation) add its client ID with the scope `https://mail.google.com/`, and
+upload the JSON key on the Company mailboxes screen.
+
+Sending: generate the agreements, then select **Send for signature**. The client's signature, name, title and date
+fields are placed for you; add initials, more recipients or other fields, then **Send**. Follow progress under
+**Signatures**. Google limits each Workspace mailbox to about 2,000 emails a day.
+
+## 6. Signature images
 
 Put the four files (`Naeem Abbas.png`, `Naeem Abbas.json`, `Danish Ather.png`, `Danish Ather.json`) in a folder on the
 server, then:
@@ -82,7 +111,7 @@ sudo ./tfsc.sh signatures /root/signatures
 
 Delete that folder after you have checked one issued agreement. The images are never part of this package.
 
-## 6. Backups
+## 7. Backups
 
 - Automatic: every night at 2:00 in your time zone (full backup weekly, changes daily, 14 days kept), every database
   change within a minute in between, all encrypted. After each backup a restore test rebuilds a copy and checks it.
@@ -122,11 +151,14 @@ Data lives in Docker volumes and is kept; database changes are applied automatic
 - **Other settings** in `infra/compose/.env`: edit, then `sudo ./tfsc.sh start`.
 - **Never change** `POSTGRES_PASSWORD`, `BACKUP_PASSPHRASE`, `CRM_FIELD_KEY` or `CRM_PHONE_KEY_SECRET` after the install:
   the database and the encrypted fields depend on them.
+- `TFSC_SECRET_KEY` encrypts the company mailbox passwords. Releases from October 2026 add it on `update` if it is
+  missing. If it changes, enter the mailbox passwords again under Company mailboxes.
 
 ## When something is wrong
 
 | Symptom | Check |
 |---|---|
+| A company mailbox shows a problem, or signing emails stay "Retrying" | Agreements > Company mailboxes > Send test email shows the reason (wrong app password, 2-Step Verification off, outgoing port 587 blocked by the provider) |
 | An address shows `NOT YET` or the browser warns about the certificate | DNS points at this server (`getent hosts crm.example.com`), ports 80/443 open at the provider; `./tfsc.sh logs edge` |
 | Invitation or reset emails do not arrive | SMTP settings (see above); `./tfsc.sh logs keycloak`; the spam folder |
 | Pages are slow or services restart | memory: `docker stats --no-stream`; 8 GB is the minimum |
@@ -147,7 +179,13 @@ instead of a real mail server:
 - `signatures` (with placeholder files), `backup`, `status`, and `update` from one release to the next with the steps
   above: data kept, everyone still signs in.
 
-Not tested from here: real Let's Encrypt certificates (they need public DNS pointing at a real server), a real mail
+Electronic signature was tested on 2026-10-22 against a test mail server (GreenMail, SMTP and IMAP) and in a browser:
+sending from the company mailbox, signing in order (client, then company signer on a phone), the completed documents
+and Certificate of Completion emailed to everyone, a client's emailed reply with a PDF attached to the envelope, a
+bounce marking the recipient undeliverable, and correcting the address.
+
+Not tested from here: signing in to Gmail itself with an app password or a service account (use Send test email and
+Check inbox on your server), real Let's Encrypt certificates (they need public DNS pointing at a real server), a real mail
 provider, Ubuntu itself and the installer's Docker installation step (Docker was already present), a specific hosting
 provider's firewall, and load on a server of the recommended size (the measured load
 results are in `docs/PERFORMANCE.md`).

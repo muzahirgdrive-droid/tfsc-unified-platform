@@ -103,7 +103,7 @@ EOF
     --from-literal=CRM_METRICS_TOKEN="$METRICS" --from-literal=CRM_S3_ACCESS_KEY=tfsc-crm --from-literal=CRM_S3_SECRET_KEY="$S3SK" | k apply -f - >/dev/null
   k -n "$NS" create secret generic tfsc-agreements --dry-run=client -o yaml \
     --from-literal=DATABASE_URL="postgresql+psycopg://tfsc:$PGPW@postgres.tfsc-deps.svc:5432/tfsc" \
-    --from-literal=TFSC_CRM_SHARED_SECRET="$BRIDGE" --from-literal=TFSC_OIDC_CLIENT_SECRET="$(rnd)" | k apply -f - >/dev/null
+    --from-literal=TFSC_CRM_SHARED_SECRET="$BRIDGE" --from-literal=TFSC_OIDC_CLIENT_SECRET="$(rnd)" --from-literal=TFSC_SECRET_KEY="$(rnd)" | k apply -f - >/dev/null
   k -n "$NS" create secret tls tfsc-tls --cert "$STATE/tls.crt" --key "$STATE/tls.key" --dry-run=client -o yaml | k apply -f - >/dev/null
 
   say "test-only dependencies"
