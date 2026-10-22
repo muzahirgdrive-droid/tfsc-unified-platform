@@ -171,7 +171,7 @@ class HandoffIn(Model):
     title: str = Field(default='', max_length=200)
     effective_date: date
     entity: Literal['SCRIBE ALIGN LLC', 'EXTENDED HEALTH SERVICES INC.', '24-7 CONSULTANCY LLC']
-    document_types: list[Literal['baa', 'services']] = Field(default=['baa', 'services'], min_length=1)
+    document_types: list[Literal['baa', 'services', 'nda']] = Field(default=['baa', 'services'], min_length=1)
 
 
 class HandoffOut(Out):

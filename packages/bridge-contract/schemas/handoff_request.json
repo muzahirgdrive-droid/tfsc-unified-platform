@@ -95,7 +95,8 @@
     "type": "string",
     "enum": [
      "baa",
-     "services"
+     "services",
+     "nda"
     ]
    }
   },

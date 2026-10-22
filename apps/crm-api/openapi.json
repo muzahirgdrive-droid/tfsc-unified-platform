@@ -2777,7 +2777,8 @@
       "items": {
        "enum": [
         "baa",
-        "services"
+        "services",
+        "nda"
        ],
        "type": "string"
       },

@@ -22,14 +22,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from revised_content import CATALOG, build_baa, build_services
+from nda_content import build_nda
 from signature_store import save_signature
 from entities import ENTITIES, get_entity, signature_path
 from document_engine import generate_docx, convert_to_pdf
 
 APP = Path(__file__).resolve().parent
 VERSION = '3.1.0'
+# The governing state defaults to the contracting company's own state (entities.py) and applies to every agreement.
 DEFAULTS = dict(provider_address='9436 W. Lake Mead Blvd Ste 5 PMB 1034, Las Vegas, NV 89134',
-                provider_email='', governing_state='Nevada', notice_days=30, payment_days=15, cure_days=30)
+                provider_email='', notice_days=30, payment_days=15, cure_days=30,
+                nda_purpose='evaluating, negotiating and performing a business relationship for healthcare administrative, revenue cycle, credentialing, staffing and related business services',
+                nda_term_years=2, nda_survival_years=3)
+DOCUMENT_TITLES = {'baa': 'Business Associate Agreement', 'services': 'Services Agreement', 'nda': 'Mutual Nondisclosure Agreement'}
+DOCUMENT_STEMS = {'baa': 'BAA', 'services': 'Services', 'nda': 'NDA'}
 TOKEN = secrets.token_urlsafe(32)
 FILES = {}
 GENERATE_LOCK = threading.Lock()
@@ -133,9 +139,11 @@ def validate(payload, draft=False):
         ('client_signatory','Client signatory',False,150),('client_title','Client title',False,150),
         ('client_email','Client notice email',False,200), ('provider_address','Scribe Align address',not draft,500),
         ('provider_email','Scribe Align notice email',False,200),('governing_state','Governing state',not draft,50),
-        ('special_terms','Additional agreed terms',False,6000)):
-        default=entity['address'] if field=='provider_address' else entity['email'] if field=='provider_email' else DEFAULTS.get(field,'')
+        ('special_terms','Additional agreed terms',False,6000),('nda_purpose','NDA purpose',False,600)):
+        default={'provider_address':entity['address'],'provider_email':entity['email'],'governing_state':entity['governing_state']}.get(field,DEFAULTS.get(field,''))
         data[field] = clean(payload.get(field, default), label, required, limit)
+    data['governing_state'] = next((x for x in STATES if x.casefold()==data['governing_state'].casefold()), data['governing_state'])
+    data['nda_purpose'] = data['nda_purpose'] or DEFAULTS['nda_purpose']
     for key in ('client_email','provider_email'):
         if data[key] and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', data[key]):
             raise ValueError('Enter a valid notice email address or leave it blank.')
@@ -143,11 +151,13 @@ def validate(payload, draft=False):
         raise ValueError('Use the full name of a US state or District of Columbia for governing law.')
     for field in ('notice_days','payment_days','cure_days'):
         data[field] = int(number(payload.get(field), field.replace('_',' '), default=DEFAULTS[field],minimum=1,maximum=180))
+    for field,label in (('nda_term_years','NDA term'),('nda_survival_years','NDA confidentiality period')):
+        data[field] = int(number(payload.get(field), label+' (years)', default=DEFAULTS[field],minimum=1,maximum=10))
     data['effective_date'] = date_value(payload.get('effective_date'), 'Effective date')
     data['baa_effective_date'] = date_value(payload.get('baa_effective_date') or data['effective_date'], 'BAA effective date')
     types = payload.get('document_types', [])
-    if not isinstance(types,list) or any(x not in ('baa','services') for x in types):
-        raise ValueError('Select Business Associate Agreement, Services Agreement, or both.')
+    if not isinstance(types,list) or any(x not in DOCUMENT_TITLES for x in types):
+        raise ValueError('Select the Business Associate Agreement, the Services Agreement, the Mutual NDA, or a combination.')
     data['document_types'] = list(dict.fromkeys(types))
     if not data['document_types'] and not draft:
         raise ValueError('Select at least one agreement to generate.')
@@ -210,9 +220,8 @@ def build_documents(data, contract_id):
             if meta.exists(): current['_signature_crop']=json.loads(meta.read_text()).get('crop')
         if kind=='baa':
             current['effective_date'] = data['baa_effective_date']
-        builder = build_baa if kind=='baa' else build_services
-        documents.append(dict(type=kind,title='Business Associate Agreement' if kind=='baa' else 'Services Agreement',
-                              blocks=builder(current,contract_id),data=current))
+        builder = {'baa':build_baa,'services':build_services,'nda':build_nda}[kind]
+        documents.append(dict(type=kind,title=DOCUMENT_TITLES[kind],blocks=builder(current,contract_id),data=current))
     return documents
 
 
@@ -246,7 +255,7 @@ def generate(data):
         for doc in documents:
             subfolder = temp_dir/doc['title']
             subfolder.mkdir()
-            stem = ('BAA' if doc['type']=='baa' else 'Services')+' '+contract_id
+            stem = DOCUMENT_STEMS[doc['type']]+' '+contract_id
             docx_path = subfolder/(stem+'.docx')
             pdf_path = subfolder/(stem+'.pdf')
             generate_docx(doc['blocks'],doc['data'],contract_id,docx_path)
@@ -318,8 +327,8 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/health':
             return self.respond(dict(app='TFSC Compliance',version=VERSION,app_path=str(APP)))
         if path=='/api/config':
-            public_entities=[{k:e[k] for k in ('name','short','key','signatory','title','address','email')} | {'signature_available':signature_path(DATA_DIR,e['name']).is_file()} for e in ENTITIES.values()]
-            return self.respond(dict(catalog=CATALOG,defaults=DEFAULTS,entities=public_entities,output_root=str(OUTPUT_ROOT),version=VERSION))
+            public_entities=[{k:e[k] for k in ('name','short','key','signatory','title','address','email','governing_state')} | {'signature_available':signature_path(DATA_DIR,e['name']).is_file()} for e in ENTITIES.values()]
+            return self.respond(dict(catalog=CATALOG,defaults=DEFAULTS,states=sorted(STATES),entities=public_entities,output_root=str(OUTPUT_ROOT),version=VERSION))
         if path=='/api/clients':
             clients=[]
             for f in (DATA_DIR/'clients').glob('*.json'):

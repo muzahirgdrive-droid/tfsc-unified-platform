@@ -5,7 +5,7 @@
   const form = $("contract-form");
   const state = {config: null, catalog: [], selected: new Map(), custom: [], clientId: "", filter: "all", busy: false, dirty: false, customCounter: 0, disabledControls: new Map()};
   const modelLabels = {percentage: "Percentage of net collections", fte: "FTE per month", pte: "PTE per month", unit: "Per completed unit", fixed: "Fixed monthly fee", consultancy: "Monthly consultancy fee", one_time: "One project invoice", two_installments: "Two project installments"};
-  const plainFields = ["client_name", "address", "client_signatory", "client_title", "client_email", "effective_date", "baa_effective_date", "provider_address", "provider_email", "governing_state", "notice_days", "payment_days", "cure_days", "special_terms", "output_root"];
+  const plainFields = ["client_name", "address", "client_signatory", "client_title", "client_email", "effective_date", "baa_effective_date", "provider_address", "provider_email", "governing_state", "notice_days", "payment_days", "cure_days", "special_terms", "nda_purpose", "nda_term_years", "nda_survival_years", "output_root"];
   const serviceHints = {
     medical_billing: "Identify providers, payers, practice systems and dates of service. Define any excluded accounts or collections.",
     wc_collection: "Identify assigned workers’ compensation accounts, jurisdictions and retained counsel, if applicable.",
@@ -306,6 +306,8 @@
     if (["fte", "pte"].includes(item.model)) return `${moneyCents(priceCents(item.rate, item.quantity))} / mo`;
     return `${moneyCents(priceCents(item.rate, item.quantity))} total`;
   }
+  function entityState() { return (state.config?.entities || []).find(e => e.name === $("entity").value)?.governing_state || ""; }
+  function chosenDocuments() { return [["generate-baa", "baa", "BAA"], ["generate-services", "services", "Services"], ["generate-nda", "nda", "NDA"]].filter(([id]) => $(id).checked); }
   function updateSummary() {
     const useBaa = $("generate-baa").checked, useServices = $("generate-services").checked;
     const selected = useServices ? allSelected() : [];
@@ -314,12 +316,14 @@
     $("folder-client").textContent = $("client_name").value.trim() || "Client legal name";
     $("summary-date").textContent = dateLabel($("effective_date").value);
     if (useBaa && $("separate-baa-date").checked) $("summary-date").textContent += ` · BAA ${dateLabel($("baa_effective_date").value)}`;
-    $("summary-documents").textContent = useBaa && useServices ? "BAA + Services" : useBaa ? "BAA only" : useServices ? "Services only" : "None selected";
+    const chosen = chosenDocuments();
+    $("summary-documents").textContent = !chosen.length ? "None selected" : chosen.length === 1 ? `${chosen[0][2]} only` : chosen.map(x => x[2]).join(" + ");
     $("summary-count").textContent = String(selected.length);
     $("selected-count").textContent = `${state.selected.size + state.custom.length} selected`;
-    $("generate-label").textContent = useBaa && useServices ? "Generate agreements" : "Generate agreement";
+    $("generate-label").textContent = chosen.length > 1 ? "Generate agreements" : "Generate agreement";
     $("folder-baa").hidden = !useBaa;
     $("folder-services").hidden = !useServices;
+    $("folder-nda").hidden = !$("generate-nda").checked;
     const list = $("summary-service-list");
     list.replaceChildren();
     selected.forEach(item => { const row = el("div", "summary-service"); row.append(el("span", "", item.name || "Custom service"), el("strong", "", shortPrice(item))); list.append(row); });
@@ -343,6 +347,8 @@
     $("services-panel").hidden = !serviceOn;
     $("services-panel").querySelectorAll("input,select,textarea,button").forEach(control => { control.disabled = !serviceOn; });
     $("baa-date-options").hidden = !$("generate-baa").checked;
+    $("nda-options").hidden = !$("generate-nda").checked;
+    $("nda-options").querySelectorAll("input,textarea").forEach(control => { control.disabled = !$("generate-nda").checked; });
     const separate = $("generate-baa").checked && $("separate-baa-date").checked;
     $("baa-date-field").hidden = !separate;
     $("baa_effective_date").required = separate;
@@ -356,6 +362,7 @@
     data.document_types = [];
     if ($("generate-baa").checked) data.document_types.push("baa");
     if ($("generate-services").checked) data.document_types.push("services");
+    if ($("generate-nda").checked) data.document_types.push("nda");
     data.services = [...state.selected.values()].map(item => ({...item}));
     data.include_signature = $("include-signature").checked;
     data.custom_services = state.custom.map(({_key, ...item}) => item);
@@ -367,7 +374,7 @@
       return true;
     }
     form.classList.add("was-validated");
-    if (!$('generate-baa').checked && !$('generate-services').checked) { announce("Select the Business Associate Agreement, the Services Agreement, or both.", true); window.studioNavigate?.("documents-panel"); $("generate-baa").focus(); return false; }
+    if (!chosenDocuments().length) { announce("Select the Business Associate Agreement, the Services Agreement, the Mutual NDA, or a combination.", true); window.studioNavigate?.("documents-panel"); $("generate-baa").focus(); return false; }
     if ($("generate-services").checked && !state.selected.size && !state.custom.length) { announce("Select at least one service for the Services Agreement.", true); window.studioNavigate?.("services-panel"); $("services-panel").scrollIntoView({behavior: "smooth", block: "start"}); $("service-search").focus({preventScroll: true}); return false; }
     if (!form.checkValidity()) {
       const invalid = [...form.querySelectorAll("input,select,textarea")].find(control => !control.disabled && !control.validity.valid);
@@ -415,6 +422,7 @@
     $("include-signature").checked = data.include_signature !== false;
     window.updateCompanyEntity?.(false);
     plainFields.forEach(key => { if (data[key] !== undefined) $(key).value = data[key]; });
+    if (!$("governing_state").value.trim()) $("governing_state").value = entityState();
     state.clientId = data.id || "";
     state.selected.clear();
     state.custom = [];
@@ -425,6 +433,7 @@
     const types = resetServices ? ["services"] : data.document_types || ["baa", "services"];
     $("generate-baa").checked = types.includes("baa");
     $("generate-services").checked = types.includes("services");
+    $("generate-nda").checked = types.includes("nda");
     if (resetServices) { $("effective_date").value = today(); $("baa_effective_date").value = today(); $("special_terms").value = ""; }
     $("separate-baa-date").checked = !!data.baa_effective_date && data.baa_effective_date !== data.effective_date && !resetServices;
     form.classList.remove("was-validated");
@@ -437,7 +446,7 @@
     const defaults = state.config.defaults || {};
     const output = $("output_root").value || state.config.output_root;
     form.reset();
-    const data = {...defaults, client_name: "", address: "", client_signatory: "", client_title: "", client_email: "", effective_date: today(), baa_effective_date: today(), special_terms: "", output_root: output, document_types: ["baa", "services"]};
+    const data = {...defaults, client_name: "", address: "", client_signatory: "", client_title: "", client_email: "", effective_date: today(), baa_effective_date: today(), special_terms: "", governing_state: entityState(), output_root: output, document_types: ["baa", "services"]};
     applyClient(data);
     $("saved-client").value = "";
     clearMessages();
@@ -457,7 +466,7 @@
       link.href = file.url;
       link.target = "_blank";
       link.rel = "noopener";
-      const kind = file.agreement === "baa" || /Business Associate/i.test(file.name) ? "Business Associate Agreement" : "Services Agreement";
+      const kind = {baa: "Business Associate Agreement", services: "Services Agreement", nda: "Mutual NDA"}[file.agreement] || (/Business Associate/i.test(file.name) ? "Business Associate Agreement" : "Services Agreement");
       link.append(el("span", "", String(file.type || "FILE").toUpperCase()), el("strong", "", kind));
       link.setAttribute("aria-label", `Open ${kind} ${file.type || "file"}`);
       files.append(link);
@@ -467,7 +476,7 @@
     (result.warnings || []).forEach(warning => warnings.append(el("p", "result-warning", warning)));
   }
 
-  function previewBlocks(blocks) {
+  function previewBlocks(blocks, effective) {
     const container = el("div");
     (blocks || []).forEach(block => {
       if (block.type === "table") {
@@ -485,7 +494,7 @@
           headings.append(el("th", "", $("entity").value), el("th", "", $("client_name").value));
           head.append(headings);
           const body = el("tbody"), row = el("tr");
-          row.append(el("td", "", `Signature: ____________________\n${$("signatory-name").textContent}\n${$("signatory-title").textContent.split(" · ")[0]}\nDate: ____________________`), el("td", "", `Signature: ____________________\nName: ${$("client_signatory").value || "____________________"}\nTitle: ${$("client_title").value || "____________________"}\nDate: ____________________`));
+          row.append(el("td", "", `Signature: ____________________\n${$("signatory-name").textContent}\n${$("signatory-title").textContent.split(" · ")[0]}\nDate: ${dateLabel(effective)}`), el("td", "", `Signature: ____________________\nName: ${$("client_signatory").value || "____________________"}\nTitle: ${$("client_title").value || "____________________"}\nDate: ____________________`));
           body.append(row); signatures.append(head, body); container.append(signatures);
         }
       } else if (["bullet", "li"].includes(block.type)) {
@@ -513,7 +522,7 @@
       tab.tabIndex = index === 0 ? 0 : -1;
       const select = () => {
         [...tabs.children].forEach(button => { button.setAttribute("aria-selected", String(button === tab)); button.tabIndex = button === tab ? 0 : -1; });
-        content.replaceChildren(previewBlocks(doc.blocks));
+        content.replaceChildren(previewBlocks(doc.blocks, doc.type === "baa" && $("separate-baa-date").checked ? $("baa_effective_date").value : $("effective_date").value));
         content.scrollTop = 0;
         content.setAttribute("aria-labelledby", tab.id);
       };
@@ -584,7 +593,7 @@
   $("choose-folder").addEventListener("click", () => window.chooseOutputFolder());
   $("today-button").addEventListener("click", () => { $("effective_date").value = today(); markDirty(); updateSummary(); });
   $("baa-today-button").addEventListener("click", () => { $("baa_effective_date").value = today(); markDirty(); updateSummary(); });
-  ["generate-baa", "generate-services", "separate-baa-date"].forEach(id => $(id).addEventListener("change", documentSelectionChanged));
+  ["generate-baa", "generate-services", "generate-nda", "separate-baa-date"].forEach(id => $(id).addEventListener("change", documentSelectionChanged));
   $("service-search").addEventListener("input", renderCatalog);
   document.querySelectorAll("[data-filter]").forEach(button => button.addEventListener("click", () => {
     state.filter = button.dataset.filter;
@@ -615,6 +624,8 @@
       config.entities.forEach(entity=>{const option=el("option","",entity.name);option.value=entity.name;companySelect.append(option);});
       window.portalReady?.(config);
       Object.entries(config.defaults || {}).forEach(([key, value]) => { if ($(key)) $(key).value = value; });
+      (config.states || []).forEach(name => { const option = el("option"); option.value = name; $("us-states").append(option); });
+      $("governing_state").value = entityState();
       $("output_root").value = config.output_root || "";
       $("effective_date").value = today(); $("baa_effective_date").value = today();
       $("app-version").textContent = `Local edition · v${config.version || "1.0"}`;

@@ -107,7 +107,8 @@ def _signature(text, data, contract_id, final_clause='', source_exact=False):
         [company_signature,'Signature: __________________________'],
         ['Name: '+entity['signatory'],'Name: '+(_text(data.get('client_signatory')) or '____________________________')],
         ['Title: '+entity['title'],'Title: '+(_text(data.get('client_title')) or '_____________________________')],
-        ['Date: ______________________________','Date: ______________________________'],
+        # The company signs as of the effective date; the client's line is dated when the client signs.
+        ['Date: '+date,'Date: ______________________________'],
     ],signature=True,width=entity['width'])
     signing_p=_p(company_signature,'SASignature',keep=True,align='left')
     line='<w:p><w:pPr><w:pStyle w:val="SASignature"/><w:keepNext/><w:spacing w:before="660" w:after="140"/>'+f'<w:tabs><w:tab w:val="left" w:leader="underscore" w:pos="{entity["width"]//2-350}"/></w:tabs></w:pPr>'+_run('Signature: ')+'<w:r><w:tab/></w:r>'

@@ -161,7 +161,7 @@ function Preflight({ lead, onClose, onDone }: { lead: L; onClose: () => void; on
       {f('legal_name', 'Practice legal name')}{f('address', 'Address')}{f('email', 'Notice email', 'email')}{f('phone', 'Phone')}{f('signatory', 'Signatory')}{f('title', 'Title')}{f('effective_date', 'Effective date', 'date')}
       <div><label className="block"><span className="label">TFSC contracting company</span><select className="input" value={(v.entity) ?? p.suggested_entity ?? ''} onChange={(e) => setV({ ...v, entity: e.target.value })}><option value="">Choose…</option>{p.entity_options.map((o) => <option key={o}>{o}</option>)}</select></label>
         {p.must_pick_reason && <p className="mt-1 text-xs text-warn">{p.must_pick_reason}</p>}</div>
-      <div className="sm:col-span-2 flex flex-wrap gap-4 text-sm"><span className="label">Documents</span>{[['baa', 'Business Associate Agreement'], ['services', 'Services Agreement']].map(([k, l]) => (
+      <div className="sm:col-span-2 flex flex-wrap gap-4 text-sm"><span className="label">Documents</span>{[['baa', 'Business Associate Agreement'], ['services', 'Services Agreement'], ['nda', 'Mutual NDA']].map(([k, l]) => (
         <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={docs.includes(k!)} onChange={(e) => setV({ ...v, document_types: e.target.checked ? [...docs, k!] : docs.filter((d) => d !== k) })} />{l}</label>))}</div>
       <p className="sm:col-span-2 text-xs text-muted">Domain: {p.domain ?? '—'} · Project: {p.project_id ?? '—'}{p.project_owner ? ` (owner ${p.project_owner})` : ''}. Services, pricing and terms are completed in TFSC; an independent reviewer must approve before anything is issued.</p>
     </div>}

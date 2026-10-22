@@ -61,7 +61,7 @@
     $('signatory-title').textContent=`${entry.title} · ${entry.name}`;
     document.querySelector('.summary-entity').textContent=entry.name;
     $('signature-status').textContent=entry.signature_available ? `${entry.signatory}'s signature is saved and ready to use.` : `Upload ${entry.signatory}'s authorized signature image.`;
-    if(resetAddress){ $('provider_address').value=entry.address; $('provider_email').value=entry.email; }
+    if(resetAddress){ $('provider_address').value=entry.address; $('provider_email').value=entry.email; $('governing_state').value=entry.governing_state||''; $('governing_state').dispatchEvent(new Event('input',{bubbles:true})); }
   };
   $('entity').addEventListener('change',()=>window.updateCompanyEntity(true));
   fetch('/api/config').then(r=>r.json()).then(c=>{entities=c.entities||[];if($('catalog-total')) $('catalog-total').textContent=String((c.catalog||[]).length);window.updateCompanyEntity(false);}).catch(()=>{});

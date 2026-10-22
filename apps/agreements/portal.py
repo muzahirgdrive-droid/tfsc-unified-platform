@@ -162,8 +162,8 @@ def login_page():return FileResponse(db.APP/'login.html')
 @app.get('/api/config')
 def config(request:Request):
     with db.engine.connect() as c:a=sec.get_actor(request,c)
-    entities=[{k:e[k] for k in ('name','short','key','signatory','title','address','email')} | {'signature_available':signature_path(db.DATA,e['name']).is_file()} for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
-    return dict(catalog=legacy.CATALOG,defaults=legacy.DEFAULTS,entities=entities,output_root=str(db.OUTPUT),version=VERSION,
+    entities=[{k:e[k] for k in ('name','short','key','signatory','title','address','email','governing_state')} | {'signature_available':signature_path(db.DATA,e['name']).is_file()} for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
+    return dict(catalog=legacy.CATALOG,defaults=legacy.DEFAULTS,states=sorted(legacy.STATES),entities=entities,output_root=str(db.OUTPUT),version=VERSION,
         user=sec.public(a),local=db.LOCAL,can_manage_signatures=a['role']=='super_admin')
 
 def client_allowed(c,a,id):

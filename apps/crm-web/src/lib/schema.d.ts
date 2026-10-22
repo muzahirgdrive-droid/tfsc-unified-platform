@@ -2648,7 +2648,7 @@ export interface components {
              *       "services"
              *     ]
              */
-            document_types: ("baa" | "services")[];
+            document_types: ("baa" | "services" | "nda")[];
             /**
              * Effective Date
              * Format: date

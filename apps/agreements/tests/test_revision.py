@@ -48,10 +48,11 @@ class Revision(unittest.TestCase):
         result=content.build_baa(d,'TEST')
         self.assertEqual(len(result),len(approved['blocks']))
         for actual,original in zip(result,approved['blocks']):
-            expected=original['text'].replace('PRACTICE NAME',d['client_name']).replace('10/6/2026','1/2/2027')
+            expected=original['text'].replace('PRACTICE NAME',d['client_name']).replace('10/6/2026','1/2/2027').replace('the State of Georgia','the State of Nevada')
             self.assertEqual(actual['text'],expected)
             if actual.get('runs'):self.assertEqual(''.join(x['text'] for x in actual['runs']).strip(),expected)
-        self.assertIn('Georgia',json.dumps(result))
+        # The approved source's Georgia clause follows the governing state chosen for the package.
+        self.assertNotIn('Georgia',json.dumps(result));self.assertIn('the laws of the State of Nevada, without regard',json.dumps(result))
 
     def test_entity_and_signature_identity(self):
         for name,entity in ENTITIES.items():

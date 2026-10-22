@@ -16,10 +16,18 @@ for spec in CATALOG:
     if spec['id'] == 'credentialing':
         spec['models'].insert(0, {'id':'rate_card','label':'Government / commercial payer rates'})
 
+GOVERNING_LAW = 'the laws of the State of Georgia'
+def jurisdiction(state):
+    return 'the District of Columbia' if state == 'District of Columbia' else 'the State of '+state
+
 def build_baa(data, contract_id):
     source = json.loads((Path(__file__).parent/'templates'/'baa.json').read_text(encoding='utf-8'))
     effective = date.fromisoformat(data['effective_date'])
-    replacements = {'PRACTICE NAME':data['client_name'], source['sample_date']:f'{effective.month}/{effective.day}/{effective.year}','SCRIBE ALIGN LLC':get_entity(data.get('entity'))['name']}
+    # The approved source names Georgia; the governing state chosen for the package (the contracting company's state by
+    # default) applies to the BAA as well. GOVERNING_LAW must match the source exactly once (tested).
+    state=data.get('governing_state') or get_entity(data.get('entity'))['governing_state']
+    replacements = {'PRACTICE NAME':data['client_name'], source['sample_date']:f'{effective.month}/{effective.day}/{effective.year}','SCRIBE ALIGN LLC':get_entity(data.get('entity'))['name'],
+                    GOVERNING_LAW:'the laws of '+jurisdiction(state)}
     def replace(text):
         for old,new in replacements.items():
             text=text.replace(old,new)

@@ -49,7 +49,7 @@ def process(job):
         docs=legacy.build_documents(payload,cid);files=[]
         for doc in docs:
             sub=stage/doc['title'];sub.mkdir()
-            stem=('BAA' if doc['type']=='baa' else 'Services')+' '+cid
+            stem=legacy.DOCUMENT_STEMS[doc['type']]+' '+cid
             word=sub/(stem+'.docx');pdf=sub/(stem+'.pdf')
             generate_docx(doc['blocks'],doc['data'],cid,word);convert_to_pdf(word,pdf)
             for path in (word,pdf):
