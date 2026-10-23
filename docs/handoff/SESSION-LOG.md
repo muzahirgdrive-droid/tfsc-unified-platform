@@ -189,3 +189,15 @@ start doing all the work from where you stop with all the chat history as well."
   and blocked EICAR, HTTPS browser signing with Secure path-scoped cookie). The stack test found two bugs, both fixed:
   the mailbox sign-in name stayed at the default address when the address changed, and a reply that arrived before the
   first inbox check was skipped. Not tested: Gmail itself (owner checks with Send test email / Check inbox).
+
+- Agreements-only package (owner asked 2026-10-22 for a ZIP with only TFSC Agreements). deploy/agreements: compose stack
+  (PostgreSQL 16 with the same pgBackRest encrypted backups and nightly restore test, Agreements + worker, ClamAV for
+  reply attachments, Caddy on one HTTPS address; Agreements on 127.0.0.1 only), `agreements.sh` (install with generated
+  secrets, setup-key, signatures, backup, update, status, logs, restart/stop/start) and START-HERE.md;
+  `tools/make_agreements_bundle.sh` builds the ZIP from the committed tree and refuses .env, workbooks and signature
+  images. Tested from the ZIP on a Docker host (Caddy local CA, GreenMail for the mailboxes): unattended install,
+  setup key, a company-limited user (negative permission checks), BAA + Services + NDA with the Missouri default and a
+  chosen state, the full signing flow with CC, notifications, completion emails, replies, ClamAV and EICAR, a browser
+  run including phone-sized signing, backup with restore test, and an update that left accounts, envelopes, histories
+  and signed PDFs identical. Memory after a full signing run: about 1.6 GB (ClamAV 0.95 GB). Found and fixed while
+  testing: the footer said "Local edition" on a server, and a builder step stayed highlighted on the other screens.

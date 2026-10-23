@@ -158,6 +158,11 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        IMAP replies/bounces), Certificate of Completion, /verify. Owner to do: connect the three Google Workspace mailboxes
        (START-HERE step 5) and have counsel review LEGAL_REVIEW.md "Version 4.1".
 
+12. [x] (asked 2026-10-22) A ZIP with TFSC Agreements only (no CRM, SSO or file storage): `tools/make_agreements_bundle.sh`
+       -> TFSC-Agreements-Deploy-<date>-<commit>.zip with `agreements.sh` and START-HERE.md (sources: deploy/agreements/).
+       Fresh install, accounts and permissions, generation, the whole e-signature flow with mail, backup + restore test
+       and update tested from the ZIP (START-HERE "What was tested").
+
 ## How to run the v2 web app locally
 ```
 tools/dev_services.sh start

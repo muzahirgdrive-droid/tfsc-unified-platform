@@ -15,7 +15,7 @@ address and a password that the Super Admin creates for them.
 
 | | |
 |---|---|
-| Server | Ubuntu 24.04 or 22.04 LTS, x86_64, **2 vCPU, 4 GB RAM, 40 GB SSD** or more. MEASURED_MEMORY |
+| Server | Ubuntu 24.04 or 22.04 LTS, x86_64, **2 vCPU, 4 GB RAM, 40 GB SSD** or more. Measured in testing: about 1.6 GB of memory in use after a complete signing run, 0.95 GB of it the virus scanner |
 | Access | SSH as root (or a user with `sudo`) |
 | Address | One web address for Agreements, for example `agreements.yourcompany.com`, on a domain you control |
 | Mailboxes | The compliance mailboxes (Google Workspace): compliance@scribealign.com, compliance@extendedhealthservices.us, compliance@24-7consultancyllc.com, each with an app password (step 5) |
@@ -46,8 +46,8 @@ sudo ./agreements.sh install
 ```
 
 It asks for the web address and the time zone of the nightly backup. Then it installs Docker if it is missing (it
-asks first), generates every password and key, builds the application images (5 to 10 minutes the first time), starts
-everything, checks the HTTPS address and prints a one-time **setup key**.
+asks first), generates every password and key, builds the application images (2 minutes in testing on 4 vCPU; allow
+up to 10 minutes on 2 vCPU), starts everything, checks the HTTPS address and prints a one-time **setup key**.
 
 **Right away:** copy `/opt/tfsc-agreements/deploy/agreements/.env` into your password manager. It holds
 `BACKUP_PASSPHRASE`, the only key to the encrypted backups.
@@ -173,4 +173,35 @@ Data lives in Docker volumes and is kept; database changes are applied automatic
 
 ## What was tested, and what was not
 
-TESTED_SECTION
+Every test below unpacked this ZIP and ran `./agreements.sh` as described above, on Docker 29 (Linux, 4 vCPU, 16 GB).
+Two things differed from your server: Caddy issued its own test certificate (a test machine has no public address for
+Let's Encrypt), and a test mail server (GreenMail) played the part of the Google Workspace mailboxes.
+
+- **Install:** unattended, from an empty build cache (base images already downloaded): 2 minutes. Later
+  installs with the images built: 15 to 35 seconds. `.env` is readable by root only; only ports 80 and 443 are open to
+  the outside.
+- **Accounts:** the Super Admin was created with the setup key (a wrong key was refused; the key works once). A user
+  limited to Extended Health Services had to replace the temporary password, could not list or create accounts, could
+  not change a mailbox, saw only that company's mailbox status and could not prepare agreements for Scribe Align.
+- **Agreements:** BAA, Services Agreement and Mutual NDA generated together, all three governed by Missouri law by
+  default for Extended Health Services; a chosen state (Nevada) replaced it; the company's signature block is dated with
+  the effective date. A signature image installed with `./agreements.sh signatures` appeared on a 24-7 Consultancy
+  agreement (Georgia law), and not on agreements generated without it.
+- **Signatures:** mailbox saved (the password is encrypted and never shown again), Send test email and Check inbox
+  succeeded. On an envelope with the client's fields placed automatically on all three agreements, initials and a CC
+  recipient were added, then it was sent from the compliance mailbox. The sender was emailed when the client viewed and
+  signed; the client signed, then the company signer; the worker completed it. The history verified, the Certificate
+  of Completion and `/verify` worked, and the client, the CC and the compliance mailbox each received the three signed
+  agreements with the certificate. Two client email replies were read from the inbox and shown on the envelope: the
+  attachment was virus-scanned and kept, and the standard EICAR test virus was blocked. In a browser: sign-in, every
+  screen, and a client signing on a phone-sized screen.
+- **Backups:** `./agreements.sh backup` made a full encrypted backup in 12 seconds, then the restore test rebuilt the
+  database at a point in time and checked it; `status` lists both.
+- **Update:** from the previous build of this package, following "Updating to a new release": accounts, clients,
+  envelopes, their histories and the signed PDFs were identical afterwards (backup and update took 41 seconds with the
+  images built).
+
+**Not tested:** real Google Workspace mailboxes (app passwords, the service-account method and Gmail's own limits);
+check them with Send test email and Check inbox in step 5. A real Let's Encrypt certificate with your DNS. Ubuntu
+itself (the installer's Docker installation and `ufw` step). The off-site S3 copy, restoring on a new server, and
+months of real use.
