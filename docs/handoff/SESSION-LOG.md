@@ -201,3 +201,26 @@ start doing all the work from where you stop with all the chat history as well."
   run including phone-sized signing, backup with restore test, and an update that left accounts, envelopes, histories
   and signed PDFs identical. Memory after a full signing run: about 1.6 GB (ClamAV 0.95 GB). Found and fixed while
   testing: the footer said "Local edition" on a server, and a builder step stayed highlighted on the other screens.
+
+- DocuSign parity (owner asked 2026-10-23 for "all DocuSign functionality", client profiles that keep every document,
+  and DocuSign-style emails with each company's logo). Already present before: envelopes, sign/view/copy recipients in
+  a signing order, access codes, ten field types, templates, reminders and expiry, resend/correct/void, ERSD consent,
+  adopt signature (style, draw, upload), decline, completion emails with documents and certificate, audit trail and
+  /verify, company mailboxes with replies and bounces. Added: logos cropped from the letterheads and per-company
+  colours in emails (inline cid images), the signing page and the certificate; Clients replaces the history view
+  (profile, contacts, document library, uploads scanned by ClamAV, send a client file for signature, address book);
+  in-person signing hosted by a user; corrections of recipients and fields in flight; Word/RTF/text/image uploads
+  converted to PDF; bulk send; reports with CSV; list filters and Expiring soon; finish later; assign to someone else
+  (can be turned off); signer attachments; first/last name, number, date, radio, note fields; help text, validation,
+  character limits, read-only values, conditional fields (enforced by the server too); zoom and page navigator.
+  Not built (need outside services or contracts): SMS or phone authentication, ID verification, notary, payments,
+  PowerForms, signing groups, document visibility per recipient, comments, languages.
+  Found and fixed while testing: the migration first widened a column, which makes SQLite rebuild esign_recipients;
+  on a database that already had envelopes the rebuild failed on foreign keys and, because pysqlite ran the DDL
+  outside a transaction, left half-created tables. The widening was dropped, SQLite migrations now run in one
+  BEGIN IMMEDIATE transaction, and a test upgrades a database holding sent envelopes. A host who is not the sender
+  could not open the envelope to start the in-person signing (fixed: hosts can view, not manage).
+  Verified: 101 Agreements tests on SQLite (and the e-signature, client and migration tests on PostgreSQL); a browser
+  run of every new feature locally and over HTTPS on a server updated from the previous release (ClamAV blocked
+  EICAR on a client upload; Word converted in the container in 2.4 s; bulk send delivered by the worker container);
+  the update kept every envelope and signed PDF identical; a fresh install passed the original 58 checks.

@@ -20,6 +20,23 @@ read from an inbox is data and is shown as text. Tests: `tests/test_esign.py` (l
 mail, PDF) with a fake SMTP server in `tests/esign_support.py`; they pass on SQLite and PostgreSQL
 (`TEST_DATABASE_URL=postgresql+psycopg://.../tfsc_test`).
 
+## Version 4.2 (October 23, 2026): branding, client profiles and the remaining DocuSign features
+
+| Module | What it adds |
+|---|---|
+| `assets/brand/*.png`, `entities.py` | Each company's logo (cropped from its letterhead) and colours (`logo`, `color`, `accent`). |
+| `mailer.py` | Branded email layout; the logo and a document icon are embedded inline (multipart/related, `cid:`). Email kinds `host`, `removed`, notification `reassigned`. |
+| `esign.py` | Roles `in_person` (hosted by `host_id`; `/api/esign/envelopes/<id>/host/<recipient>`); field kinds `first_name`, `last_name`, `number`, `date`, `radio`, `attachment`, `note`; field options `tooltip`, `validation`, `max_length`, `readonly`/`prefill`, `group`/`choice`, `condition` (same recipient; cycles refused); `visibility()` applies conditions at Finish; Finish later (`/api/save`, `recipients.progress`); Assign to someone else (`/api/reassign`, status `reassigned`, setting `allow_reassign`); signer attachments (`/api/attachment`, ClamAV, image to PDF, `documents.source='attachment'`); `correct_layout` (recipients and fields of people who have not finished); uploads in Word/RTF/text/image converted to PDF; list filters and the `expiring` folder. |
+| `esign_pdf.py` | `to_pdf` (LibreOffice for office files, reportlab for images), radio stamping, logo on the certificate. |
+| `clients.py`, `clients.js`, `clients.css` | Client profiles: details (`clients.profile`), `client_contacts`, `client_files` (type-checked, scanned), the document library, contacts address book (`/api/contacts`), sending a client file for signature. Recipients of sent envelopes become contacts. |
+| `esign_bulk.py` | Bulk send from a template (`esign_bulk` batches, `envelopes.bulk_id`), reports and the CSV export (formula-like cells neutralised). |
+| `migrations/versions/0003_docusign_parity.py` | The new tables and columns. Only `ADD COLUMN` on existing tables, so SQLite never rebuilds a table that has rows pointing at it. |
+
+`database.init_db()` begins SQLite migrations with `BEGIN IMMEDIATE`, so an upgrade is all-or-nothing and only one
+process migrates at a time; `migrate.baseline_metadata()` creates a pre-Alembic install's missing tables without
+columns that later migrations add. Tests: `tests/test_docusign_parity.py` (every feature and the matching refusals) and
+`tests/test_migrations.py::test_upgrade_with_signed_envelopes_in_place`.
+
 # Alpha Bridge Compliance
 
 Version 3.0.1: all companies now use automatic PAGE and NUMPAGES fields, displayed as Page X of Y. Verified every page of all six example PDFs and refreshed total-page caches in the DOCX files.

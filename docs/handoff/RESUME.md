@@ -163,6 +163,13 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        Fresh install, accounts and permissions, generation, the whole e-signature flow with mail, backup + restore test
        and update tested from the ZIP (START-HERE "What was tested").
 
+13. [x] (asked 2026-10-23) DocuSign parity for the Agreements portal: branded emails, signing page and certificate per
+       company; client profiles (details, contacts, document library, address book); signing features (finish later,
+       assign to someone else, attachments, conditional and validated fields, radio, notes, zoom, page navigator);
+       sending features (in-person signing, corrections in flight, Word/image uploads, bulk send, reports). Migration
+       0003. Owner to do: counsel review of LEGAL_REVIEW.md "Version 4.2"; send yourself a test envelope to see the
+       branded email in your mail programs.
+
 ## How to run the v2 web app locally
 ```
 tools/dev_services.sh start

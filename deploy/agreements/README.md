@@ -2,10 +2,13 @@
 
 This package installs **TFSC Agreements only** on one Linux server with Docker:
 - agreement generation (BAA, Services Agreement, Mutual NDA) on each company's letterhead;
-- electronic signature sent from each company's compliance mailbox;
+- electronic signature in the style of DocuSign, sent from each company's compliance mailbox with that company's logo
+  and colours;
+- a profile for every client: details, contacts and every document (generated, sent, signed, certificates, files the
+  client sent back, files you upload);
 - user accounts and permissions;
 - encrypted backups with a nightly restore test;
-- a virus scan of files that clients attach to their email replies;
+- a virus scan of every file that comes in: uploads, signer attachments and files clients attach to email replies;
 - HTTPS certificates obtained and renewed automatically (Caddy with Let's Encrypt).
 
 The Sales CRM, company single sign-on and file storage are not part of this package. People sign in with their email
@@ -88,20 +91,55 @@ create a service account and a JSON key in Google Cloud, then in the Google Admi
 control > API controls > Domain-wide delegation) add its client ID with the scope `https://mail.google.com/`, and
 upload the JSON key on the Company mailboxes screen.
 
-## 6. Send agreements for signature
+## 6. Clients
+
+**Clients** lists every client you can see. A client's profile has:
+- **Overview**: address, phone, email, website, specialty, NPI, tax ID and notes (**Edit details**).
+- **Contacts**: the people at the client (signatory, billing, compliance). Everyone you send an envelope to for the
+  client is added automatically; contacts are suggested when you type a recipient's name or email.
+- **Documents**: everything kept for the client in one list: generated agreements (Word and PDF), documents out for
+  signature, signed documents, Certificates of Completion, files a signer attached while signing, files the client
+  attached to an email reply, and files you upload (PDF, Word, Excel, CSV, text, PNG, JPEG; up to 15 MB; virus-scanned).
+  Any uploaded document can be sent for signature from here.
+- **Signatures**, **Agreements** and **Activity**: every envelope, every generated agreement and the full history.
+
+Use **New client** to add a client before preparing anything, **Create agreement** to open the client in the
+agreement builder, and **Send documents for signature** to start an envelope for the client.
+
+## 7. Send documents for signature
 
 1. **Create agreement**: choose the company, enter the client, choose BAA, Services Agreement and/or Mutual NDA, the
    services and the terms. The governing state starts at the company's state (Scribe Align Nevada, Extended Health
-   Services Missouri, 24-7 Consultancy Georgia) and applies to every agreement in the package. **Generate**.
-2. Select **Send for signature**. The client's signature, name, title and date fields are already placed. Add initials
-   on every page, more recipients (who sign, need to view or receive a copy, in a signing order) or other fields,
-   then **Send**.
-3. Follow progress under **Signatures**: who has viewed and signed, email delivery, client replies, the history.
-   Use Resend, Correct (a wrong email address) or Void. When everyone has signed, everyone receives the completed
-   documents and the Certificate of Completion by email, and the compliance mailbox gets a copy.
-4. Anyone can check a completed PDF at `https://agreements.yourcompany.com/verify`.
+   Services Missouri, 24-7 Consultancy Georgia) and applies to every agreement in the package. **Generate**, then
+   **Send for signature**: the client's signature, name, title and date fields are already placed.
+   Or start from **Signatures > New envelope** or a client profile and add your own documents: PDF, Word (DOCX, DOC,
+   ODT, RTF), text, PNG or JPEG; everything is converted to PDF.
+2. **Recipients**: who signs, who signs in person (a user of yours hosts it on their device; no email needed), who
+   needs to view, and who receives a copy, in a signing order (the same order means at the same time). Optional access
+   code and private message per person. **+ Add me** adds yourself.
+3. **Fields**: signature, initials, date signed, full/first/last name, email, company, title, text, number, date,
+   checkbox, radio buttons, dropdown, attachment (the signer uploads a file) and note. A field can be required,
+   read-only with a value you fill in, limited in length, checked as letters, number, email, phone, ZIP or date, carry
+   help text, or appear only when a checkbox, radio button or dropdown has a given value. **Initials on every page**
+   places initials for the selected recipient.
+4. **Options**: reminders, expiration and its warning, attaching the completed documents to the final email, and
+   whether recipients may assign the documents to someone else. **Send**.
+5. The client receives an email from the company's compliance mailbox with the company's logo and a **REVIEW
+   DOCUMENT** button. On the signing page they accept the electronic record disclosure, follow **Start** / **Next**
+   to each field, adopt a signature (a style made from their name, drawn, or uploaded), and select **Finish**. Under
+   **Other actions** they can **Finish later** (the same link brings their entries back), **Assign to someone else**,
+   download, print or decline.
+6. Follow progress under **Signatures** (folders, search, company and date filters, **Expiring soon**): who has viewed
+   and signed, email delivery, client replies, the history. Use **Resend**, **Correct recipients and fields** (change,
+   add or remove anyone who has not signed yet), **Correct details** or **Void**. An in-person signing is started with
+   **Start in-person signing** on the envelope. When everyone has signed, everyone (including copy recipients) receives
+   the completed documents and the Certificate of Completion by email, and the compliance mailbox gets a copy.
+7. **Bulk send** sends a template to a list of people (pasted or a CSV file), each in their own envelope.
+   **Reports** shows sent, completed, completion rate, time to complete, waiting and declined envelopes by company,
+   sender and month, with a CSV download.
+8. Anyone can check a completed PDF at `https://agreements.yourcompany.com/verify`.
 
-## 7. Signature images
+## 8. Signature images
 
 Put the four files (`Naeem Abbas.png`, `Naeem Abbas.json`, `Danish Ather.png`, `Danish Ather.json`) in a folder on the
 server, then:
@@ -112,7 +150,7 @@ sudo ./agreements.sh signatures /root/signatures
 
 Delete that folder after you have checked one generated agreement. The images are never part of this package.
 
-## 8. Backups
+## 9. Backups
 
 - Automatic: every night at 2:00 in your time zone (full backup weekly, changes daily, 14 days kept), every database
   change within a minute in between, all encrypted. After each backup a restore test rebuilds a copy and checks it.
@@ -195,13 +233,23 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   agreements with the certificate. Two client email replies were read from the inbox and shown on the envelope: the
   attachment was virus-scanned and kept, and the standard EICAR test virus was blocked. In a browser: sign-in, every
   screen, and a client signing on a phone-sized screen.
+- **DocuSign-style features, in a browser over HTTPS** on a server updated from the previous release: a client created
+  with its details, a contact added, a PDF uploaded to the profile and sent for signature from there; the recipient
+  picked from the address book; signature, phone-validated text, checkbox with a conditional field, radio group,
+  attachment and note placed; the email arrived from the compliance mailbox with the company logo; the client accepted
+  the disclosure, a wrong phone number was flagged, the conditional field appeared when the box was checked, Finish
+  later kept the entries for the same link, a photo was attached, the signature adopted and Finish completed it; the
+  signed document, the certificate and the attachment appeared in the client's documents; Reports and Bulk send opened;
+  a phone-sized screen showed the completed page. A Word document was converted in the container (2.4 seconds), a bulk
+  send of three reached all three people, and the EICAR test virus uploaded to a client profile was blocked.
 - **Backups:** `./agreements.sh backup` made a full encrypted backup in 12 seconds, then the restore test rebuilt the
   database at a point in time and checked it; `status` lists both.
-- **Update:** from the previous build of this package, following "Updating to a new release": accounts, clients,
-  envelopes, their histories and the signed PDFs were identical afterwards (backup and update took 41 seconds with the
-  images built).
+- **Update:** from the previous release of this package, holding signed envelopes, following "Updating to a new
+  release": the database changes were applied, and accounts, clients, envelopes, their histories and the signed PDFs
+  were identical afterwards (the update took 30 seconds with the images built).
 
 **Not tested:** real Google Workspace mailboxes (app passwords, the service-account method and Gmail's own limits);
-check them with Send test email and Check inbox in step 5. A real Let's Encrypt certificate with your DNS. Ubuntu
+check them with Send test email and Check inbox in step 5. How Gmail, Outlook and Apple Mail display the branded email
+(it was checked in a browser): send yourself a test envelope and look at it in the mail programs your clients use. A real Let's Encrypt certificate with your DNS. Ubuntu
 itself (the installer's Docker installation and `ufw` step). The off-site S3 copy, restoring on a new server, and
 months of real use.

@@ -1,3 +1,23 @@
+# Version 4.2 changes for counsel (October 23, 2026)
+
+- **In-person signing.** A signer can sign on a device opened by a host (a TFSC Agreements user of the sending company)
+  instead of through an emailed link. Their identity is whatever the host checks in person; the Certificate of
+  Completion records "In person, hosted by" the host's name and email, with the time and IP address. Decide what the
+  host must check (for example photo identification) and when in-person signing may be used.
+- **Assign to someone else.** A recipient can hand their part to another person, who receives their own email and signs
+  in their own name; the reason is recorded in the history and the sender is told. It is allowed by default and can be
+  turned off per envelope. For a BAA or a contract the other person must have authority to sign for the client;
+  consider turning it off for those, or confirming the new signer's authority before relying on the signature.
+- **Files kept for clients.** Signers can attach files while signing, clients can attach files to email replies, and
+  users can upload files to a client's profile. All of them are virus-scanned and kept in the database with the
+  client's records, and may include personal information or PHI. Set a retention and access policy for them.
+- **Fields and wording.** Values the sender fills in as read-only, and the fields a signer completes (including fields
+  shown only for certain answers), are printed on the completed documents; notes to the signer are not. The signing
+  email carries the sending company's name, logo and postal address and a link, never the documents themselves; the
+  completed documents are attached to the final email when the sender keeps that option on.
+- **Bulk send.** One template can be sent to many people, each in a separate envelope with their own audit trail;
+  {{name}}, {{first_name}} and {{client}} in the subject and message are filled in per person.
+
 # Version 4.1 changes for counsel (October 22, 2026)
 
 These changes were made at the owner's instruction. They are drafting and software changes, not legal advice.
