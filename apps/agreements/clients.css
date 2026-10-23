@@ -1,0 +1,26 @@
+/* Clients: the client list and the client profile. */
+.clients-grid{grid-template-columns:300px minmax(0,1fr);align-items:start}
+.clients-side{display:flex;flex-direction:column;gap:10px;position:sticky;top:16px}
+.clients-search{display:flex;gap:6px}
+.clients-search input{flex:1;min-height:40px;border:1px solid var(--line);border-radius:7px;padding:0 10px}
+.clients-side .client-list{max-height:62vh;overflow:auto}
+.clients-jobs{margin-top:4px}
+.clients-detail{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 22px;box-shadow:var(--shadow);min-height:300px}
+.clients-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.clients-head h3{margin:0;font-size:22px;color:var(--navy)}
+.clients-head .esign-actions{margin:0}
+.clients-body{margin-top:6px}
+.clients-body h4{margin:18px 0 8px;color:var(--navy);font-size:14px}
+.clients-facts{display:grid;grid-template-columns:200px minmax(0,1fr);gap:8px 16px;margin:16px 0;font-size:13px}
+.clients-facts dt{color:var(--muted);font-weight:600}
+.clients-facts dd{margin:0;overflow-wrap:anywhere}
+.clients-notes{white-space:pre-wrap;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13px}
+.clients-group{border-bottom:1px solid var(--line);padding-bottom:6px}
+.clients-docs{display:flex;flex-direction:column;gap:6px}
+.clients-doc{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:8px 12px;background:#fbfcfe}
+.clients-doc>div:first-child{display:flex;flex-direction:column;min-width:0}
+.clients-doc strong{font-size:13px;color:var(--navy);overflow-wrap:anywhere}
+.clients-doc small{font-size:11px;color:var(--muted)}
+.clients-doc .esign-actions{margin:0;flex-wrap:nowrap}
+.clients-doc .button{min-height:32px;font-size:11px;padding:0 10px}
+@media(max-width:900px){.clients-grid{grid-template-columns:1fr}.clients-side{position:static}.clients-doc{flex-direction:column;align-items:flex-start}.clients-doc .esign-actions{flex-wrap:wrap}.clients-facts{grid-template-columns:1fr}}

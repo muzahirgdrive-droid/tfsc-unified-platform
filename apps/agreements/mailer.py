@@ -14,9 +14,11 @@ import base64
 import datetime as dt
 import email
 import email.policy
+import functools
 import hashlib
 import html
 import imaplib
+import io
 import ipaddress
 import json
 import logging
@@ -42,7 +44,7 @@ log = logging.getLogger('tfsc.mail')
 EMAIL_RE = re.compile(r'[^\s@<>"\',;]+@[^\s@<>"\',;]+\.[A-Za-z0-9-]{2,}')
 OUR_ID = re.compile(r'<(tfsc\.([0-9a-f]{32})\.[0-9a-z]{6,})@[^>\s]+>')
 GOOGLE = {'smtp_host': 'smtp.gmail.com', 'smtp_port': 587, 'smtp_security': 'starttls', 'imap_host': 'imap.gmail.com', 'imap_port': 993, 'imap_security': 'ssl'}
-NOTIFY_EVENTS = ('viewed', 'signed', 'completed', 'declined', 'bounced', 'replied', 'voided', 'expired', 'auth_failed')
+NOTIFY_EVENTS = ('viewed', 'signed', 'completed', 'declined', 'bounced', 'replied', 'voided', 'expired', 'auth_failed', 'reassigned')
 DEFAULT_NOTIFY = list(NOTIFY_EVENTS)
 DEFAULT_ADDRESSES = {'SCRIBE ALIGN LLC': 'compliance@scribealign.com', 'EXTENDED HEALTH SERVICES INC.': 'compliance@extendedhealthservices.us',
                      '24-7 CONSULTANCY LLC': 'compliance@24-7consultancyllc.com'}
@@ -317,6 +319,11 @@ def build_message(box: dict, row: dict, attachments: list[tuple[str, bytes]]) ->
         msg['X-TFSC-Envelope'] = row['envelope_ref']
     msg.set_content(row['text'])
     msg.add_alternative(row['html'], subtype='html')
+    if 'cid:' in row['html'] and box.get('entity') in ENTITIES:
+        html_part = msg.get_payload()[-1]
+        for cid, image in inline_images(box['entity']):
+            if f'cid:{cid}' in row['html']:
+                html_part.add_related(image, maintype='image', subtype='png', cid=f'<{cid}>', disposition='inline', filename=cid.split('@')[0] + '.png')
     for name, body in attachments:
         msg.add_attachment(body, maintype='application', subtype='pdf', filename=name)
     return msg
@@ -457,8 +464,8 @@ def send_test(c, entity_name: str, to: str) -> None:
     box = transport(c, entity_name)
     entity = get_entity(entity_name)
     row = {'id': db.uid(), 'to_addrs': [valid_email(to)], 'cc_addrs': [], 'subject': f"Test email from {box['display_name']}",
-           'text': f"This is a test email from TFSC Agreements for {entity['name']}.\n\nIf you can read this, sending from {box['address']} works.",
-           'html': layout(entity, 'Your mailbox is connected.', f"<p>This is a test email from TFSC Agreements for {esc(entity['name'])}.</p><p>Sending from {esc(box['address'])} works.</p>", box=box),
+           'text': f"This is a test email from TFSC Agreements for {entity['name'].rstrip('.')}.\n\nIf you can read this, sending from {box['address']} works.",
+           'html': layout(entity, 'Your mailbox is connected.', f"<p>This is a test email from TFSC Agreements for {esc(entity['name'].rstrip('.'))}.</p><p>Sending from {esc(box['address'])} works.</p>", box=box),
            'message_id': message_id(box['address'], db.uid())}
     deliver(box, build_message(box, row, []), row['to_addrs'])
 
@@ -472,25 +479,83 @@ def _paragraphs(text: str) -> str:
     return ''.join(f'<p style="margin:0 0 12px 0;">{esc(p).replace(chr(10), "<br>")}</p>' for p in str(text).split('\n\n') if p.strip())
 
 
-def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = None, button: tuple[str, str] | None = None, security_note: bool = False) -> str:
+# Each company's logo and a document icon travel inside the email (multipart/related, cid: links), so they show even when
+# the mail client blocks images from the web. The layout follows the familiar e-signature email: logo, a banner in the
+# company colour with the call to action, the sender and their message, then guidance on security and questions.
+BRAND_DIR = db.APP / 'assets' / 'brand'
+INK = '#0B1F33'
+
+
+def logo_png(entity: dict) -> bytes:
+    return (BRAND_DIR / entity['logo']).read_bytes()
+
+
+@functools.lru_cache(maxsize=8)
+def document_icon(accent: str) -> bytes:
+    """A white document with a signature line, drawn once per accent colour (PNG, 2x for sharp display)."""
+    from PIL import Image, ImageDraw
+    s = 2
+    image = Image.new('RGBA', (60 * s, 64 * s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(image)
+    d.rounded_rectangle((8 * s, 2 * s, 46 * s, 58 * s), radius=3 * s, fill=(255, 255, 255, 255))
+    d.polygon([(36 * s, 2 * s), (46 * s, 12 * s), (36 * s, 12 * s)], fill=(214, 222, 232, 255))
+    for i, width in enumerate((28, 24, 28, 18)):
+        y = (19 + i * 7) * s
+        d.rounded_rectangle((14 * s, y, (14 + width) * s, y + 2 * s), radius=s, fill=(196, 205, 216, 255))
+    rgb = tuple(int(accent[i:i + 2], 16) for i in (1, 3, 5))
+    d.line([(14 * s, 52 * s), (18 * s, 47 * s), (21 * s, 51 * s), (25 * s, 46 * s), (28 * s, 51 * s), (33 * s, 48 * s)], fill=rgb + (255,), width=2 * s, joint='curve')
+    d.polygon([(40 * s, 40 * s), (56 * s, 24 * s), (60 * s, 28 * s), (44 * s, 44 * s), (39 * s, 45 * s)], fill=rgb + (255,))
+    out = io.BytesIO()
+    image.save(out, format='PNG', optimize=True)
+    return out.getvalue()
+
+
+def inline_images(entity_name: str) -> list[tuple[str, bytes]]:
+    entity = get_entity(entity_name)
+    return [(f"logo.{entity['key']}@tfsc", logo_png(entity)), (f"doc.{entity['key']}@tfsc", document_icon(entity['accent']))]
+
+
+def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = None, button: tuple[str, str] | None = None, security_note: bool = False,
+           link_text: bool = False) -> str:
+    key, color, accent = entity['key'], entity['color'], entity['accent']
     contact = esc(box['address']) if box and box.get('address') else ''
+    font = 'font-family:Arial,Helvetica,sans-serif;'
     button_html = ''
     if button:
-        button_html = (f'<a href="{esc(button[1])}" style="display:inline-block;margin-top:20px;background:#FFC520;color:#14213D;font-weight:bold;'
-                       f'text-decoration:none;padding:13px 28px;border-radius:4px;font-size:14px;letter-spacing:.4px;">{esc(button[0])}</a>')
-    footer = []
+        button_html = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px auto 4px auto;"><tr>'
+                       f'<td align="center" bgcolor="{accent}" style="background:{accent};border-radius:4px;">'
+                       f'<a href="{esc(button[1])}" target="_blank" style="display:inline-block;padding:14px 34px;{font}font-size:15px;font-weight:bold;'
+                       f'color:{INK};text-decoration:none;letter-spacing:.6px;">{esc(button[0])}</a></td></tr></table>')
+    sections = []
     if security_note:
-        footer.append('<strong>Do not share this email.</strong> It contains a secure link to your documents. Please do not share this email, the link or any access code with others.')
-    if contact:
-        footer.append(f'Questions about these documents? Reply to this email or contact {contact}.')
-    footer.append(f'Sent by {esc(entity["name"])} using TFSC Agreements electronic signature.')
-    return f'''<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F2F4F8;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F2F4F8;padding:24px 8px;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#1D2B4F;">
-<tr><td style="background:#14213D;padding:18px 28px;color:#FFFFFF;font-size:17px;font-weight:bold;letter-spacing:.3px;">{esc(entity["name"])}</td></tr>
-<tr><td style="background:#1C5FAE;padding:30px 28px;color:#FFFFFF;text-align:center;font-size:17px;line-height:25px;">{esc(headline)}<br>{button_html}</td></tr>
-<tr><td style="padding:26px 28px 14px 28px;font-size:14px;line-height:21px;">{body_html}</td></tr>
-<tr><td style="padding:16px 28px;background:#F7F8FB;font-size:11px;line-height:17px;color:#5B6475;">{"<br><br>".join(footer)}</td></tr>
+        sections.append(('Do not share this email', f'This email contains a secure link to documents from {esc(entity["name"].rstrip("."))}. Please do not share this email, '
+                                                    f'the link or any access code with others.'))
+        if link_text and button:
+            sections.append(('If the button does not work', f'Copy this address into your web browser: <span style="word-break:break-all;color:#30476B;">{esc(button[1])}</span>'))
+        sections.append(('Questions about the documents?', 'If you need to change the documents or have questions about their details, reply to this email'
+                                                           + (f' or write to {contact}' if contact else '') + '.'))
+        sections.append((f'About electronic signatures with {esc(entity["short"])}', 'Sign documents electronically in a few minutes, from any computer, '
+                         'tablet or phone. It is secure and legally binding: every step is recorded, and the completed documents come with a Certificate '
+                         'of Completion.'))
+    elif contact:
+        sections.append(('Questions?', f'Reply to this email or contact {contact}.'))
+    footer = ''.join(f'<p style="margin:0 0 14px 0;"><strong style="color:#30476B;">{title}</strong><br>{text}</p>' for title, text in sections)
+    return f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>{esc(headline)}</title></head>
+<body style="margin:0;padding:0;background:#EAEDF1;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EAEDF1;"><tr><td align="center" style="padding:26px 10px;">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#FFFFFF;border-radius:6px;{font}color:#1D2B4F;">
+<tr><td style="padding:22px 30px 18px 30px;"><img src="cid:logo.{key}@tfsc" alt="{esc(entity["name"])}" height="52" style="display:block;height:52px;width:auto;max-width:260px;border:0;"></td></tr>
+<tr><td style="padding:0 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td align="center" bgcolor="{color}" style="background:{color};border-radius:6px;padding:34px 28px 32px 28px;">
+<img src="cid:doc.{key}@tfsc" alt="" width="60" height="64" style="display:block;margin:0 auto 18px auto;border:0;">
+<div style="{font}font-size:19px;line-height:27px;color:#FFFFFF;">{esc(headline)}</div>{button_html}</td></tr></table></td></tr>
+<tr><td style="padding:26px 30px 18px 30px;font-size:14px;line-height:22px;">{body_html}</td></tr>
+<tr><td style="padding:0 30px 24px 30px;"><div style="border-top:1px solid #E3E7ED;"></div></td></tr>
+<tr><td style="padding:0 30px 10px 30px;font-size:12px;line-height:18px;color:#5B6475;">{footer}</td></tr>
+</table>
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;{font}">
+<tr><td align="center" style="padding:16px 20px 4px 20px;font-size:11px;line-height:17px;color:#6B7485;">{esc(entity["name"])} · {esc(entity.get("address", ""))}</td></tr>
+<tr><td align="center" style="padding:0 20px 6px 20px;font-size:11px;line-height:17px;color:#8A93A3;">Sent with TFSC Agreements electronic signature</td></tr>
 </table></td></tr></table></body></html>'''
 
 
@@ -500,7 +565,8 @@ def text_footer(entity: dict, box: dict | None, security_note: bool) -> str:
         lines.append('Do not share this email. It contains a secure link to your documents. Please do not share this email, the link or any access code with others.')
     if box and box.get('address'):
         lines.append(f"Questions about these documents? Reply to this email or contact {box['address']}.")
-    lines.append(f"Sent by {entity['name']} using TFSC Agreements electronic signature.")
+    lines.append(f"{entity['name']} · {entity.get('address', '')}")
+    lines.append('Sent with TFSC Agreements electronic signature.')
     return '\n\n' + '\n'.join(lines)
 
 
@@ -514,7 +580,7 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
     doc_list = ''.join(f'<li>{esc(d)}</li>' for d in docs)
     if kind in ('invite', 'reminder', 'corrected', 'expiring', 'copy'):
         security = True
-        action = {'signer': 'review and sign', 'viewer': 'review', 'cc': 'view'}[ctx['role']]
+        action = {'signer': 'review and sign', 'viewer': 'review', 'cc': 'view'}.get(ctx['role'], 'review and sign')
         headline = {'invite': f'{sender} sent you a document to {action}.', 'reminder': f'Reminder: {sender} sent you a document to {action}.',
                     'corrected': f'{sender} updated a document for you to {action}.', 'expiring': f'A document waiting for you expires on {ctx.get("expires", "")}.',
                     'copy': f'{sender} sent you a copy of documents for your records.'}[kind]
@@ -524,20 +590,20 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
             subject = 'Expiring soon: ' + subject
         elif kind == 'corrected':
             subject = 'Corrected: ' + subject
-        button = ('REVIEW DOCUMENT' if ctx['role'] != 'cc' else 'VIEW DOCUMENTS', ctx['url'])
-        body = f'<p style="margin:0 0 12px 0;"><strong>{esc(ctx["recipient_name"])}</strong>,</p>'
+        button = ({'signer': 'REVIEW DOCUMENT', 'viewer': 'REVIEW DOCUMENT', 'cc': 'VIEW DOCUMENTS', 'in_person': 'START IN-PERSON SIGNING'}.get(ctx['role'], 'REVIEW DOCUMENT'), ctx['url'])
+        body = (f'<p style="margin:0 0 16px 0;"><strong style="font-size:15px;">{esc(sender)}</strong><br>'
+                f'<a href="mailto:{esc(ctx.get("sender_email", ""))}" style="color:#30476B;text-decoration:none;">{esc(ctx.get("sender_email", ""))}</a></p>')
         if ctx.get('message'):
             body += _paragraphs(ctx['message'])
         if ctx.get('note'):
-            body += f'<p style="margin:0 0 12px 0;padding:10px 12px;background:#F2F6FC;border-left:3px solid #1C5FAE;"><strong>Note for you:</strong><br>{esc(ctx["note"]).replace(chr(10), "<br>")}</p>'
+            body += f'<p style="margin:0 0 12px 0;padding:10px 12px;background:#F2F6FC;border-left:3px solid {entity["color"]};"><strong>Note for you:</strong><br>{esc(ctx["note"]).replace(chr(10), "<br>")}</p>'
         if docs:
             body += f'<p style="margin:0 0 6px 0;">Documents:</p><ul style="margin:0 0 12px 18px;padding:0;">{doc_list}</ul>'
         if ctx.get('access_code'):
             body += '<p style="margin:0 0 12px 0;">You will need the <strong>access code</strong> the sender gave you to open these documents.</p>'
         if ctx.get('expires') and kind != 'expiring':
             body += f'<p style="margin:0 0 12px 0;color:#5B6475;">Please complete this by {esc(ctx["expires"])}.</p>'
-        body += f'<p style="margin:16px 0 0 0;color:#5B6475;">{esc(sender)}<br>{esc(ctx.get("sender_email", ""))}</p>'
-        lines = [headline, '', f"{ctx['recipient_name']},"]
+        lines = [headline, '', f"{sender} ({ctx.get('sender_email', '')})"]
         if ctx.get('message'):
             lines += ['', ctx['message']]
         if ctx.get('note'):
@@ -546,7 +612,7 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
             lines += ['', 'Documents:'] + [f'- {d}' for d in docs]
         if ctx.get('access_code'):
             lines += ['', 'You will need the access code the sender gave you to open these documents.']
-        lines += ['', f"Open the documents: {ctx['url']}", '', sender, ctx.get('sender_email', '')]
+        lines += ['', f"Open the documents: {ctx['url']}"]
     elif kind == 'completed':
         subject = 'Completed: ' + subject
         headline = 'All parties have completed the documents.'
@@ -556,6 +622,22 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         body = f'<p style="margin:0 0 12px 0;"><strong>{esc(ctx["recipient_name"])}</strong>,</p><p style="margin:0 0 12px 0;">{esc(attached)}</p><ul style="margin:0 0 12px 18px;padding:0;">{doc_list}</ul>'
         lines = [headline, '', f"{ctx['recipient_name']},", '', attached] + [f'- {d}' for d in docs] + ([f"\nDownload: {ctx['url']}"] if ctx.get('url') else [])
         security = bool(ctx.get('url'))
+    elif kind == 'host':
+        subject = 'Host in-person signing: ' + subject
+        headline = f"It is time for {ctx['actor']} to sign in person."
+        button = ('OPEN IN TFSC AGREEMENTS', ctx['url'])
+        body = (f'<p style="margin:0 0 12px 0;">You are the host for <strong>{esc(ctx["actor"])}</strong> on envelope {esc(ctx["ref"])}: "{esc(ctx["subject"])}".</p>'
+                '<p style="margin:0 0 12px 0;">When you are together, sign in to TFSC Agreements, open the envelope and select <strong>Start in-person '
+                'signing</strong>. Then hand your device to the signer.</p>')
+        lines = [headline, '', f'You are the host for {ctx["actor"]} on envelope {ctx["ref"]}: "{ctx["subject"]}".',
+                 'When you are together, sign in to TFSC Agreements, open the envelope and select Start in-person signing. Then hand your device to the signer.',
+                 '', f"Open: {ctx['url']}"]
+    elif kind == 'removed':
+        subject = 'No longer needed: ' + subject
+        headline = f'{sender} removed you from these documents.'
+        body = (f'<p style="margin:0 0 12px 0;"><strong>{esc(ctx["recipient_name"])}</strong>,</p>'
+                f'<p style="margin:0 0 12px 0;">No action is needed from you for "{esc(ctx["subject"])}". Earlier links to these documents no longer work.</p>')
+        lines = [headline, '', f"{ctx['recipient_name']},", '', f'No action is needed from you for "{ctx["subject"]}". Earlier links to these documents no longer work.']
     elif kind in ('voided', 'declined_info'):
         subject = ('Voided: ' if kind == 'voided' else 'Declined: ') + subject
         headline = f'{sender} voided this envelope.' if kind == 'voided' else 'This envelope was declined and is now closed.'
@@ -570,9 +652,11 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         headline = {'viewed': f'{who} viewed the documents.', 'signed': f'{who} signed the documents.', 'completed': 'All parties completed the documents.',
                     'declined': f'{who} declined to sign.', 'bounced': f'The email to {who} could not be delivered.',
                     'failed': f'The email to {who} could not be sent.', 'replied': f'{who} replied by email.', 'voided': 'The envelope was voided.',
-                    'expired': 'The envelope expired before it was completed.', 'auth_failed': f'{who} entered a wrong access code too many times.'}[event]
+                    'expired': 'The envelope expired before it was completed.', 'auth_failed': f'{who} entered a wrong access code too many times.',
+                    'reassigned': f'{who} assigned the documents to someone else.'}[event]
         subject = {'viewed': 'Viewed: ', 'signed': 'Signed: ', 'completed': 'Completed: ', 'declined': 'Declined: ', 'bounced': 'Undeliverable: ',
-                   'failed': 'Not sent: ', 'replied': 'Reply received: ', 'voided': 'Voided: ', 'expired': 'Expired: ', 'auth_failed': 'Access code failed: '}[event] + subject
+                   'failed': 'Not sent: ', 'replied': 'Reply received: ', 'voided': 'Voided: ', 'expired': 'Expired: ', 'auth_failed': 'Access code failed: ',
+                   'reassigned': 'Reassigned: '}[event] + subject
         button = ('OPEN IN TFSC AGREEMENTS', ctx['url'])
         body = f'<p style="margin:0 0 12px 0;">Envelope {esc(ctx["ref"])}: "{esc(ctx["subject"])}"</p>'
         if ctx.get('detail'):
@@ -582,7 +666,7 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         lines = [headline, '', f'Envelope {ctx["ref"]}: "{ctx["subject"]}"'] + ([ctx['detail']] if ctx.get('detail') else []) + ['', f"Open: {ctx['url']}"]
     else:
         raise ValueError('Unknown email kind.')
-    html_body = layout(entity, headline, body, box=box, button=button, security_note=security)
+    html_body = layout(entity, headline, body, box=box, button=button, security_note=security, link_text=kind in ('invite', 'reminder', 'corrected', 'expiring'))
     return subject[:300], '\n'.join(lines) + text_footer(entity, box, security), html_body
 
 

@@ -40,8 +40,9 @@ async def boundary(request,call_next):
     if request.method not in ('GET','HEAD'):
         if request.headers.get('origin') not in (None,ORIGIN) or request.headers.get('sec-fetch-site')=='cross-site':
             return JSONResponse({'error':'Request origin was rejected.'},403)
-        # PDF uploads to an e-signature draft (base64, up to 15 MB of PDF) are the only large bodies.
-        limit=21_000_000 if re.fullmatch(r'/api/esign/envelopes/[a-f0-9]{32}/documents',request.url.path) else 2_800_000
+        # File uploads (base64, up to 15 MB of file) are the only large bodies: documents for an envelope, files for a client
+        # profile and attachments a signer adds while signing.
+        limit=21_000_000 if re.fullmatch(r'/api/esign/envelopes/[a-f0-9]{32}/documents|/api/clients/[a-f0-9]{32}/files|/sign/r/[a-f0-9]{32}/api/attachment',request.url.path) else 2_800_000
         try:
             if int(request.headers.get('content-length','0'))>limit:
                 return JSONResponse({'error':'Request is too large.'},413)
@@ -421,8 +422,12 @@ import oidc_support
 oidc_support.install(app,db,sec,session_response,ORIGIN,'TFSC',sec.get_actor)
 import esign
 esign.install(app)
+import clients
+clients.install(app)
+import esign_bulk
+esign_bulk.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','login.js','sign.js','sign.css','verify.js'}
-PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css'}
+PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):
     if name in PRIVATE:
@@ -431,5 +436,6 @@ def static_file(name:str,request:Request):
     return FileResponse(db.APP/name)
 @app.get('/assets/{name:path}')
 def asset(name:str):
-    if name not in ('tfsc-logo.png','fonts/Poppins-Regular.ttf','fonts/Poppins-SemiBold.ttf','fonts/sig-mrdafoe.ttf','fonts/sig-sacramento.ttf','fonts/sig-greatvibes.ttf'):raise HTTPException(404,'Not found.')
-    return FileResponse(db.APP/'assets'/name)
+    if name not in ('tfsc-logo.png','fonts/Poppins-Regular.ttf','fonts/Poppins-SemiBold.ttf','fonts/sig-mrdafoe.ttf','fonts/sig-sacramento.ttf','fonts/sig-greatvibes.ttf',
+                    'brand/scribe.png','brand/ehs.png','brand/24-7.png'):raise HTTPException(404,'Not found.')
+    return FileResponse(db.APP/'assets'/name,headers={'Cache-Control':'public, max-age=86400'})

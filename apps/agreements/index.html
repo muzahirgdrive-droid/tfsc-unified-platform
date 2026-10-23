@@ -10,10 +10,12 @@
   <link rel="stylesheet" href="/tfsc.css">
   <link rel="stylesheet" href="/portal.css">
   <link rel="stylesheet" href="/esign.css">
+  <link rel="stylesheet" href="/clients.css">
   <script src="/portal.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/studio.js" defer></script>
   <script src="/esign.js" defer></script>
+  <script src="/clients.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#contract-form">Skip to contract form</a>
@@ -28,7 +30,7 @@
       <button type="button" data-step="terms-panel"><span>04</span>Agreement terms</button>
       <button type="button" data-step="output-panel"><span>05</span>Sign &amp; export</button>
     </nav>
-    <button class="workspace-switch" id="show-history" type="button">▱ Client &amp; contract history</button><button class="workspace-switch" id="show-esign" type="button">✎ Signatures<span class="nav-count" id="esign-count" hidden></span></button><button class="workspace-switch" id="show-users" type="button" hidden>♙ Users &amp; permissions</button><button class="workspace-switch" id="show-mailboxes" type="button" hidden>✉ Company mailboxes</button>
+    <button class="workspace-switch" id="show-history" type="button">▱ Clients</button><button class="workspace-switch" id="show-esign" type="button">✎ Signatures<span class="nav-count" id="esign-count" hidden></span></button><button class="workspace-switch" id="show-users" type="button" hidden>♙ Users &amp; permissions</button><button class="workspace-switch" id="show-mailboxes" type="button" hidden>✉ Company mailboxes</button>
     <div class="sidebar-bottom"><span class="avatar">TF</span><div>TFSC COMPLIANCE<small>Private company workspace</small></div></div>
   </aside>
   <header class="app-header">
@@ -93,7 +95,7 @@
       </div>
     </form>
     <div class="step-actions"><button type="button" class="button button-quiet" id="step-back">← Back</button><span id="step-caption">Client information</span><button type="button" class="button button-primary" id="step-next">Continue →</button></div>
-    <section id="history-view" class="portal-view" hidden><div class="history-toolbar"><div><p class="eyebrow">YOUR RECORDS</p><h2>Client &amp; contract history</h2></div><button type="button" class="button button-quiet" id="import-legacy" hidden>Import existing local contracts</button></div><p class="portal-note">Every revision is retained. Downloads come from the database, even if the original output folder is unavailable.</p><div class="portal-toolbar"><input id="history-search" type="search" placeholder="Search client name" aria-label="Search client history"><button type="button" class="button button-primary" id="history-refresh">Search</button></div><div class="history-grid"><div><div id="history-clients" class="client-list"></div><div class="portal-paging"><button type="button" class="button button-quiet" id="clients-prev">Previous</button><span id="clients-page"></span><button type="button" class="button button-quiet" id="clients-next">Next</button></div></div><div class="history-detail" id="history-detail"><p class="empty-state">Select a client to view contracts and activity.</p></div></div><h3>Recent generation jobs</h3><div id="jobs-list" class="jobs-list"></div></section>
+    <section id="history-view" class="portal-view" hidden></section>
     <section id="users-view" class="portal-view" hidden><div class="history-toolbar"><div><p class="eyebrow">WORKSPACE ACCESS</p><h2>Users &amp; permissions</h2></div><button type="button" class="button button-primary" id="add-user">Create user</button></div><p class="portal-note">Assign contracting companies and manage the users in your team.</p><div class="portal-toolbar"><input id="users-search" type="search" placeholder="Search name or email" aria-label="Search users"><button type="button" class="button button-quiet" id="users-refresh">Search</button></div><div class="panel"><div class="panel-body"><table class="portal-table"><thead><tr><th>User</th><th>Role</th><th>Companies</th><th>Status</th><th>Manage</th></tr></thead><tbody id="users-table"></tbody></table></div></div><div class="portal-paging"><button class="button button-quiet" id="users-prev" type="button">Previous</button><span id="users-page"></span><button class="button button-quiet" id="users-next" type="button">Next</button></div></section>
     <section id="esign-view" class="portal-view" hidden></section>
     <section id="mailbox-view" class="portal-view" hidden></section>

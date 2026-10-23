@@ -24,6 +24,7 @@ clients=Table('clients',meta,Column('id',String(32),primary_key=True),
     Column('owner_id',String(32),ForeignKey('users.id'),nullable=False),
     Column('name',String(200),nullable=False),Column('name_key',String(64),nullable=False),
     Column('address',Text,nullable=False),Column('draft',JSON,nullable=False),Column('updated',Float,nullable=False),
+    Column('profile',JSON,nullable=True),Column('created',Float,nullable=True),  # profile: phone, email, website, notes
     UniqueConstraint('owner_id','name_key',name='uq_client_owner_name'))
 contracts=Table('contracts',meta,Column('id',String(64),primary_key=True),
     Column('client_id',String(32),ForeignKey('clients.id'),nullable=False),
@@ -71,6 +72,10 @@ def init_db():
     with engine.begin() as c:
         if engine.dialect.name=='postgresql':
             c.execute(text('SELECT pg_advisory_xact_lock(714872001)'))
+        else:
+            # pysqlite runs DDL outside a transaction unless one is begun explicitly: this makes the upgrade all-or-nothing
+            # and lets only one process migrate at a time.
+            c.exec_driver_sql('BEGIN IMMEDIATE')
         migrate.upgrade_to_head(c,meta)
         if not c.execute(select(settings).where(settings.c.key=='schema_version')).first():
             c.execute(settings.insert().values(key='schema_version',value=1))

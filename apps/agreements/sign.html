@@ -12,16 +12,19 @@
 </head>
 <body>
   <header class="sign-bar">
-    <div class="sign-brand"><strong id="company">TFSC Agreements</strong><span id="envelope-ref"></span></div>
+    <div class="sign-brand"><img id="company-logo" alt="" hidden><div class="sign-brand-text"><strong id="company">TFSC Agreements</strong><span id="envelope-ref"></span></div></div>
     <div class="sign-actions" id="top-actions" hidden>
+      <div class="zoom" id="zoom" aria-label="Zoom"><button type="button" class="zoom-btn" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-level">100%</span><button type="button" class="zoom-btn" id="zoom-in" aria-label="Zoom in">+</button></div>
       <button type="button" class="btn btn-finish" id="finish" disabled>Finish</button>
       <div class="menu">
         <button type="button" class="btn btn-ghost" id="more" aria-haspopup="true" aria-expanded="false">Other actions ▾</button>
         <div class="menu-list" id="more-menu" role="menu" hidden>
           <button type="button" role="menuitem" id="finish-later">Finish later</button>
+          <button type="button" role="menuitem" id="reassign-open" hidden>Assign to someone else</button>
           <button type="button" role="menuitem" id="download-original">Download PDF</button>
           <button type="button" role="menuitem" id="print">Print</button>
           <button type="button" role="menuitem" id="show-disclosure">View electronic record disclosure</button>
+          <button type="button" role="menuitem" id="help-open">Help</button>
           <button type="button" role="menuitem" id="decline-open" class="danger">Decline to sign</button>
         </div>
       </div>
@@ -29,7 +32,7 @@
   </header>
 
   <main id="sign-app" data-message-title="__MESSAGE_TITLE__" data-message-body="__MESSAGE_BODY__">
-    <section class="notice-card" id="message-card" hidden><h1 id="message-title"></h1><p id="message-body"></p></section>
+    <section class="notice-card" id="message-card" hidden><h1 id="message-title"></h1><p id="message-body"></p><div class="done-links" id="message-links"></div></section>
     <div id="loading" class="loading">Loading your documents…</div>
     <div class="alert" id="error" role="alert" hidden></div>
 
@@ -39,15 +42,18 @@
       <form id="code-form"><label for="code">Access code</label><input id="code" autocomplete="one-time-code" maxlength="60" required><button class="btn btn-primary" type="submit">Validate</button></form>
     </section>
 
-    <section class="banner" id="consent-banner" hidden>
-      <div class="banner-text"><strong>Please read the <button type="button" class="link" id="consent-read">Electronic Record and Signature Disclosure</button>.</strong>
+    <section class="host-banner" id="host-banner" hidden></section>
+
+    <section class="banner banner-consent" id="consent-banner" hidden>
+      <div class="banner-text"><strong>Please review and act on these documents.</strong>
+        <span>Read the <button type="button" class="link" id="consent-read">Electronic Record and Signature Disclosure</button>.</span>
         <label class="check"><input type="checkbox" id="consent-check"> I agree to use electronic records and signatures.</label></div>
-      <button type="button" class="btn btn-primary" id="consent-continue" disabled>Continue</button>
+      <button type="button" class="btn btn-finish" id="consent-continue" disabled>Continue</button>
     </section>
 
     <section class="banner banner-info" id="intro-banner" hidden>
       <div class="banner-text"><strong id="intro-title"></strong><span id="intro-body"></span></div>
-      <button type="button" class="btn btn-primary" id="viewer-complete" hidden>Complete</button>
+      <button type="button" class="btn btn-finish" id="viewer-complete" hidden>Complete</button>
     </section>
 
     <details class="message" id="sender-message" hidden><summary><span id="sender-line"></span></summary><p id="sender-text"></p><p id="sender-note" class="note" hidden></p></details>
@@ -59,7 +65,10 @@
       <div class="done-links" id="done-links"></div>
     </section>
 
-    <div class="documents" id="documents"></div>
+    <div class="workspace" id="workspace">
+      <div class="documents" id="documents"></div>
+      <nav class="thumbs" id="thumbs" aria-label="Pages" hidden></nav>
+    </div>
     <button type="button" class="guide" id="guide" hidden>Start</button>
   </main>
 
@@ -89,8 +98,31 @@
     </form>
   </dialog>
 
+  <dialog id="reassign-dialog" class="dialog" aria-labelledby="reassign-title">
+    <form method="dialog">
+      <header><h2 id="reassign-title">Assign to someone else</h2><p>The person you choose receives their own email and takes over your part. You will not be able to act on these documents afterwards.</p></header>
+      <label>Their full name<input id="reassign-name" maxlength="150" required></label>
+      <label>Their email<input id="reassign-email" type="email" maxlength="200" required></label>
+      <label>Message to them and the sender<textarea id="reassign-reason" rows="3" maxlength="500" required></textarea></label>
+      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="reassign-confirm" class="btn btn-primary">Assign</button></div>
+      <p class="alert" id="reassign-error" hidden></p>
+    </form>
+  </dialog>
+
   <dialog id="disclosure-dialog" class="dialog dialog-wide" aria-labelledby="disclosure-title">
     <form method="dialog"><header><h2 id="disclosure-title">Electronic record and signature disclosure</h2></header><div id="disclosure-text" class="disclosure"></div><div class="dialog-actions"><button class="btn btn-primary">Close</button></div></form>
+  </dialog>
+
+  <dialog id="help-dialog" class="dialog" aria-labelledby="help-title">
+    <form method="dialog"><header><h2 id="help-title">How to sign</h2></header>
+      <ol class="help-list">
+        <li>Select <strong>Start</strong> (or <strong>Next</strong>) to go to each field marked for you.</li>
+        <li>Select a <strong>Sign</strong> or <strong>Initial</strong> field. The first time, choose how your signature looks: a style made from your name, drawn with your finger or mouse, or an uploaded image.</li>
+        <li>Fill in the other fields. Fields with a red outline are required.</li>
+        <li>Select <strong>Finish</strong>. Everyone receives the completed documents by email when all parties have finished.</li>
+      </ol>
+      <p class="hint">Need to stop? Use Other actions › Finish later; the link in your email brings you back. Questions about the documents? Reply to the email you received.</p>
+      <div class="dialog-actions"><button class="btn btn-primary">Close</button></div></form>
   </dialog>
 </body>
 </html>

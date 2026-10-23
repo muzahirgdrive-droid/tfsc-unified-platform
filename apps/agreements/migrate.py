@@ -10,13 +10,15 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect
+from sqlalchemy import MetaData, inspect
 
 APP = Path(__file__).resolve().parent
 BASELINE = '0001_agreements_baseline'
 BASELINE_TABLES = {'audit', 'clients', 'contracts', 'crm_account_links', 'crm_actor_links', 'crm_bridge_handoffs', 'crm_bridge_nonces', 'crm_client_links',
                    'crm_provision_requests', 'agreement_reviews', 'documents', 'jobs', 'oidc_accounts', 'oidc_states', 'sessions', 'settings', 'tfsc_outbox',
                    'throttle', 'users'}
+# Columns that later migrations add to baseline tables: a pre-Alembic install gets them from those migrations.
+LATER_COLUMNS = {'clients': ('profile', 'created')}
 
 
 def config(connection=None) -> Config:
@@ -27,6 +29,17 @@ def config(connection=None) -> Config:
     return cfg
 
 
+def baseline_metadata(metadata) -> MetaData:
+    """The baseline tables as they were at the baseline revision."""
+    baseline = MetaData()
+    for table in metadata.sorted_tables:
+        if table.name in BASELINE_TABLES:
+            copy = table.to_metadata(baseline)
+            for name in LATER_COLUMNS.get(table.name, ()):
+                copy._columns.remove(copy.c[name])
+    return baseline
+
+
 def upgrade_to_head(connection, metadata) -> str:
     """Returns 'fresh', 'stamped' or 'current' (what kind of database it was)."""
     tables = set(inspect(connection).get_table_names())
@@ -35,7 +48,7 @@ def upgrade_to_head(connection, metadata) -> str:
     if kind == 'stamped':
         # pre-Alembic install: create any missing table of the baseline the same way as before; later tables come from
         # their own migrations
-        metadata.create_all(connection, tables=[t for t in metadata.sorted_tables if t.name in BASELINE_TABLES])
+        baseline_metadata(metadata).create_all(connection)
         command.stamp(cfg, BASELINE)
     command.upgrade(cfg, 'head')
     return kind

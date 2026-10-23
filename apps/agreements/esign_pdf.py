@@ -258,6 +258,17 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
                 _draw_image(c, signer['signature_png'], x + 4, y + 8, w - 6, h - 16)
             elif kind == 'initials' and signer.get('initials_png'):
                 _draw_image(c, signer['initials_png'], x + 1, y + 1, w - 2, h - 2)
+            elif kind == 'note':
+                continue
+            elif kind == 'radio':
+                radius = min(w, h, 13) / 2
+                cx, cy = x + radius, y + h / 2
+                c.setStrokeColor(INK)
+                c.setLineWidth(0.8)
+                c.circle(cx, cy, radius - 0.5)
+                if value == 'true':
+                    c.setFillColor(INK)
+                    c.circle(cx, cy, radius * 0.5, stroke=0, fill=1)
             elif kind == 'checkbox':
                 side = min(w, h, 14)
                 c.setStrokeColor(INK)
@@ -279,6 +290,96 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()
+
+
+# ------------------------------------------------------------------ uploads in other formats
+OFFICE_SUFFIXES = ('.docx', '.doc', '.odt', '.rtf', '.txt')
+IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg')
+
+
+def kind_of(name: str, raw: bytes) -> str:
+    """pdf | image | office, judged by the file's content (the name only tells apart formats that share a container)."""
+    suffix = Path(name or '').suffix.lower()
+    if raw.startswith(b'%PDF'):
+        return 'pdf'
+    if raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff'):
+        return 'image'
+    if raw.startswith(b'PK\x03\x04') and suffix in ('.docx', '.odt'):
+        return 'office'
+    if raw.startswith(b'\xd0\xcf\x11\xe0') and suffix == '.doc':
+        return 'office'
+    if raw.startswith(b'{\\rtf') and suffix == '.rtf':
+        return 'office'
+    if suffix == '.txt':
+        try:
+            raw.decode('utf-8')
+            return 'office'
+        except UnicodeDecodeError:
+            pass
+    raise ValueError('Upload a PDF, a Word document (DOCX, DOC, ODT, RTF), a text file or a PNG or JPEG image.')
+
+
+def image_to_pdf(raw: bytes) -> bytes:
+    """Place an image on a Letter page with half-inch margins, scaled to fit and never enlarged beyond 150 dpi."""
+    from PIL import Image as PILImage
+    try:
+        with PILImage.open(io.BytesIO(raw)) as image:
+            image.load()
+            if image.width * image.height > 40_000_000:
+                raise ValueError('The image is too large.')
+            image = image.convert('RGB')
+            png = io.BytesIO()
+            image.save(png, format='PNG')
+            width, height = image.size
+    except ValueError:
+        raise
+    except Exception:  # noqa: BLE001  (Pillow raises many kinds of errors for broken images)
+        raise ValueError('The image could not be read.') from None
+    page_w, page_h = LETTER if height >= width else (LETTER[1], LETTER[0])
+    box_w, box_h = page_w - 72, page_h - 72
+    scale = min(box_w / width, box_h / height, 72 / 150)
+    w, h = width * scale, height * scale
+    out = io.BytesIO()
+    c = canvas.Canvas(out, pagesize=(page_w, page_h))
+    c.drawImage(ImageReader(io.BytesIO(png.getvalue())), (page_w - w) / 2, page_h - 36 - h, w, h)
+    c.showPage()
+    c.save()
+    return out.getvalue()
+
+
+def office_to_pdf(raw: bytes, suffix: str, timeout: int = 120) -> bytes:
+    """Convert a Word, OpenDocument, RTF or text file with LibreOffice (headless, fresh profile, time limit)."""
+    import shutil
+    tool = shutil.which(os.environ.get('LIBREOFFICE_BIN', 'soffice'))
+    if not tool:
+        raise ValueError('This installation cannot convert Word documents. Save the document as PDF and upload the PDF.')
+    with tempfile.TemporaryDirectory(prefix='tfsc-upload-') as temporary:
+        temp = Path(temporary)
+        source = temp / ('document' + suffix)
+        source.write_bytes(raw)
+        try:
+            result = subprocess.run([tool, '-env:UserInstallation=' + (temp / 'profile').as_uri(), '--headless', '--norestore', '--convert-to', 'pdf',
+                                     '--outdir', str(temp / 'out'), str(source)], capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise ValueError('The document took too long to convert. Save it as PDF and upload the PDF.') from None
+        produced = temp / 'out' / 'document.pdf'
+        if result.returncode or not produced.is_file():
+            raise ValueError('The document could not be converted. Save it as PDF and upload the PDF.')
+        return produced.read_bytes()
+
+
+def to_pdf(name: str, raw: bytes) -> tuple[bytes, str]:
+    """Any supported upload as PDF bytes, with the file name ending in .pdf."""
+    kind = kind_of(name, raw)
+    stem = Path(name or 'Document').stem or 'Document'
+    if kind == 'image':
+        pdf = image_to_pdf(raw)
+    elif kind == 'office':
+        pdf = office_to_pdf(raw, Path(name).suffix.lower())
+    else:
+        pdf = raw
+    inspect(pdf)
+    return pdf, stem + '.pdf'
 
 
 def combine(parts: list[bytes]) -> bytes:
@@ -324,8 +425,13 @@ def certificate(env: dict, entity: dict, docs: list[dict], recipients: list[dict
         t.setStyle(TableStyle(style))
         return t
 
-    story = [p('Certificate of Completion', 'title'),
-             p(f"{entity['name']} · issued by TFSC Agreements e-signature ({origin})", 'small'), Spacer(1, 8)]
+    story = []
+    logo = Path(__file__).resolve().parent / 'assets' / 'brand' / entity.get('logo', '')
+    if entity.get('logo') and logo.is_file():
+        lw, lh = ImageReader(str(logo)).getSize()
+        story += [Image(str(logo), lw * 34 / lh, 34, hAlign='LEFT'), Spacer(1, 8)]
+    story += [p('Certificate of Completion', 'title'),
+              p(f"{entity['name']} · issued by TFSC Agreements e-signature ({origin})", 'small'), Spacer(1, 8)]
     status = env['status'].capitalize()
     story.append(table([
         [p('Envelope ID', 'cellb'), p(env['ref']), p('Status', 'cellb'), p(status)],
@@ -343,8 +449,10 @@ def certificate(env: dict, entity: dict, docs: list[dict], recipients: list[dict
 
     story.append(p('Recipient events', 'h'))
     for r in recipients:
-        role = {'signer': 'Signer', 'viewer': 'Needs to view', 'cc': 'Receives a copy'}[r['role']]
-        left = [p(f"{r['name']}\n{r['email']}", 'cellb'), p(f"{role} · routing order {r['routing_order']}"),
+        role = {'signer': 'Signer', 'in_person': 'Signer (in person)', 'viewer': 'Needs to view', 'cc': 'Receives a copy'}[r['role']]
+        if r.get('status') == 'reassigned':
+            role += f" · assigned to {r.get('reassigned_name') or 'someone else'}"
+        left = [p(f"{r['name']}\n{r['email']}".strip(), 'cellb'), p(f"{role} · routing order {r['routing_order']}"),
                 p(f"Security level: email link{', access code' if r.get('access_code') else ''}"
                   + (f"\nAuthentication: {r['auth_method']}" if r.get('auth_method') else ''))]
         if r.get('signature_png'):
@@ -358,7 +466,7 @@ def certificate(env: dict, entity: dict, docs: list[dict], recipients: list[dict
         right = [p(line) for line in (
             f"Sent: {when(r.get('sent_at'), tz)}", f"Viewed: {when(r.get('delivered_at'), tz)}",
             f"Electronic record and signature disclosure accepted: {when(r.get('consent_at'), tz)}",
-            (f"Signed: {when(r.get('signed_at'), tz)}" if r['role'] == 'signer' else f"Completed: {when(r.get('signed_at'), tz)}"),
+            (f"Signed: {when(r.get('signed_at'), tz)}" if r['role'] in ('signer', 'in_person') else f"Completed: {when(r.get('signed_at'), tz)}"),
             (f"Declined: {when(r.get('declined_at'), tz)} · reason: {r.get('decline_reason')}" if r.get('declined_at') else ''),
         ) if line and line.split(': ', 1)[1]]
         story.append(KeepTogether(table([[left, right]], [260, 260], header=False)))

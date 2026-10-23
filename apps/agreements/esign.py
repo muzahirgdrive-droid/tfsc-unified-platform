@@ -34,14 +34,28 @@ from entities import ENTITIES, get_entity
 from esign_db import documents, envelopes, events, fields, inbound, inbound_files, outbox, recipients, sign_sessions, tokens
 
 log = logging.getLogger('tfsc.esign')
-ROLES = ('signer', 'viewer', 'cc')
-ROLE_LABELS = {'signer': 'Needs to sign', 'viewer': 'Needs to view', 'cc': 'Receives a copy'}
-KINDS = {'signature': (170, 40), 'initials': (64, 24), 'date_signed': (110, 16), 'name': (150, 16), 'email': (170, 16), 'company': (150, 16),
-         'title': (150, 16), 'text': (150, 16), 'checkbox': (14, 14), 'dropdown': (150, 16)}
-INPUT_KINDS = ('company', 'title', 'text', 'checkbox', 'dropdown')
+ROLES = ('signer', 'in_person', 'viewer', 'cc')
+ROLE_LABELS = {'signer': 'Needs to sign', 'in_person': 'Signs in person', 'viewer': 'Needs to view', 'cc': 'Receives a copy'}
+SIGNING_ROLES = ('signer', 'in_person')
+KINDS = {'signature': (170, 40), 'initials': (64, 24), 'date_signed': (110, 16), 'name': (150, 16), 'first_name': (110, 16), 'last_name': (110, 16),
+         'email': (170, 16), 'company': (150, 16), 'title': (150, 16), 'text': (150, 16), 'number': (90, 16), 'date': (100, 16), 'checkbox': (14, 14),
+         'radio': (13, 13), 'dropdown': (150, 16), 'attachment': (130, 26), 'note': (170, 34)}
+AUTO_KINDS = ('date_signed', 'name', 'first_name', 'last_name', 'email')   # filled from the recipient and the signing time
+TEXT_KINDS = ('company', 'title', 'text', 'number', 'date')
+# Text validation the sender can require (the signing page checks as the signer types; the server checks again at Finish).
+VALIDATIONS = {
+    'letters': (re.compile(r"[A-Za-z][A-Za-z .,'-]*"), 'letters only'),
+    'number': (re.compile(r'-?\d{1,15}(\.\d{1,6})?'), 'a number'),
+    'email': (re.compile(r'[^\s@<>]+@[^\s@<>]+\.[A-Za-z]{2,}'), 'an email address'),
+    'phone': (re.compile(r'\+?1?[ .-]?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}'), 'a 10-digit phone number'),
+    'zip': (re.compile(r'\d{5}(-\d{4})?'), 'a ZIP code (12345 or 12345-6789)'),
+    'date': (re.compile(r'(0[1-9]|1[0-2])/(0[1-9]|[12]\d|3[01])/(19|20)\d{2}'), 'a date as MM/DD/YYYY'),
+}
 SETTINGS = {'reminder_delay': (2, 1, 30), 'reminder_every': (3, 0, 30), 'expire_days': (30, 1, 365), 'warn_days': (3, 0, 30)}
+FLAGS = {'attach_completed': True, 'allow_reassign': True}
 OPEN_STATUSES = ('sent', 'delivered')
 DONE_STATUSES = ('signed', 'completed')
+INACTIVE = ('reassigned',)                     # replaced by someone else; no longer part of the routing
 PAGE_DPI = 120
 LINK_DAYS_AFTER_COMPLETION = 60
 SESSION_SECONDS = 4 * 3600
@@ -52,6 +66,8 @@ LABELS = {
     'declined': 'Declined to sign', 'voided': 'Envelope voided', 'corrected': 'Envelope corrected', 'resent': 'Envelope resent',
     'reminder': 'Reminder sent', 'expiring': 'Expiration warning sent', 'expired': 'Envelope expired', 'completed': 'Envelope completed',
     'bounced': 'Email undeliverable', 'mail_failed': 'Email could not be sent', 'replied': 'Reply received by email', 'portal_session': 'Opened from a TFSC Agreements account',
+    'saved': 'Saved to finish later', 'reassigned': 'Assigned to someone else', 'host_session': 'In-person signing started by the host',
+    'attachment': 'Attachment uploaded', 'removed': 'Recipient removed',
 }
 
 
@@ -137,15 +153,20 @@ def visible(actor: dict):
     return and_(sec.scope(actor, envelopes.c.owner_id), sec.company_scope(actor, envelopes.c.entity))
 
 
-def get_envelope(c, actor: dict, envelope_id: str) -> dict:
-    row = c.execute(select(envelopes).where(envelopes.c.id == envelope_id, visible(actor))).mappings().first()
+def get_envelope(c, actor: dict, envelope_id: str, hosting: bool = False) -> dict:
+    """An envelope the actor may manage; with hosting, also one where they host an in-person signing (view only)."""
+    allowed = visible(actor)
+    if hosting:
+        hosted = select(recipients.c.envelope_id).where(recipients.c.role == 'in_person', recipients.c.host_id == actor['id'])
+        allowed = or_(allowed, and_(envelopes.c.id.in_(hosted), sec.company_scope(actor, envelopes.c.entity)))
+    row = c.execute(select(envelopes).where(envelopes.c.id == envelope_id, allowed)).mappings().first()
     if not row:
         raise HTTPException(404, 'Envelope not found.')
     return dict(row)
 
 
 def settings_value(payload: dict | None, current: dict | None = None) -> dict:
-    out = dict(current or {key: spec[0] for key, spec in SETTINGS.items()} | {'attach_completed': True})
+    out = dict(FLAGS) | dict(current or {key: spec[0] for key, spec in SETTINGS.items()})
     for key, (_, low, high) in SETTINGS.items():
         if payload and key in payload:
             try:
@@ -155,8 +176,9 @@ def settings_value(payload: dict | None, current: dict | None = None) -> dict:
             if not low <= value <= high:
                 raise ValueError(f'{key.replace("_", " ").capitalize()} must be between {low} and {high}.')
             out[key] = value
-    if payload and 'attach_completed' in payload:
-        out['attach_completed'] = payload['attach_completed'] is True
+    for key in FLAGS:
+        if payload and key in payload:
+            out[key] = payload[key] is True
     return out
 
 
@@ -172,14 +194,17 @@ def user_row(c, user_id: str) -> dict:
 
 
 # ------------------------------------------------------------------ documents
-def add_document(c, envelope: dict, name: str, raw: bytes, source: str, source_document_id=None, agreement=None) -> dict:
+def add_document(c, envelope: dict, name: str, raw: bytes, source: str, source_document_id=None, agreement=None, recipient_id=None) -> dict:
     sizes = esign_pdf.inspect(raw)
-    position = c.execute(select(func.count()).select_from(documents).where(documents.c.envelope_id == envelope['id'])).scalar()
-    if position >= 20:
+    position = c.execute(select(func.max(documents.c.position) + 1).where(documents.c.envelope_id == envelope['id'])).scalar() or 0
+    count = c.execute(select(func.count()).select_from(documents).where(documents.c.envelope_id == envelope['id'], documents.c.source != 'attachment')).scalar()
+    if source != 'attachment' and count >= 20:
         raise ValueError('An envelope can hold up to 20 documents.')
+    if source == 'attachment' and position >= 60:
+        raise ValueError('This envelope cannot hold more attachments.')
     row = dict(id=db.uid(), envelope_id=envelope['id'], position=position, name=clean(name, 'Document name', 200, True), source=source,
                source_document_id=source_document_id, agreement=agreement, pdf=raw, sha256=esign_pdf.sha256(raw), pages=len(sizes),
-               page_sizes=sizes, created=now())
+               page_sizes=sizes, created=now(), recipient_id=recipient_id)
     c.execute(documents.insert().values(**row))
     return row
 
@@ -229,8 +254,8 @@ def create(c, actor: dict, payload: dict) -> dict:
     listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else (titles[0] if titles else 'documents')
     subject = f'Please sign: {listed}' + (f' - {client_name}' if client_name else '')
     signatory = (contract['payload'].get('client_signatory') if contract else '') or ''
-    message = (f"Hello{' ' + signatory if signatory else ''},\n\nPlease review and sign the attached agreement{'s' if len(titles) != 1 else ''} from "
-               f"{entity['name']}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
+    message = (f"Hello{' ' + signatory if signatory else ''},\n\nPlease review and sign the {'documents' if not titles else 'agreements' if len(titles) > 1 else 'agreement'} from "
+               f"{entity['name'].rstrip('.')}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
     c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(subject=clean(payload.get('subject') or subject, 'Subject', 200),
                                                                                message=clean(payload.get('message') or message, 'Message', 4000)))
     record(c, envelope['id'], 'created', actor['name'], detail={'documents': titles})
@@ -291,52 +316,144 @@ def save_draft(c, actor: dict, envelope: dict, payload: dict) -> None:
     c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(**values))
 
 
-def _replace_recipients(c, envelope: dict, payload: dict) -> None:
-    items, field_items = payload.get('recipients'), payload.get('fields', [])
-    if not isinstance(items, list) or len(items) > 20 or not isinstance(field_items, list) or len(field_items) > 3000:
-        raise ValueError('An envelope can have up to 20 recipients.')
-    existing = {r['id']: dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()}
-    keys, rows = {}, []
-    for i, item in enumerate(items):
-        if not isinstance(item, dict):
-            raise ValueError('Invalid recipient.')
-        role = item.get('role')
-        if role not in ROLES:
-            raise ValueError('Choose what each recipient does.')
-        try:
-            order = int(item.get('routing_order', 1))
-        except (TypeError, ValueError):
-            order = 0
-        if not 1 <= order <= 20:
-            raise ValueError('Signing order must be between 1 and 20.')
-        name = clean(item.get('name'), 'Recipient name', 150)
-        address = clean(item.get('email'), 'Recipient email', 200)
-        if address:
-            address = mailer.valid_email(address)
-        old = existing.get(item.get('id'))
-        code = old['access_code'] if old else None
-        if 'access_code' in item and item['access_code'] is not None:
-            raw = str(item['access_code'])
-            if raw and not 4 <= len(raw) <= 50:
-                raise ValueError('An access code must have 4 to 50 characters.')
-            code = sec.hasher.hash(raw) if raw else None
-        row = dict(id=old['id'] if old else db.uid(), envelope_id=envelope['id'], role=role, role_name=clean(item.get('role_name'), 'Role', 60) or f'Recipient {i + 1}',
-                   routing_order=order, name=name, email=address, access_code=code, note=clean(item.get('note'), 'Private message', 1000), status='created',
-                   auth_failures=0, delivery='pending', reminders_sent=0, created=old['created'] if old else now())
-        rows.append(row)
-        keys[str(item.get('id') or '')] = row['id']
-        if item.get('key'):
-            keys[str(item['key'])] = row['id']
-    sizes = {d['id']: d['page_sizes'] for d in c.execute(select(documents.c.id, documents.c.page_sizes).where(documents.c.envelope_id == envelope['id'])).mappings()}
-    roles = {r['id']: r['role'] for r in rows}
-    field_rows = []
+def host_for(c, envelope: dict, value) -> str:
+    """The user who hosts an in-person signing: by default the sender; always an active user of the envelope's company."""
+    host = str(value or envelope['owner_id'])
+    row = c.execute(select(db.users.c.active, db.users.c.role, db.users.c.companies).where(db.users.c.id == host)).mappings().first()
+    if not row or not row['active'] or (row['role'] != 'super_admin' and envelope['entity'] not in row['companies']):
+        raise ValueError('Choose an active user of this company to host the in-person signing.')
+    return host
+
+
+def recipient_row(c, envelope: dict, item: dict, i: int, existing: dict) -> dict:
+    if not isinstance(item, dict):
+        raise ValueError('Invalid recipient.')
+    role = item.get('role')
+    if role not in ROLES:
+        raise ValueError('Choose what each recipient does.')
+    try:
+        order = int(item.get('routing_order', 1))
+    except (TypeError, ValueError):
+        order = 0
+    if not 1 <= order <= 20:
+        raise ValueError('Signing order must be between 1 and 20.')
+    name = clean(item.get('name'), 'Recipient name', 150)
+    address = clean(item.get('email'), 'Recipient email', 200)
+    if address:
+        address = mailer.valid_email(address)
+    old = existing.get(item.get('id'))
+    code = old['access_code'] if old else None
+    if 'access_code' in item and item['access_code'] is not None:
+        raw = str(item['access_code'])
+        if raw and not 4 <= len(raw) <= 50:
+            raise ValueError('An access code must have 4 to 50 characters.')
+        code = sec.hasher.hash(raw) if raw else None
+    return dict(id=old['id'] if old else db.uid(), envelope_id=envelope['id'], role=role, role_name=clean(item.get('role_name'), 'Role', 60) or f'Recipient {i + 1}',
+                routing_order=order, name=name, email=address, access_code=None if role == 'in_person' else code, note=clean(item.get('note'), 'Private message', 1000),
+                status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=old['created'] if old else now(),
+                host_id=host_for(c, envelope, item.get('host_id')) if role == 'in_person' else None)
+
+
+def field_options(kind: str, raw) -> tuple[dict, dict | None]:
+    """Validated options for a field, and its condition (resolved to a field id once every field is known)."""
+    raw = raw if isinstance(raw, dict) else {}
+    options = {}
+    tooltip = clean(raw.get('tooltip'), 'Help text', 200)
+    if tooltip:
+        options['tooltip'] = tooltip
+    if kind == 'dropdown':
+        choices = raw.get('choices')
+        if not isinstance(choices, list) or not 1 <= len(choices) <= 50:
+            raise ValueError('A dropdown needs between 1 and 50 choices.')
+        options['choices'] = list(dict.fromkeys(clean(x, 'Choice', 100, True) for x in choices))
+    elif kind == 'radio':
+        options['group'] = clean(raw.get('group'), 'Radio group name', 60, True)
+        options['choice'] = clean(raw.get('choice'), 'Radio button value', 100, True)
+    elif kind == 'note':
+        options['text'] = clean(raw.get('text'), 'Note', 1000, True)
+    elif kind in TEXT_KINDS:
+        validation = {'number': 'number', 'date': 'date'}.get(kind) or (raw.get('validation') or '')
+        if validation:
+            if validation not in VALIDATIONS:
+                raise ValueError('Unknown text validation.')
+            options['validation'] = validation
+        if raw.get('max_length') not in (None, '', 0):
+            try:
+                limit = int(raw['max_length'])
+            except (TypeError, ValueError):
+                limit = 0
+            if not 1 <= limit <= 4000:
+                raise ValueError('The character limit must be between 1 and 4000.')
+            options['max_length'] = limit
+        prefill = clean(raw.get('prefill'), 'Pre-filled value', 500)
+        if raw.get('readonly') is True and not prefill:
+            raise ValueError('A read-only field needs the value the sender fills in.')
+        if prefill:
+            check_text(prefill, options, 'Pre-filled value')
+            options['prefill'] = prefill
+            options['readonly'] = raw.get('readonly') is True
+    condition = raw.get('condition')
+    if condition is not None and condition != {}:
+        if not isinstance(condition, dict) or not condition.get('field'):
+            raise ValueError('A conditional field must name the field it depends on.')
+        condition = {'field': str(condition['field']), 'equals': clean(condition.get('equals'), 'Condition value', 100, True)}
+    else:
+        condition = None
+    return options, condition
+
+
+def check_text(value: str, options: dict, label: str) -> str | None:
+    """None when the value is acceptable, otherwise the reason."""
+    if options.get('max_length') and len(value) > options['max_length']:
+        return f"{label}: use at most {options['max_length']} characters."
+    rule = VALIDATIONS.get(options.get('validation', ''))
+    if rule and value and not rule[0].fullmatch(value.strip()):
+        return f'{label}: enter {rule[1]}.'
+    return None
+
+
+def visibility(field_rows: list[dict], values: dict) -> dict[str, bool]:
+    """Which fields are shown, given the values entered so far (conditional fields depend on a checkbox, radio group or dropdown)."""
+    by_id = {f['id']: f for f in field_rows}
+    chosen = {}
+    for f in field_rows:
+        if f['kind'] == 'radio' and values.get(f['id']) in (True, 'true'):
+            chosen[(f['recipient_id'], f['options'].get('group'))] = f['options'].get('choice')
+    memo: dict[str, bool] = {}
+
+    def shown(fid: str, depth: int = 0) -> bool:
+        if fid in memo:
+            return memo[fid]
+        f = by_id[fid]
+        condition = (f['options'] or {}).get('condition')
+        target = by_id.get(condition['field']) if condition else None
+        if not target or depth > 25:
+            result = True
+        elif not shown(target['id'], depth + 1):
+            result = False
+        else:
+            if target['kind'] == 'checkbox':
+                current = 'checked' if values.get(target['id']) in (True, 'true') else 'unchecked'
+            elif target['kind'] == 'radio':
+                current = chosen.get((target['recipient_id'], target['options'].get('group')), '')
+            else:
+                current = str(values.get(target['id']) or '')
+            result = current == condition['equals']
+        memo[fid] = result
+        return result
+    return {f['id']: shown(f['id']) for f in field_rows}
+
+
+def build_fields(envelope: dict, field_items: list, keys: dict, roles: dict, sizes: dict) -> list[dict]:
+    """Validate the editor's fields. keys maps the editor's recipient keys to recipient ids; roles maps ids to roles."""
+    rows, fkeys, conditions = [], {}, []
     for item in field_items:
         if not isinstance(item, dict):
             raise ValueError('Invalid field.')
         rid = keys.get(str(item.get('recipient') or item.get('recipient_id') or ''))
         if not rid:
             raise ValueError('Each field must belong to a recipient.')
-        if roles[rid] != 'signer':
+        if roles[rid] not in SIGNING_ROLES:
             raise ValueError('Only recipients who sign can have fields.')
         kind = item.get('kind')
         if kind not in KINDS:
@@ -354,15 +471,58 @@ def _replace_recipients(c, envelope: dict, payload: dict) -> None:
         width, height = sizes[doc][page - 1][:2]
         if not (6 <= w <= width and 6 <= h <= height and -1 <= x <= width - w + 1 and -1 <= y <= height - h + 1):
             raise ValueError('A field is outside its page.')
-        options = {}
-        if kind == 'dropdown':
-            choices = item.get('options', {}).get('choices') if isinstance(item.get('options'), dict) else None
-            if not isinstance(choices, list) or not 1 <= len(choices) <= 50:
-                raise ValueError('A dropdown needs between 1 and 50 choices.')
-            options['choices'] = list(dict.fromkeys(clean(x, 'Choice', 100, True) for x in choices))
-        field_rows.append(dict(id=db.uid(), envelope_id=envelope['id'], document_id=doc, recipient_id=rid, page=page, kind=kind, x=round(x, 2), y=round(y, 2),
-                               w=round(w, 2), h=round(h, 2), required=item.get('required', kind != 'checkbox') is True, label=clean(item.get('label'), 'Field label', 100),
-                               options=options))
+        options, condition = field_options(kind, item.get('options'))
+        required = item.get('required', kind not in ('checkbox', 'note')) is True and kind != 'note' and not options.get('readonly')
+        row = dict(id=db.uid(), envelope_id=envelope['id'], document_id=doc, recipient_id=rid, page=page, kind=kind, x=round(x, 2), y=round(y, 2),
+                   w=round(w, 2), h=round(h, 2), required=required, label=clean(item.get('label'), 'Field label', 100), options=options, value=None, filled_at=None)
+        for key in (item.get('key'), item.get('id')):
+            if key:
+                fkeys[str(key)] = row['id']
+        rows.append(row)
+        if condition:
+            conditions.append((row, condition))
+    by_id = {r['id']: r for r in rows}
+    for row, condition in conditions:
+        target = by_id.get(fkeys.get(condition['field'], ''))
+        if not target or target['id'] == row['id']:
+            raise ValueError('A conditional field depends on a field that is not in this envelope.')
+        if target['recipient_id'] != row['recipient_id']:
+            raise ValueError('A conditional field must depend on a field of the same recipient.')
+        if target['kind'] not in ('checkbox', 'radio', 'dropdown'):
+            raise ValueError('A field can depend only on a checkbox, a radio button group or a dropdown.')
+        if target['kind'] == 'checkbox' and condition['equals'] not in ('checked', 'unchecked'):
+            raise ValueError('A field that depends on a checkbox is shown when it is checked or unchecked.')
+        row['options']['condition'] = {'field': target['id'], 'equals': condition['equals']}
+    for row in rows:                               # no circular conditions
+        seen, current = set(), row
+        while current['options'].get('condition'):
+            if current['id'] in seen:
+                raise ValueError('Conditional fields cannot depend on each other in a circle.')
+            seen.add(current['id'])
+            current = by_id[current['options']['condition']['field']]
+    groups: dict = {}
+    for row in rows:
+        if row['kind'] == 'radio':
+            groups.setdefault(row['options']['group'], set()).add(row['recipient_id'])
+    if any(len(owners) > 1 for owners in groups.values()):
+        raise ValueError('Each radio button group belongs to one recipient. Give the groups of different recipients different names.')
+    return rows
+
+
+def _replace_recipients(c, envelope: dict, payload: dict) -> None:
+    items, field_items = payload.get('recipients'), payload.get('fields', [])
+    if not isinstance(items, list) or len(items) > 20 or not isinstance(field_items, list) or len(field_items) > 3000:
+        raise ValueError('An envelope can have up to 20 recipients.')
+    existing = {r['id']: dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()}
+    keys, rows = {}, []
+    for i, item in enumerate(items):
+        row = recipient_row(c, envelope, item, i, existing)
+        rows.append(row)
+        keys[str(item.get('id') or '')] = row['id']
+        if item.get('key'):
+            keys[str(item['key'])] = row['id']
+    sizes = {d['id']: d['page_sizes'] for d in c.execute(select(documents.c.id, documents.c.page_sizes).where(documents.c.envelope_id == envelope['id'])).mappings()}
+    field_rows = build_fields(envelope, field_items, keys, {r['id']: r['role'] for r in rows}, sizes)
     c.execute(delete(fields).where(fields.c.envelope_id == envelope['id']))
     c.execute(delete(tokens).where(tokens.c.recipient_id.in_(list(existing))))
     c.execute(delete(recipients).where(recipients.c.envelope_id == envelope['id']))
@@ -375,7 +535,7 @@ def _replace_recipients(c, envelope: dict, payload: dict) -> None:
 # ------------------------------------------------------------------ sending and routing
 def issue_token(c, recipient_id: str, via='email') -> str:
     token = secrets.token_urlsafe(32)
-    c.execute(tokens.insert().values(id=digest(token), recipient_id=recipient_id, via=via, created=now(), expires=now() + 300 if via == 'portal' else None))
+    c.execute(tokens.insert().values(id=digest(token), recipient_id=recipient_id, via=via, created=now(), expires=now() + 300 if via in ('portal', 'in_person') else None))
     return token
 
 
@@ -406,6 +566,18 @@ def recipient_email(c, envelope: dict, r: dict, kind: str) -> None:
     mailer.enqueue(c, envelope['entity'], kind, [r['email']], subject, body, html_body, envelope_id=envelope['id'], recipient_id=r['id'])
 
 
+def host_email(c, envelope: dict, r: dict) -> None:
+    """In-person signing: the host (a user of this workspace) is told it is time; they start it from their account."""
+    host = user_row(c, r['host_id'] or envelope['owner_id'])
+    if not host['active']:
+        return
+    box = mailer.load(c, envelope['entity'])
+    ctx = dict(entity=get_entity(envelope['entity']), box=box, subject=envelope['subject'], ref=envelope['ref'], actor=r['name'], detail='',
+               url=portal_url(envelope))
+    subject, body, html_body = mailer.compose('host', ctx)
+    mailer.enqueue(c, envelope['entity'], 'host', [host['email']], subject, body, html_body, envelope_id=envelope['id'], recipient_id=r['id'])
+
+
 def notify(c, envelope: dict, event: str, actor: str, detail: str = '', attach: bool = False) -> None:
     """Tell the sender and the company's compliance mailbox (as configured) about an envelope event."""
     box = mailer.load(c, envelope['entity'])
@@ -432,27 +604,36 @@ def completion_attachments(c, envelope: dict) -> tuple[list[dict], bool]:
     return [{'kind': 'final', 'id': r[0], 'name': r[1]} for r in rows] + [{'kind': 'certificate', 'id': envelope['id']}], True
 
 
+def readiness(envelope: dict, docs: list, rs: list[dict], fs: list[dict]) -> list[str]:
+    problems = []
+    if not envelope['subject'].strip():
+        problems.append('Enter an email subject.')
+    if not docs:
+        problems.append('Add at least one document.')
+    active = [r for r in rs if r['status'] not in INACTIVE]
+    if not any(r['role'] != 'cc' for r in active):
+        problems.append('Add at least one recipient who signs or views.')
+    for r in active:
+        who = r['name'] or r['role_name']
+        if r['role'] == 'in_person':
+            if not r['name']:
+                problems.append(f'Enter the name of {who}, who signs in person.')
+        elif not r['name'] or not r['email']:
+            problems.append(f'Enter the name and email of {who}.')
+        if r['role'] in SIGNING_ROLES and not any(f['recipient_id'] == r['id'] and f['kind'] == 'signature' for f in fs):
+            problems.append(f'Add a signature field for {who}.')
+    return list(dict.fromkeys(problems))
+
+
 def send(c, actor: dict, envelope: dict, ip: str, ua: str) -> None:
     if envelope['status'] != 'draft':
         raise HTTPException(409, 'This envelope has already been sent.')
     docs = c.execute(select(documents.c.id).where(documents.c.envelope_id == envelope['id'])).all()
     rs = [dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()]
     fs = [dict(f) for f in c.execute(select(fields).where(fields.c.envelope_id == envelope['id'])).mappings()]
-    problems = []
-    if not envelope['subject'].strip():
-        problems.append('Enter an email subject.')
-    if not docs:
-        problems.append('Add at least one document.')
-    if not any(r['role'] != 'cc' for r in rs):
-        problems.append('Add at least one recipient who signs or views.')
-    for r in rs:
-        who = r['name'] or r['role_name']
-        if not r['name'] or not r['email']:
-            problems.append(f'Enter the name and email of {who}.')
-        if r['role'] == 'signer' and not any(f['recipient_id'] == r['id'] and f['kind'] == 'signature' for f in fs):
-            problems.append(f'Add a signature field for {who}.')
+    problems = readiness(envelope, docs, rs, fs)
     if problems:
-        raise HTTPException(400, ' '.join(dict.fromkeys(problems)))
+        raise HTTPException(400, ' '.join(problems))
     try:
         mailer.transport(c, envelope['entity'])
     except mailer.MailboxNotReady as exc:
@@ -463,13 +644,15 @@ def send(c, actor: dict, envelope: dict, ip: str, ua: str) -> None:
     envelope.update(status='sent', sent_at=t, expires_at=expires)
     record(c, envelope['id'], 'sent', actor['name'], ip=ip, ua=ua, detail={'recipients': len(rs), 'documents': len(docs)})
     advance(c, envelope)
+    import clients
+    clients.remember_contacts(c, envelope)
     db.log(c, actor, 'esign.sent', envelope['client_id'], {'envelope': envelope['ref'], 'subject': envelope['subject']})
 
 
 def advance(c, envelope: dict) -> None:
     """Notify everyone whose turn has come; start completion when every signer and viewer is done."""
     rs = [dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()]
-    pending = [r for r in rs if r['role'] != 'cc' and r['status'] not in DONE_STATUSES]
+    pending = [r for r in rs if r['role'] != 'cc' and r['status'] not in DONE_STATUSES + INACTIVE]
     if not pending:
         t = now()
         c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(status='completing', completion_next=t, updated=t))
@@ -482,7 +665,10 @@ def advance(c, envelope: dict) -> None:
         if r['status'] == 'created' and r['routing_order'] <= turn:
             c.execute(update(recipients).where(recipients.c.id == r['id']).values(status='sent', sent_at=t))
             record(c, envelope['id'], 'routed', 'TFSC Agreements', recipient_id=r['id'], detail={'to': r['email'], 'role': r['role']})
-            recipient_email(c, envelope, dict(r, status='sent'), 'copy' if r['role'] == 'cc' else 'invite')
+            if r['role'] == 'in_person':
+                host_email(c, envelope, r)
+            else:
+                recipient_email(c, envelope, dict(r, status='sent'), 'copy' if r['role'] == 'cc' else 'invite')
 
 
 # ------------------------------------------------------------------ sender actions on an envelope in progress
@@ -516,7 +702,10 @@ def resend(c, actor: dict, envelope: dict, recipient_id: str | None) -> int:
     for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'], recipients.c.status.in_(OPEN_STATUSES), recipients.c.role != 'cc')).mappings():
         if recipient_id and r['id'] != recipient_id:
             continue
-        recipient_email(c, envelope, dict(r), 'invite')
+        if r['role'] == 'in_person':
+            host_email(c, envelope, dict(r))
+        else:
+            recipient_email(c, envelope, dict(r), 'invite')
         record(c, envelope['id'], 'resent', actor['name'], recipient_id=r['id'], detail={'to': r['email']})
         count += 1
     if not count:
@@ -527,6 +716,8 @@ def resend(c, actor: dict, envelope: dict, recipient_id: str | None) -> int:
 def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> None:
     if envelope['status'] != 'sent':
         raise HTTPException(409, 'Only an envelope that is waiting for signatures can be corrected.')
+    if isinstance(payload.get('layout'), dict):
+        return correct_layout(c, actor, envelope, payload['layout'], ip, ua)
     changed = []
     current = {r['id']: dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()}
     for item in payload.get('recipients', []) or []:
@@ -577,6 +768,95 @@ def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> 
     record(c, envelope['id'], 'corrected', actor['name'], ip=ip, ua=ua, detail={'changes': changed})
 
 
+LOCKED_STATUSES = DONE_STATUSES + INACTIVE + ('declined',)
+KEEP_ON_CORRECT = ('status', 'sent_at', 'delivered_at', 'consent_at', 'signature_png', 'initials_png', 'signature_kind', 'delivery', 'delivery_error',
+                   'reminders_sent', 'last_reminder_at', 'progress', 'auth_failures', 'routing_order', 'created')
+
+
+def correct_layout(c, actor: dict, envelope: dict, layout: dict, ip: str, ua: str) -> None:
+    """Change recipients and fields while the envelope is out: whoever has not finished can be changed, removed or added.
+
+    Recipients who already signed (or were reassigned) and their fields stay exactly as they are.
+    """
+    items, field_items = layout.get('recipients'), layout.get('fields', [])
+    if not isinstance(items, list) or not 1 <= len(items) <= 20 or not isinstance(field_items, list) or len(field_items) > 3000:
+        raise ValueError('An envelope can have up to 20 recipients.')
+    current = {r['id']: dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()}
+    locked = {rid for rid, r in current.items() if r['status'] in LOCKED_STATUSES}
+    keys, rows, seen = {}, [], set()
+    for i, item in enumerate(items):
+        rid = item.get('id') if isinstance(item, dict) else None
+        if rid in locked:
+            keys[str(rid)] = rid
+            seen.add(rid)
+            continue
+        row = recipient_row(c, envelope, item, i, current)
+        old = current.get(row['id'])
+        if old:
+            seen.add(old['id'])
+            if old['status'] != 'created':
+                if row['role'] != old['role']:
+                    raise ValueError(f"{old['name'] or old['email']} has already received the envelope, so their role cannot change. Remove them and add a new recipient.")
+                row.update({k: old[k] for k in KEEP_ON_CORRECT})
+        rows.append((row, old))
+        keys[str(item.get('id') or '')] = row['id']
+        if item.get('key'):
+            keys[str(item['key'])] = row['id']
+    if locked - seen:
+        raise ValueError('Recipients who have already finished cannot be removed.')
+    editable_keys = {k: v for k, v in keys.items() if v not in locked}
+    submitted = [f for f in field_items if isinstance(f, dict) and keys.get(str(f.get('recipient') or f.get('recipient_id') or '')) not in locked]
+    sizes = {d['id']: d['page_sizes'] for d in c.execute(select(documents.c.id, documents.c.page_sizes).where(documents.c.envelope_id == envelope['id'])).mappings()}
+    field_rows = build_fields(envelope, submitted, editable_keys, {row['id']: row['role'] for row, _ in rows}, sizes)
+    kept = [dict(f) for f in c.execute(select(fields).where(fields.c.envelope_id == envelope['id'], fields.c.recipient_id.in_(locked or {''}))).mappings()]
+    final_people = [current[rid] for rid in locked] + [row for row, _ in rows]
+    problems = readiness(envelope, [1], final_people, kept + field_rows)
+    if problems:
+        raise ValueError(' '.join(problems))
+    removed = [r for rid, r in current.items() if rid not in seen]
+    changes = {'added': [], 'removed': [], 'changed': []}
+    c.execute(delete(fields).where(fields.c.envelope_id == envelope['id'], fields.c.recipient_id.notin_(locked or {''})))
+    owner = user_row(c, envelope['owner_id'])
+    for r in removed:
+        c.execute(delete(tokens).where(tokens.c.recipient_id == r['id']))
+        c.execute(delete(sign_sessions).where(sign_sessions.c.recipient_id == r['id']))
+        c.execute(delete(recipients).where(recipients.c.id == r['id']))
+        record(c, envelope['id'], 'removed', actor['name'], ip=ip, ua=ua, detail={'name': r['name'], 'email': r['email'], 'role': r['role']})
+        changes['removed'].append(r['email'] or r['name'])
+        if r['status'] in OPEN_STATUSES and r['email'] and r['role'] != 'in_person':
+            subject, body, html_body = mailer.compose('removed', dict(entity=get_entity(envelope['entity']), box=mailer.load(c, envelope['entity']),
+                                                                     subject=envelope['subject'], recipient_name=r['name'] or r['email'], sender_name=owner['name']))
+            mailer.enqueue(c, envelope['entity'], 'removed', [r['email']], subject, body, html_body, envelope_id=envelope['id'])
+    for row, old in rows:
+        if not old:
+            c.execute(recipients.insert().values(**row))
+            changes['added'].append(row['email'] or row['name'])
+            continue
+        values = {k: row[k] for k in ('role_name', 'name', 'email', 'note', 'access_code', 'host_id', 'routing_order')}
+        if values['email'] != old['email'] or values['access_code'] != old['access_code']:
+            c.execute(delete(tokens).where(tokens.c.recipient_id == old['id']))
+            c.execute(delete(sign_sessions).where(sign_sessions.c.recipient_id == old['id']))
+            values.update(auth_failures=0, delivery='pending', delivery_error=None)
+            if old['status'] == 'auth_failed':
+                values['status'] = 'sent'
+        c.execute(update(recipients).where(recipients.c.id == old['id']).values(**values))
+        changes['changed'].append(row['email'] or row['name'])
+    for row in field_rows:
+        c.execute(fields.insert().values(**row))
+    for _, old in rows:
+        if old and old['status'] in OPEN_STATUSES + ('auth_failed',):
+            fresh = dict(c.execute(select(recipients).where(recipients.c.id == old['id'])).mappings().one())
+            if fresh['role'] == 'in_person':
+                host_email(c, envelope, fresh)
+            elif fresh['role'] != 'cc':
+                recipient_email(c, envelope, fresh, 'corrected')
+    c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(updated=now(), version=envelope['version'] + 1))
+    record(c, envelope['id'], 'corrected', actor['name'], ip=ip, ua=ua, detail={'layout': True, 'added': changes['added'], 'removed': changes['removed'],
+                                                                               'recipients_changed': changes['changed'], 'fields': len(field_rows)})
+    advance(c, envelope)
+    db.log(c, actor, 'esign.corrected', envelope['client_id'], {'envelope': envelope['ref'], 'added': len(changes['added']), 'removed': len(changes['removed'])})
+
+
 def delete_draft(c, envelope: dict) -> None:
     if envelope['status'] not in ('draft', 'template'):
         raise HTTPException(409, 'Only drafts and templates can be deleted. Void an envelope that was sent.')
@@ -598,18 +878,31 @@ def copy(c, actor: dict, source: dict, *, as_template: str | None = None, client
                   version=1, created=t, updated=t, expiry_warned=False, completion_attempts=0)
     c.execute(envelopes.insert().values(**target))
     doc_map, rcpt_map = {}, {}
-    for d in c.execute(select(documents).where(documents.c.envelope_id == source['id']).order_by(documents.c.position)).mappings():
-        new = dict(d, id=db.uid(), envelope_id=target['id'], source='template' if as_template else d['source'], final_pdf=None, final_sha256=None, created=t)
+    for d in c.execute(select(documents).where(documents.c.envelope_id == source['id'], documents.c.source != 'attachment').order_by(documents.c.position)).mappings():
+        new = dict(d, id=db.uid(), envelope_id=target['id'], source='template' if as_template else d['source'], final_pdf=None, final_sha256=None, created=t,
+                   recipient_id=None)
         c.execute(documents.insert().values(**new))
         doc_map[d['id']] = new['id']
-    for r in c.execute(select(recipients).where(recipients.c.envelope_id == source['id'])).mappings():
+    for r in c.execute(select(recipients).where(recipients.c.envelope_id == source['id'], recipients.c.status.notin_(INACTIVE))).mappings():
         new = dict(id=db.uid(), envelope_id=target['id'], role=r['role'], role_name=r['role_name'], routing_order=r['routing_order'], name=r['name'], email=r['email'],
-                   access_code=None, note=r['note'], status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t)
+                   access_code=None, note=r['note'], status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t,
+                   host_id=r['host_id'] if r['role'] == 'in_person' else None)
+        if new['host_id']:
+            try:
+                new['host_id'] = host_for(c, target, actor['id'] if r['host_id'] == source['owner_id'] else r['host_id'])
+            except ValueError:
+                new['host_id'] = actor['id']
         c.execute(recipients.insert().values(**new))
         rcpt_map[r['id']] = new['id']
-    for f in c.execute(select(fields).where(fields.c.envelope_id == source['id'])).mappings():
-        c.execute(fields.insert().values(**dict(f, id=db.uid(), envelope_id=target['id'], document_id=doc_map[f['document_id']], recipient_id=rcpt_map[f['recipient_id']],
-                                                value=None, filled_at=None)))
+    source_fields = [dict(f) for f in c.execute(select(fields).where(fields.c.envelope_id == source['id'])).mappings() if f['recipient_id'] in rcpt_map
+                     and f['document_id'] in doc_map]
+    field_map = {f['id']: db.uid() for f in source_fields}
+    for f in source_fields:
+        options = dict(f['options'] or {})
+        if options.get('condition'):
+            options['condition'] = dict(options['condition'], field=field_map.get(options['condition']['field'], ''))
+        c.execute(fields.insert().values(**dict(f, id=field_map[f['id']], envelope_id=target['id'], document_id=doc_map[f['document_id']],
+                                                recipient_id=rcpt_map[f['recipient_id']], value=None, filled_at=None, options=options)))
     record(c, target['id'], 'created', actor['name'], detail={'copied_from': source['ref'], 'template': bool(as_template)})
     return target
 
@@ -650,7 +943,7 @@ def open_link(token: str, request: Request):
         if not row or (row['expires'] and row['expires'] < now()):
             return _message_page('This link is not valid', 'The link may have been replaced by a newer email, or the sender corrected your details. '
                                  'Open the most recent email you received, or contact the sender.', 404)
-        if row['via'] == 'portal':
+        if row['via'] in ('portal', 'in_person'):
             c.execute(delete(tokens).where(tokens.c.id == row['id']))
         r = dict(c.execute(select(recipients).where(recipients.c.id == row['recipient_id'])).mappings().one())
         envelope = dict(c.execute(select(envelopes).where(envelopes.c.id == r['envelope_id'])).mappings().one())
@@ -659,10 +952,13 @@ def open_link(token: str, request: Request):
         key = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(24)
         c.execute(delete(sign_sessions).where(sign_sessions.c.expires < now()))
-        c.execute(sign_sessions.insert().values(id=digest(key), csrf=csrf, recipient_id=r['id'], verified=not r['access_code'] or row['via'] == 'portal',
+        c.execute(sign_sessions.insert().values(id=digest(key), csrf=csrf, recipient_id=r['id'], verified=not r['access_code'] or row['via'] in ('portal', 'in_person'),
                                                 via=row['via'], expires=now() + SESSION_SECONDS))
         if row['via'] == 'portal':
             record(c, envelope['id'], 'portal_session', r['name'], recipient_id=r['id'], ip=ip, ua=ua)
+        elif row['via'] == 'in_person':
+            host = user_row(c, r['host_id'] or envelope['owner_id'])
+            record(c, envelope['id'], 'host_session', host['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'host': host['email'], 'signer': r['name']})
     response = RedirectResponse(_cookie_path(r['id']), status_code=303)
     response.set_cookie('tfsc_sign', key, max_age=SESSION_SECONDS, path=_cookie_path(r['id']), httponly=True, secure=not db.LOCAL, samesite='lax')
     return response
@@ -697,16 +993,24 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
     entity = get_entity(envelope['entity'])
     box = mailer.load(c, envelope['entity'])
     owner = user_row(c, envelope['owner_id'])
-    docs = [dict(d) for d in c.execute(select(documents.c.id, documents.c.name, documents.c.pages, documents.c.page_sizes)
+    docs = [dict(d) for d in c.execute(select(documents.c.id, documents.c.name, documents.c.pages, documents.c.page_sizes, documents.c.source)
                                        .where(documents.c.envelope_id == envelope['id']).order_by(documents.c.position)).mappings()]
     status = envelope['status']
-    can_act = status == 'sent' and r['status'] in OPEN_STATUSES and r['role'] != 'cc'
+    in_person = session['via'] == 'in_person'
+    can_act = status == 'sent' and r['status'] in OPEN_STATUSES and r['role'] != 'cc' and (r['role'] != 'in_person' or in_person)
     out = dict(subject=envelope['subject'], message=envelope['message'], ref=envelope['ref'], envelope_status=status, sender=owner['name'],
                sender_email=box['address'] or owner['email'], company=entity['name'], company_short=entity['short'],
+               brand=dict(logo=f"/assets/brand/{entity['logo']}", color=entity['color'], accent=entity['accent']),
                recipient=dict(name=r['name'], email=r['email'], role=r['role'], status=r['status'], note=r['note']),
                verified=bool(session['verified']), consent=bool(r['consent_at']), ersd=ersd(entity, box['address']), can_act=can_act,
                adopted=dict(signature=_data_url(r['signature_png']), initials=_data_url(r['initials_png'])), csrf=session['csrf'],
-               timezone=entity['timezone'], expires_at=envelope['expires_at'], role_label=ROLE_LABELS[r['role']])
+               timezone=entity['timezone'], expires_at=envelope['expires_at'], role_label=ROLE_LABELS[r['role']],
+               allow_reassign=can_act and envelope['settings'].get('allow_reassign', True) and r['role'] in ('signer', 'viewer') and session['via'] == 'email',
+               progress=(r['progress'] or {}).get('values', {}) if can_act else {}, in_person=in_person,
+               host=user_row(c, r['host_id'] or envelope['owner_id'])['name'] if r['role'] == 'in_person' else '')
+    if r['status'] == 'reassigned' and r['reassigned_to']:
+        other = c.execute(select(recipients.c.name, recipients.c.email).where(recipients.c.id == r['reassigned_to'])).first()
+        out['reassigned_to'] = f'{other[0]} ({other[1]})' if other else ''
     if not session['verified']:
         return out
     out['documents'] = docs
@@ -714,8 +1018,13 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
         mine = [dict(f) for f in c.execute(select(fields).where(fields.c.recipient_id == r['id'])).mappings()]
         out['fields'] = [{k: f[k] for k in ('id', 'document_id', 'page', 'kind', 'x', 'y', 'w', 'h', 'required', 'label', 'options', 'value')} for f in mine]
         others = c.execute(select(fields.c.document_id, fields.c.page, fields.c.x, fields.c.y, fields.c.w, fields.c.h, fields.c.kind, recipients.c.name, recipients.c.status)
-                           .join(recipients, recipients.c.id == fields.c.recipient_id).where(fields.c.envelope_id == envelope['id'], fields.c.recipient_id != r['id'])).mappings()
+                           .join(recipients, recipients.c.id == fields.c.recipient_id).where(fields.c.envelope_id == envelope['id'], fields.c.recipient_id != r['id'],
+                                                                                             fields.c.kind != 'note')).mappings()
         out['others'] = [dict(o, done=o['status'] in DONE_STATUSES) for o in others]
+        names = {d['id']: d['name'] for d in docs}
+        for f in out['fields']:
+            if f['kind'] == 'attachment' and f['value']:
+                f['attachment_name'] = names.get(f['value'], '')
     out['completed'] = status == 'completed'
     return out
 
@@ -822,52 +1131,188 @@ def date_signed(envelope: dict, at: float) -> str:
     return dt.datetime.fromtimestamp(at, zoneinfo.ZoneInfo(get_entity(envelope['entity'])['timezone'])).strftime('%m/%d/%Y')
 
 
-def finish(c, session: dict, r: dict, envelope: dict, values: dict, request: Request) -> None:
+def split_name(name: str) -> tuple[str, str]:
+    parts = (name or '').split()
+    return (parts[0] if parts else ''), (parts[-1] if len(parts) > 1 else '')
+
+
+def _signing(session: dict, r: dict, envelope: dict) -> None:
     _active(r, envelope)
-    if r['role'] != 'signer':
+    if r['role'] not in SIGNING_ROLES:
         raise HTTPException(400, 'Only signers finish by signing.')
+    if r['role'] == 'in_person' and session['via'] != 'in_person':
+        raise HTTPException(403, 'This signer signs in person, on a device their host opens for them.')
     if not r['consent_at']:
         raise HTTPException(403, 'Agree to use electronic records and signatures first.')
+
+
+def finish(c, session: dict, r: dict, envelope: dict, values: dict, request: Request) -> None:
+    _signing(session, r, envelope)
     if not isinstance(values, dict):
         raise ValueError('Invalid field values.')
     t = now()
     mine = [dict(f) for f in c.execute(select(fields).where(fields.c.recipient_id == r['id'])).mappings()]
-    missing = 0
+    entered = {}
     for f in mine:
-        raw = values.get(f['id'])
-        kind = f['kind']
+        options = f['options'] or {}
+        entered[f['id']] = options.get('prefill') if options.get('readonly') else values.get(f['id'])
+    shown = visibility(mine, entered)
+    first, last = split_name(r['name'])
+    updates, groups, problems, missing = {}, {}, [], 0
+    for f in mine:
+        kind, raw, options = f['kind'], entered[f['id']], f['options'] or {}
+        label = f['label'] or options.get('tooltip') or kind.replace('_', ' ').capitalize()
+        if not shown[f['id']] or kind == 'note':
+            updates[f['id']] = None
+            continue
+        if kind == 'radio':
+            groups.setdefault(options.get('group'), []).append(f)
+            continue
         if kind == 'signature':
             value = 'signed' if raw and r['signature_png'] else None
         elif kind == 'initials':
             value = 'initialed' if raw and r['initials_png'] else None
         elif kind == 'date_signed':
             value = date_signed(envelope, t)
-        elif kind == 'name':
-            value = r['name']
-        elif kind == 'email':
-            value = r['email']
+        elif kind in ('name', 'first_name', 'last_name', 'email'):
+            value = {'name': r['name'], 'first_name': first, 'last_name': last, 'email': r['email']}[kind] or None
         elif kind == 'checkbox':
             value = 'true' if raw is True or raw == 'true' else 'false'
             if f['required'] and value != 'true':
                 value = None
         elif kind == 'dropdown':
-            value = raw if raw in f['options'].get('choices', []) else None
+            value = raw if raw in options.get('choices', []) else None
+        elif kind == 'attachment':
+            value = None
+            if isinstance(raw, str) and raw and raw == f['value'] and c.execute(select(documents.c.id).where(
+                    documents.c.id == raw, documents.c.envelope_id == envelope['id'], documents.c.source == 'attachment', documents.c.recipient_id == r['id'])).first():
+                value = raw
         else:
-            value = clean(raw, f['label'] or kind.capitalize(), 500) or None
-        if value is None:
-            if f['required'] or kind in ('signature', 'initials') and raw:
-                missing += 1
+            value = clean(raw, label, 4000) or None
+            reason = check_text(value, options, label) if value else None
+            if reason:
+                problems.append(reason)
+                continue
+        if value is None and (f['required'] or kind in ('signature', 'initials') and raw):
+            missing += 1
             continue
-        c.execute(update(fields).where(fields.c.id == f['id']).values(value=value, filled_at=t))
+        updates[f['id']] = value
+    for members in groups.values():
+        selected = [m for m in members if entered.get(m['id']) in (True, 'true')]
+        if len(selected) > 1:
+            problems.append('Choose only one option in each group of radio buttons.')
+        if not selected and any(m['required'] for m in members):
+            missing += 1
+        for m in members:
+            updates[m['id']] = 'true' if selected and m['id'] == selected[0]['id'] else 'false'
+    if problems:
+        raise HTTPException(400, problems[0])
     if missing:
         raise HTTPException(400, f"Complete the {missing} required field{'s' if missing != 1 else ''} before finishing.")
+    for fid, value in updates.items():
+        c.execute(update(fields).where(fields.c.id == fid).values(value=value, filled_at=t if value is not None else None))
+    kept = [v for f in mine if f['kind'] == 'attachment' and (v := updates.get(f['id']))]
+    c.execute(delete(documents).where(documents.c.envelope_id == envelope['id'], documents.c.source == 'attachment', documents.c.recipient_id == r['id'],
+                                      documents.c.id.notin_(kept or [''])))
     ip, ua = _actor_info(request)
-    method = 'TFSC Agreements account' if session['via'] == 'portal' else 'Email link' + (' and access code' if r['access_code'] else '')
-    c.execute(update(recipients).where(recipients.c.id == r['id']).values(status='signed', signed_at=t, ip=ip, user_agent=ua, auth_method=method))
+    if session['via'] == 'in_person':
+        method = 'In person, hosted'
+    else:
+        method = 'TFSC Agreements account' if session['via'] == 'portal' else 'Email link' + (' and access code' if r['access_code'] else '')
+    c.execute(update(recipients).where(recipients.c.id == r['id']).values(status='signed', signed_at=t, ip=ip, user_agent=ua, auth_method=method, progress=None))
     record(c, envelope['id'], 'signed', r['name'], recipient_id=r['id'], ip=ip, ua=ua, at=t,
-           detail={'fields': len(mine), 'signature_sha256': hashlib.sha256(r['signature_png'] or b'').hexdigest() if r['signature_png'] else ''})
-    notify(c, envelope, 'signed', f"{r['name']} ({r['email']})")
+           detail={'fields': len(mine), 'signature_sha256': hashlib.sha256(r['signature_png'] or b'').hexdigest() if r['signature_png'] else '',
+                   **({'hosted_by': user_row(c, r['host_id'] or envelope['owner_id'])['email']} if session['via'] == 'in_person' else {})})
+    notify(c, envelope, 'signed', f"{r['name']} ({r['email']})" if r['email'] else r['name'])
     advance(c, envelope)
+
+
+def save_progress(c, session: dict, r: dict, envelope: dict, values: dict, request: Request) -> None:
+    """Finish later: keep what the signer entered so far; the link in their email brings it back."""
+    _signing(session, r, envelope)
+    if not isinstance(values, dict) or len(values) > 3000:
+        raise ValueError('Invalid field values.')
+    mine = {f[0] for f in c.execute(select(fields.c.id).where(fields.c.recipient_id == r['id']))}
+    kept = {k: v for k, v in values.items() if k in mine and (isinstance(v, bool) or isinstance(v, str) and len(v) <= 4000)}
+    c.execute(update(recipients).where(recipients.c.id == r['id']).values(progress={'values': kept, 'saved_at': now()}))
+    ip, ua = _actor_info(request)
+    record(c, envelope['id'], 'saved', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'fields': len(kept)})
+
+
+def reassign(c, session: dict, r: dict, envelope: dict, payload: dict, request: Request) -> None:
+    """Assign to someone else: the recipient hands their part (and their fields) to another person, who gets their own email."""
+    _active(r, envelope)
+    if not envelope['settings'].get('allow_reassign', True):
+        raise HTTPException(403, 'The sender does not allow these documents to be assigned to someone else.')
+    if r['role'] not in ('signer', 'viewer') or session['via'] != 'email':
+        raise HTTPException(400, 'Only a recipient who received the documents by email can assign them to someone else.')
+    if not isinstance(payload, dict):
+        raise ValueError('Invalid request.')
+    name = clean(payload.get('name'), 'Name', 150, True)
+    address = mailer.valid_email(payload.get('email'))
+    reason = clean(payload.get('reason'), 'Reason', 500, True)
+    if address.casefold() == (r['email'] or '').casefold():
+        raise ValueError('Enter the email address of the person who should take over.')
+    t = now()
+    note = f"{r['name']} assigned these documents to you. Their message: {reason}" + (f"\n\n{r['note']}" if r['note'] else '')
+    new = dict(id=db.uid(), envelope_id=envelope['id'], role=r['role'], role_name=r['role_name'], routing_order=r['routing_order'], name=name, email=address,
+               access_code=r['access_code'], note=note[:1000], status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t)
+    c.execute(recipients.insert().values(**new))
+    c.execute(update(recipients).where(recipients.c.id == r['id']).values(status='reassigned', reassigned_to=new['id'], progress=None))
+    c.execute(update(fields).where(fields.c.recipient_id == r['id']).values(recipient_id=new['id'], value=None, filled_at=None))
+    c.execute(delete(documents).where(documents.c.envelope_id == envelope['id'], documents.c.source == 'attachment', documents.c.recipient_id == r['id']))
+    ip, ua = _actor_info(request)
+    record(c, envelope['id'], 'reassigned', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'to': address, 'name': name, 'reason': reason})
+    notify(c, envelope, 'reassigned', f"{r['name']} ({r['email']})", f'Assigned to {name} ({address}). Reason: {reason}')
+    db.log(c, None, 'esign.reassigned', envelope['client_id'], {'envelope': envelope['ref'], 'from': r['email'], 'to': address})
+    advance(c, envelope)
+
+
+ATTACHMENT_LIMIT = 10_000_000
+
+
+def scan_upload(raw: bytes) -> str:
+    """Virus-scan an uploaded file (when a scanner is configured). Infected files and an unreachable scanner are refused."""
+    try:
+        verdict = mailer.scan(raw)
+    except (OSError, RuntimeError):
+        raise HTTPException(503, 'The virus scanner is not reachable right now. Try again in a minute.') from None
+    if verdict == 'infected':
+        raise HTTPException(400, 'The file was blocked by the virus scanner.')
+    return verdict
+
+
+def prepare_attachment(payload: dict) -> dict:
+    """Decode, convert and virus-scan a signer's attachment before any database lock is taken."""
+    if not isinstance(payload, dict):
+        raise ValueError('Invalid request.')
+    try:
+        raw = base64.b64decode(str(payload.get('data', '')), validate=True)
+    except (ValueError, TypeError):
+        raise ValueError('The file could not be read.') from None
+    if not 100 <= len(raw) <= ATTACHMENT_LIMIT:
+        raise ValueError('Attach a file smaller than 10 MB.')
+    name = re.sub(r'[^\w .()&,-]', '_', clean(payload.get('name'), 'File name', 150, True))
+    if esign_pdf.kind_of(name, raw) == 'office':
+        raise ValueError('Attach a PDF or a photo (PNG or JPEG).')
+    verdict = scan_upload(raw)
+    pdf, pdf_name = esign_pdf.to_pdf(name, raw)
+    return {'field_id': str(payload.get('field_id', '')), 'name': pdf_name, 'pdf': pdf, 'scan': verdict, 'original': name}
+
+
+def attach(c, session: dict, r: dict, envelope: dict, upload: dict, request: Request) -> None:
+    _signing(session, r, envelope)
+    f = c.execute(select(fields).where(fields.c.id == upload['field_id'], fields.c.recipient_id == r['id'], fields.c.kind == 'attachment')).mappings().first()
+    if not f:
+        raise HTTPException(404, 'Attachment field not found.')
+    if f['value']:
+        c.execute(delete(documents).where(documents.c.id == f['value'], documents.c.source == 'attachment', documents.c.recipient_id == r['id']))
+    label = (f['label'] or 'Attachment').strip()
+    doc = add_document(c, envelope, f"{label} - {r['name']} - {upload['name']}"[:200], upload['pdf'], 'attachment', recipient_id=r['id'])
+    c.execute(update(fields).where(fields.c.id == f['id']).values(value=doc['id']))
+    ip, ua = _actor_info(request)
+    record(c, envelope['id'], 'attachment', r['name'], recipient_id=r['id'], ip=ip, ua=ua,
+           detail={'name': upload['original'], 'sha256': doc['sha256'], 'scan': upload['scan']})
 
 
 def acknowledge(c, session: dict, r: dict, envelope: dict, request: Request) -> None:
@@ -935,6 +1380,17 @@ def finalize(envelope_id: str) -> None:
         sender = user_row(c, envelope['owner_id'])
         box = mailer.load(c, envelope['entity'])
     signers = {r['id']: dict(r, signature_id=signature_id(envelope, r)) for r in rs}
+    names = {d['id']: d['name'] for d in docs}
+    for f in fs:
+        if f['kind'] == 'attachment' and f['value']:
+            f['value'] = 'Attached: ' + re.sub(r'\.pdf$', '', names.get(f['value'], 'file'), flags=re.I)
+    people = {r['id']: r['name'] for r in rs}
+    with db.engine.connect() as c:
+        for r in rs:
+            if r['status'] == 'reassigned':
+                r['reassigned_name'] = people.get(r['reassigned_to'], '')
+            if r['role'] == 'in_person' and r['auth_method']:
+                r['auth_method'] = hosted_by(c, r, envelope)
     finals = {}
     for d in docs:
         finals[d['id']] = esign_pdf.stamp(bytes(d['pdf']), envelope['ref'], [f for f in fs if f['document_id'] == d['id']], signers)
@@ -962,7 +1418,7 @@ def finalize(envelope_id: str) -> None:
         refs, attached = completion_attachments(c, envelope)
         docs_names = [d['name'] for d in docs]
         for r in rs:
-            if r['status'] == 'declined':
+            if r['status'] in ('declined',) + INACTIVE or not r['email']:
                 continue
             ctx = dict(entity=entity, box=box, subject=envelope['subject'], recipient_name=r['name'] or r['email'], documents=docs_names, attached=attached,
                        url=sign_url(issue_token(c, r['id'])))
@@ -998,7 +1454,7 @@ def sweep() -> int:
         if open_envelopes:
             for r in c.execute(select(recipients.c.envelope_id, recipients.c.sent_at, recipients.c.last_reminder_at, recipients.c.reminders_sent)
                                .join(envelopes, envelopes.c.id == recipients.c.envelope_id)
-                               .where(envelopes.c.status == 'sent', recipients.c.status.in_(OPEN_STATUSES), recipients.c.role != 'cc')).mappings():
+                               .where(envelopes.c.status == 'sent', recipients.c.status.in_(OPEN_STATUSES), recipients.c.role.notin_(('cc', 'in_person')))).mappings():
                 waiting.setdefault(r['envelope_id'], []).append(dict(r))
     due = [e for e in open_envelopes.values() if _due(e, waiting.get(e['id'], []), t)]
     for e in due:
@@ -1015,7 +1471,7 @@ def sweep() -> int:
                 continue
             s = envelope['settings']
             pending = [dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'], recipients.c.status.in_(OPEN_STATUSES),
-                                                                           recipients.c.role != 'cc')).mappings()]
+                                                                           recipients.c.role.notin_(('cc', 'in_person')))).mappings()]
             if s.get('warn_days') and not envelope['expiry_warned'] and envelope['expires_at'] and envelope['expires_at'] - s['warn_days'] * 86400 <= t:
                 for r in pending:
                     recipient_email(c, envelope, r, 'expiring')
@@ -1087,7 +1543,7 @@ def summary(c, rows: list[dict]) -> list[dict]:
     out = []
     for r in rows:
         ps = people.get(r['id'], [])
-        acting = [p for p in ps if p['role'] != 'cc']
+        acting = [p for p in ps if p['role'] != 'cc' and p['status'] not in INACTIVE]
         out.append({k: r[k] for k in ('id', 'ref', 'subject', 'status', 'entity', 'client_id', 'sent_at', 'updated', 'completed_at', 'expires_at', 'template_name', 'created')}
                    | {'client': clients.get(r['client_id'], ''), 'sender': owners.get(r['owner_id'], ''), 'recipients': ps,
                       'progress': [sum(p['status'] in DONE_STATUSES for p in acting), len(acting)],
@@ -1095,10 +1551,16 @@ def summary(c, rows: list[dict]) -> list[dict]:
     return out
 
 
+def hosted_by(c, r: dict, envelope: dict) -> str:
+    host = user_row(c, r['host_id'] or envelope['owner_id'])
+    return f"In person, hosted by {host['name']} ({host['email']})"
+
+
 def detail(c, actor: dict, envelope: dict) -> dict:
     entity = get_entity(envelope['entity'])
     docs = [dict(d) for d in c.execute(select(documents.c.id, documents.c.name, documents.c.pages, documents.c.page_sizes, documents.c.sha256, documents.c.final_sha256,
-                                              documents.c.source, documents.c.agreement).where(documents.c.envelope_id == envelope['id']).order_by(documents.c.position)).mappings()]
+                                              documents.c.source, documents.c.agreement, documents.c.recipient_id).where(documents.c.envelope_id == envelope['id'])
+                                       .order_by(documents.c.position)).mappings()]
     bottom = entity['bottom'] / 20
     for d in docs:
         d['initials_spot'] = [esign_pdf.initials_box(size, bottom if d['source'] in ('generated',) or d['agreement'] else None) for size in d['page_sizes']]
@@ -1106,8 +1568,11 @@ def detail(c, actor: dict, envelope: dict) -> dict:
     people = []
     for r in rs:
         item = {k: r[k] for k in ('id', 'role', 'role_name', 'routing_order', 'name', 'email', 'note', 'status', 'sent_at', 'delivered_at', 'signed_at', 'declined_at',
-                                  'decline_reason', 'delivery', 'delivery_error', 'reminders_sent', 'auth_method')}
+                                  'decline_reason', 'delivery', 'delivery_error', 'reminders_sent', 'auth_method', 'host_id', 'reassigned_to')}
         item['has_access_code'] = bool(r['access_code'])
+        item['saved_progress'] = bool(r['progress'])
+        if r['role'] == 'in_person' and r['auth_method']:
+            item['auth_method'] = hosted_by(c, r, envelope)
         people.append(item)
     fs = [{k: f[k] for k in ('id', 'document_id', 'recipient_id', 'page', 'kind', 'x', 'y', 'w', 'h', 'required', 'label', 'options', 'value')}
           for f in c.execute(select(fields).where(fields.c.envelope_id == envelope['id'])).mappings()]
@@ -1125,25 +1590,53 @@ def detail(c, actor: dict, envelope: dict) -> dict:
     owner = user_row(c, envelope['owner_id'])
     client = c.execute(select(db.clients.c.name).where(db.clients.c.id == envelope['client_id'])).scalar() if envelope['client_id'] else ''
     box = mailer.load(c, envelope['entity'])
-    mine = next((r for r in rs if r['email'].casefold() == actor['email'].casefold() and r['status'] in OPEN_STATUSES and envelope['status'] == 'sent' and r['role'] != 'cc'), None)
+    mine = next((r for r in rs if r['email'].casefold() == actor['email'].casefold() and r['status'] in OPEN_STATUSES and envelope['status'] == 'sent'
+                 and r['role'] in ('signer', 'viewer')), None)
+    hosting = [r['id'] for r in rs if r['role'] == 'in_person' and r['status'] in OPEN_STATUSES and envelope['status'] == 'sent'
+               and (r['host_id'] == actor['id'] or envelope['owner_id'] == actor['id'])]
     return {k: envelope[k] for k in ('id', 'ref', 'entity', 'client_id', 'contract_id', 'subject', 'message', 'status', 'template_name', 'settings', 'version', 'created',
                                      'updated', 'sent_at', 'expires_at', 'completed_at', 'closed_at', 'close_reason', 'completion_error', 'certificate_sha256')} | {
         'client': client or '', 'sender': {'name': owner['name'], 'email': owner['email']}, 'documents': docs, 'recipients': people, 'fields': fs, 'history': history,
         'chain_ok': verify_chain(trail), 'mails': mails, 'replies': replies, 'entity_short': entity['short'],
         'mailbox': {'ready': mailer.ready(box), 'address': box['address'], 'signer_email': box['signer_email']},
-        'can_sign_now': mine['id'] if mine else None, 'is_owner': envelope['owner_id'] == actor['id']}
+        'can_sign_now': mine['id'] if mine else None, 'can_host': hosting, 'is_owner': envelope['owner_id'] == actor['id'], 'bulk_id': envelope.get('bulk_id'),
+        'hosts': hosts_for(c, envelope['entity'])}
 
 
-def list_envelopes(c, actor: dict, box: str, q: str, page: int) -> dict:
+def waiting_for(actor: dict):
+    """Envelopes waiting for this user: to sign or view (by email), or to host an in-person signing."""
+    return select(recipients.c.envelope_id).where(recipients.c.status.in_(OPEN_STATUSES), or_(
+        and_(func.lower(recipients.c.email) == actor['email'].lower(), recipients.c.role.in_(('signer', 'viewer'))),
+        and_(recipients.c.role == 'in_person', recipients.c.host_id == actor['id'])))
+
+
+def hosts_for(c, entity: str) -> list[dict]:
+    """Users who can host an in-person signing for this company."""
+    rows = c.execute(select(db.users.c.id, db.users.c.name, db.users.c.email, db.users.c.role, db.users.c.companies).where(db.users.c.active == True)  # noqa: E712
+                     .order_by(db.users.c.name).limit(500)).mappings()
+    return [{'id': u['id'], 'name': u['name'], 'email': u['email']} for u in rows if u['role'] == 'super_admin' or entity in (u['companies'] or [])]
+
+
+def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = '', client_id: str = '', since: float | None = None,
+                   until: float | None = None) -> dict:
     page = max(0, min(int(page or 0), 10000))
-    if box == 'action':
-        cond = and_(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity), envelopes.c.id.in_(
-            select(recipients.c.envelope_id).where(func.lower(recipients.c.email) == actor['email'].lower(), recipients.c.status.in_(OPEN_STATUSES), recipients.c.role != 'cc')))
+    if box == 'expiring':
+        cond = and_(visible(actor), envelopes.c.status == 'sent', envelopes.c.expires_at <= now() + 7 * 86400)
+    elif box == 'action':
+        cond = and_(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity), envelopes.c.id.in_(waiting_for(actor)))
     else:
         statuses = {'waiting': ('sent', 'completing'), 'completed': ('completed',), 'drafts': ('draft',), 'declined': ('declined',), 'voided': ('voided',),
                     'expired': ('expired',), 'templates': ('template',)}.get(box)
         cond = visible(actor)
         cond = and_(cond, envelopes.c.status.in_(statuses)) if statuses else and_(cond, envelopes.c.status != 'template')
+    if entity:
+        cond = and_(cond, envelopes.c.entity == entity)
+    if client_id:
+        cond = and_(cond, envelopes.c.client_id == client_id)
+    if since:
+        cond = and_(cond, envelopes.c.created >= since)
+    if until:
+        cond = and_(cond, envelopes.c.created < until)
     if q:
         term = q.strip()[:100].lower()
         cond = and_(cond, or_(func.lower(envelopes.c.subject).contains(term, autoescape=True), func.lower(envelopes.c.ref).contains(term, autoescape=True),
@@ -1157,9 +1650,17 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int) -> dict:
     counts = {}
     for name, statuses in (('waiting', ('sent', 'completing')), ('drafts', ('draft',))):
         counts[name] = c.execute(select(func.count()).select_from(envelopes).where(visible(actor), envelopes.c.status.in_(statuses))).scalar()
-    counts['action'] = c.execute(select(func.count()).select_from(envelopes).where(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity), envelopes.c.id.in_(
-        select(recipients.c.envelope_id).where(func.lower(recipients.c.email) == actor['email'].lower(), recipients.c.status.in_(OPEN_STATUSES), recipients.c.role != 'cc')))).scalar()
-    return {'envelopes': summary(c, rows[:50]), 'has_more': len(rows) > 50, 'page': page, 'counts': counts}
+    counts['expiring'] = c.execute(select(func.count()).select_from(envelopes).where(visible(actor), envelopes.c.status == 'sent',
+                                                                                    envelopes.c.expires_at <= now() + 7 * 86400)).scalar()
+    counts['action'] = c.execute(select(func.count()).select_from(envelopes).where(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity),
+                                                                                  envelopes.c.id.in_(waiting_for(actor)))).scalar()
+    out = summary(c, rows[:50])
+    if box == 'action' and out:
+        hosting = {x[0] for x in c.execute(select(recipients.c.envelope_id).where(recipients.c.envelope_id.in_([e['id'] for e in out]), recipients.c.role == 'in_person',
+                                                                                 recipients.c.host_id == actor['id'], recipients.c.status.in_(OPEN_STATUSES)))}
+        for e in out:
+            e['hosting'] = e['id'] in hosting
+    return {'envelopes': out, 'has_more': len(rows) > 50, 'page': page, 'counts': counts}
 
 
 # ------------------------------------------------------------------ routes
@@ -1170,9 +1671,9 @@ def install(app) -> None:  # noqa: C901  (route table)
         return sec.get_actor(request, c)
 
     @app.get('/api/esign/envelopes')
-    def api_list(request: Request, box: str = 'waiting', q: str = '', page: int = 0):
+    def api_list(request: Request, box: str = 'waiting', q: str = '', page: int = 0, entity: str = '', client_id: str = '', since: float = 0, until: float = 0):
         with db.engine.connect() as c:
-            return list_envelopes(c, actor_of(request, c), box, q, page)
+            return list_envelopes(c, actor_of(request, c), box, q, page, entity[:100], client_id[:32], since or None, until or None)
 
     @app.post('/api/esign/envelopes')
     def api_create(request: Request, payload: dict = Body(...)):
@@ -1185,7 +1686,7 @@ def install(app) -> None:  # noqa: C901  (route table)
     def api_detail(envelope_id: str, request: Request):
         with db.engine.connect() as c:
             a = actor_of(request, c)
-            return detail(c, a, get_envelope(c, a, envelope_id))
+            return detail(c, a, get_envelope(c, a, envelope_id, hosting=True))
 
     @app.post('/api/esign/envelopes/{envelope_id}/draft')
     def api_save(envelope_id: str, request: Request, payload: dict = Body(...)):
@@ -1205,20 +1706,20 @@ def install(app) -> None:  # noqa: C901  (route table)
         except (ValueError, TypeError):
             raise HTTPException(400, 'The file could not be read.') from None
         if not 100 <= len(raw) <= 15_000_000:
-            raise HTTPException(400, 'Upload a PDF smaller than 15 MB.')
-        if not raw.startswith(b'%PDF'):
-            raise HTTPException(400, 'Only PDF files can be uploaded. Save Word documents as PDF first.')
-        name = clean(payload.get('name'), 'File name', 200, True)
-        name = re.sub(r'[^\w .()&,-]', '_', name)
-        if not name.lower().endswith('.pdf'):
-            name += '.pdf'
+            raise HTTPException(400, 'Upload a file smaller than 15 MB.')
+        name = re.sub(r'[^\w .()&,-]', '_', clean(payload.get('name'), 'File name', 200, True))
+        with db.engine.connect() as c:          # check access before spending time on conversion
+            get_envelope(c, actor_of(request, c), envelope_id)
+        esign_pdf.kind_of(name, raw)
+        scan_upload(raw)
+        pdf, name = esign_pdf.to_pdf(name, raw)
         with write_tx() as c:
             a = actor_of(request, c)
             get_envelope(c, a, envelope_id)
             envelope = lock(c, envelope_id)
             if envelope['status'] not in ('draft', 'template'):
                 raise HTTPException(409, 'Documents can be added only to a draft.')
-            add_document(c, envelope, name, raw, 'upload')
+            add_document(c, envelope, name, pdf, 'upload')
             c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(updated=now(), version=envelope['version'] + 1))
             return detail(c, a, get_envelope(c, a, envelope_id))
 
@@ -1242,7 +1743,7 @@ def install(app) -> None:  # noqa: C901  (route table)
         row = c.execute(select(documents).where(documents.c.id == document_id)).mappings().first()
         if not row:
             raise HTTPException(404, 'Document not found.')
-        get_envelope(c, a, row['envelope_id'])
+        get_envelope(c, a, row['envelope_id'], hosting=True)
         return row
 
     @app.get('/api/esign/documents/{document_id}/page/{page}.png')
@@ -1350,10 +1851,25 @@ def install(app) -> None:  # noqa: C901  (route table)
             a = actor_of(request, c)
             envelope = c.execute(select(envelopes).where(envelopes.c.id == envelope_id, envelopes.c.status == 'sent', sec.company_scope(a, envelopes.c.entity))).mappings().first()
             r = c.execute(select(recipients).where(recipients.c.envelope_id == envelope_id, func.lower(recipients.c.email) == a['email'].lower(),
-                                                   recipients.c.status.in_(OPEN_STATUSES), recipients.c.role != 'cc').order_by(recipients.c.routing_order)).mappings().first() if envelope else None
+                                                   recipients.c.status.in_(OPEN_STATUSES), recipients.c.role.in_(('signer', 'viewer')))
+                          .order_by(recipients.c.routing_order)).mappings().first() if envelope else None
             if not r:
                 raise HTTPException(404, 'Nothing is waiting for your signature on this envelope.')
             return {'url': '/sign/' + issue_token(c, r['id'], 'portal')}
+
+    @app.post('/api/esign/envelopes/{envelope_id}/host/{recipient_id}')
+    def api_host(envelope_id: str, recipient_id: str, request: Request):
+        """Start an in-person signing on this device: only the host (or the sender) can, and only when it is that signer's turn."""
+        with write_tx() as c:
+            a = actor_of(request, c)
+            envelope = c.execute(select(envelopes).where(envelopes.c.id == envelope_id, sec.company_scope(a, envelopes.c.entity))).mappings().first()
+            r = c.execute(select(recipients).where(recipients.c.id == recipient_id, recipients.c.envelope_id == envelope_id, recipients.c.role == 'in_person')
+                          ).mappings().first() if envelope else None
+            if not r or (r['host_id'] != a['id'] and envelope['owner_id'] != a['id']):
+                raise HTTPException(404, 'No in-person signing for you to host on this envelope.')
+            if envelope['status'] != 'sent' or r['status'] not in OPEN_STATUSES:
+                raise HTTPException(409, 'This in-person signing is not ready: it is not this signer\'s turn, or they have finished.')
+            return {'url': '/sign/' + issue_token(c, r['id'], 'in_person')}
 
     # ---- company mailboxes
     @app.get('/api/esign/mailboxes')
@@ -1483,6 +1999,20 @@ def install(app) -> None:  # noqa: C901  (route table)
     @app.post('/sign/r/{recipient_id}/api/finish')
     def sign_finish(recipient_id: str, request: Request, payload: dict = Body(...)):
         return _sign_write(recipient_id, request, finish, payload.get('values', {}))
+
+    @app.post('/sign/r/{recipient_id}/api/save')
+    def sign_save(recipient_id: str, request: Request, payload: dict = Body(...)):
+        return _sign_write(recipient_id, request, save_progress, payload.get('values', {}))
+
+    @app.post('/sign/r/{recipient_id}/api/reassign')
+    def sign_reassign(recipient_id: str, request: Request, payload: dict = Body(...)):
+        return _sign_write(recipient_id, request, reassign, payload)
+
+    @app.post('/sign/r/{recipient_id}/api/attachment')
+    def sign_attachment(recipient_id: str, request: Request, payload: dict = Body(...)):
+        with db.engine.connect() as c:          # the session must be valid before the file is processed
+            signer_session(c, request, recipient_id)
+        return _sign_write(recipient_id, request, attach, prepare_attachment(payload))
 
     @app.post('/sign/r/{recipient_id}/api/acknowledge')
     def sign_ack(recipient_id: str, request: Request):

@@ -33,6 +33,7 @@ envelopes = Table(
     Column('lease_until', Float, nullable=True),
     Column('certificate', LargeBinary, nullable=True),
     Column('certificate_sha256', String(64), nullable=True),
+    Column('bulk_id', String(32), nullable=True, index=True),           # esign_bulk.id when sent by bulk send
 )
 Index('ix_esign_env_owner_updated', envelopes.c.owner_id, envelopes.c.updated)
 Index('ix_esign_env_status', envelopes.c.status, envelopes.c.completion_next)
@@ -44,7 +45,7 @@ documents = Table(
     Column('envelope_id', String(32), ForeignKey('esign_envelopes.id'), nullable=False, index=True),
     Column('position', Integer, nullable=False),
     Column('name', String(200), nullable=False),
-    Column('source', String(20), nullable=False),            # generated | upload | template
+    Column('source', String(20), nullable=False),            # generated | upload | template | attachment (uploaded by a signer)
     Column('source_document_id', String(32), nullable=True),  # documents.id of a generated agreement
     Column('agreement', String(20), nullable=True),           # baa | services | nda for generated agreements
     Column('pdf', LargeBinary, nullable=False),
@@ -54,20 +55,21 @@ documents = Table(
     Column('final_pdf', LargeBinary, nullable=True),
     Column('final_sha256', String(64), nullable=True, index=True),
     Column('created', Float, nullable=False),
+    Column('recipient_id', String(32), nullable=True),          # the signer who uploaded an attachment
 )
 
 recipients = Table(
     'esign_recipients', meta,
     Column('id', String(32), primary_key=True),
     Column('envelope_id', String(32), ForeignKey('esign_envelopes.id'), nullable=False, index=True),
-    Column('role', String(12), nullable=False),               # signer | viewer | cc
+    Column('role', String(12), nullable=False),               # signer | in_person | viewer | cc
     Column('role_name', String(60), nullable=False),          # label in templates ("Client", "Company signer")
     Column('routing_order', Integer, nullable=False),
     Column('name', String(150), nullable=False),
     Column('email', String(200), nullable=False),
     Column('access_code', Text, nullable=True),               # argon2 hash
     Column('note', Text, nullable=False),                     # private message for this recipient
-    # created | sent | delivered | signed | completed | declined | auth_failed
+    # created | sent | delivered | signed | completed | declined | auth_failed | reassigned
     Column('status', String(20), nullable=False),
     Column('sent_at', Float, nullable=True),
     Column('delivered_at', Float, nullable=True),
@@ -87,6 +89,9 @@ recipients = Table(
     Column('reminders_sent', Integer, nullable=False),
     Column('last_reminder_at', Float, nullable=True),
     Column('created', Float, nullable=False),
+    Column('progress', JSON, nullable=True),                  # values saved with "Finish later"
+    Column('host_id', String(32), nullable=True),             # in-person signing: the user who hosts it
+    Column('reassigned_to', String(32), nullable=True),       # "Assign to someone else": the new recipient
 )
 Index('ix_esign_rcpt_email', recipients.c.email, recipients.c.status)
 
@@ -97,7 +102,8 @@ fields = Table(
     Column('document_id', String(32), ForeignKey('esign_documents.id'), nullable=False),
     Column('recipient_id', String(32), ForeignKey('esign_recipients.id'), nullable=False),
     Column('page', Integer, nullable=False),
-    # signature | initials | date_signed | name | email | company | title | text | checkbox | dropdown
+    # signature | initials | date_signed | name | first_name | last_name | email | company | title | text | number | date | checkbox |
+    # radio | dropdown | attachment | note. options: choices, group/choice (radio), validation, max_length, tooltip, readonly/prefill, condition
     Column('kind', String(20), nullable=False),
     Column('x', Float, nullable=False), Column('y', Float, nullable=False),
     Column('w', Float, nullable=False), Column('h', Float, nullable=False),
@@ -229,3 +235,51 @@ inbound_files = Table(
     Column('scan', String(20), nullable=False),               # clean | not_scanned
     Column('body', LargeBinary, nullable=False),
 )
+
+bulk = Table(
+    'esign_bulk', meta,
+    Column('id', String(32), primary_key=True),
+    Column('owner_id', String(32), ForeignKey('users.id'), nullable=False, index=True),
+    Column('template_id', String(32), nullable=False),
+    Column('entity', String(100), nullable=False),
+    Column('name', String(200), nullable=False),
+    Column('created', Float, nullable=False),
+    Column('total', Integer, nullable=False),
+    Column('sent', Integer, nullable=False),
+    Column('failed', Integer, nullable=False),
+    Column('results', JSON, nullable=False),                  # [{row, name, email, envelope, ref, error}]
+)
+
+# Client profiles: the people at each client and every file kept for them (besides generated and signed agreements).
+client_contacts = Table(
+    'client_contacts', meta,
+    Column('id', String(32), primary_key=True),
+    Column('client_id', String(32), ForeignKey('clients.id'), nullable=False, index=True),
+    Column('name', String(150), nullable=False),
+    Column('email', String(200), nullable=False),
+    Column('title', String(150), nullable=False),
+    Column('phone', String(40), nullable=False),
+    Column('role', String(40), nullable=False),               # signatory | billing | compliance | other
+    Column('notes', Text, nullable=False),
+    Column('created', Float, nullable=False),
+    Column('updated', Float, nullable=False),
+    Column('created_by', String(32), nullable=True),
+)
+Index('ix_client_contacts_email', client_contacts.c.email)
+
+client_files = Table(
+    'client_files', meta,
+    Column('id', String(32), primary_key=True),
+    Column('client_id', String(32), ForeignKey('clients.id'), nullable=False),
+    Column('name', String(200), nullable=False),
+    Column('content_type', String(100), nullable=False),
+    Column('size', Integer, nullable=False),
+    Column('sha256', String(64), nullable=False),
+    Column('scan', String(20), nullable=False),               # clean | not_scanned
+    Column('category', String(40), nullable=False),           # contract | correspondence | identification | insurance | other
+    Column('note', Text, nullable=False),
+    Column('body', LargeBinary, nullable=False),
+    Column('uploaded_by', String(32), nullable=True),
+    Column('created', Float, nullable=False),
+)
+Index('ix_client_files_client', client_files.c.client_id, client_files.c.created)
