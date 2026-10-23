@@ -24,6 +24,7 @@
     $('step-caption').textContent = `${step+1} of 5 steps`;
     window.scrollTo({top:0,behavior:'smooth'});
   };
+  window.studioActive = () => active;
   buttons.forEach(b => b.addEventListener('click',() => window.studioNavigate(b.dataset.step)));
   $('step-back').addEventListener('click',() => {
     const list=available(), index=list.findIndex(b=>b.dataset.step===active);

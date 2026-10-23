@@ -630,7 +630,7 @@
       $("governing_state").value = entityState();
       $("output_root").value = config.output_root || "";
       $("effective_date").value = today(); $("baa_effective_date").value = today();
-      $("app-version").textContent = `Local edition · v${config.version || "1.0"}`;
+      $("app-version").textContent = `${config.local === false ? "Hosted edition" : "Local edition"} · v${config.version || "1.0"}`;
       renderCatalog(); renderSelected(); documentSelectionChanged();
       await refreshClients();
       form.hidden = (document.body.dataset.view || "builder") !== "builder"; state.dirty = false;
