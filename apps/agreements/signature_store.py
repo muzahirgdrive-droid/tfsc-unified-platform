@@ -33,7 +33,10 @@ def save_signature(folder, value):
     temporary=folder/'company-signature.tmp'
     temporary.write_bytes(body); temporary.replace(destination)
 
-def image_xml(body, crop=None, max_width=2103120, max_height=877824, baseline=915200):
+MAX_WIDTH, MAX_HEIGHT = 2103120, 877824
+
+
+def image_xml(body, crop=None, max_width=MAX_WIDTH, max_height=MAX_HEIGHT, baseline=915200):
     # Sizes in EMU (914400 per inch): at most 2.3 x 0.96 in, its lower edge on the signature rule (baseline below the
     # paragraph top), so a trimmed signature reads clearly and prominently on the line. The space above the rule
     # (document_engine: spacing before 1180) leaves room for it below the company name.

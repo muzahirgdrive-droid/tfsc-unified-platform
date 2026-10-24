@@ -26,6 +26,7 @@ import security as sec
 from entities import ENTITIES, get_entity, signature_path
 
 SIGNATURE_KINDS = ('uploaded', 'drawn', 'typed')
+SCALE_RANGE = (0.3, 1.0)      # signature size as a share of the largest box on the signature line (2.3 x 0.96 in)
 UPLOAD_LIMIT = 5_000_000
 WORKSPACE_DEFAULTS = {
     'portal_name': 'TFSC Agreements',
@@ -122,9 +123,10 @@ def profile(c, entity_name: str, with_image: bool = True) -> dict:
     entity = get_entity(entity_name)
     row = c.execute(select(db.company_profiles).where(db.company_profiles.c.entity == entity['name'])).mappings().first()
     out = {'entity': entity['name'], 'key': entity['key'], 'signatory': entity['signatory'], 'title': entity['title'], 'png': None, 'crop': None,
-           'source': None, 'kind': None, 'updated': None, 'updated_by': None}
+           'source': None, 'kind': None, 'updated': None, 'updated_by': None, 'scale': entity['signature_scale']}
     if row:
-        out.update(signatory=row['signatory'], title=row['title'], updated=row['updated'], updated_by=row['updated_by'])
+        out.update(signatory=row['signatory'], title=row['title'], updated=row['updated'], updated_by=row['updated_by'],
+                   scale=row['signature_scale'] or entity['signature_scale'])
         if row['signature']:
             out.update(png=bytes(row['signature']) if with_image else b'', source='settings', kind=row['signature_kind'])
     if out['source'] is None:
@@ -155,11 +157,24 @@ def save_profile(c, actor: dict, entity: dict, payload: dict) -> dict:
             raise ValueError('Choose how the signature was made.')
         signature = clean_signature(decode_image(payload['signature']))
         changed.append('signature')
+    scale = row['signature_scale'] if row else None
+    if payload.get('signature_scale') is not None:
+        try:
+            if isinstance(payload['signature_scale'], bool):
+                raise ValueError
+            wanted = round(float(payload['signature_scale']), 2)
+        except (TypeError, ValueError):
+            raise ValueError('Choose a signature size.') from None
+        if not SCALE_RANGE[0] <= wanted <= SCALE_RANGE[1]:
+            raise ValueError('Choose a signature size between 30 % and 100 %.')
+        if wanted != current['scale']:
+            changed.append(f'signature size {round(wanted * 100)} %')
+        scale = None if wanted == entity['signature_scale'] else wanted      # the default stays empty, so it follows the default
     if signatory != current['signatory']:
         changed.append('signatory')
     if title != current['title']:
         changed.append('title')
-    values = dict(signatory=signatory, title=title, signature=signature, signature_kind=kind, updated=time.time(), updated_by=actor['id'])
+    values = dict(signatory=signatory, title=title, signature=signature, signature_kind=kind, signature_scale=scale, updated=time.time(), updated_by=actor['id'])
     if row:
         c.execute(db.company_profiles.update().where(db.company_profiles.c.entity == entity['name']).values(**values))
     else:
@@ -177,7 +192,8 @@ def public_profile(p: dict, mailbox: str = '') -> dict:
     entity = get_entity(p['entity'])
     return {'entity': p['entity'], 'key': p['key'], 'short': entity['short'], 'signatory': p['signatory'], 'title': p['title'],
             'default_signatory': entity['signatory'], 'default_title': entity['title'], 'has_signature': p['source'] is not None,
-            'signature_source': p['source'], 'signature_kind': p['kind'], 'updated': p['updated'], 'color': entity['color'],
+            'signature_source': p['source'], 'signature_kind': p['kind'], 'signature_scale': p['scale'], 'default_signature_scale': entity['signature_scale'],
+            'updated': p['updated'], 'color': entity['color'],
             'accent': entity['accent'], 'logo': f"/assets/brand/{entity['logo']}", 'mailbox': mailbox}
 
 

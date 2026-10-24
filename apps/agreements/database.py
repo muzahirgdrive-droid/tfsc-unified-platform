@@ -53,6 +53,7 @@ settings=Table('settings',meta,Column('key',String(60),primary_key=True),Column(
 company_profiles=Table('company_profiles',meta,Column('entity',String(100),primary_key=True),
     Column('signatory',String(150),nullable=False),Column('title',String(150),nullable=False),
     Column('signature',LargeBinary,nullable=True),Column('signature_kind',String(10),nullable=True),  # uploaded | drawn | typed
+    Column('signature_scale',Float,nullable=True),  # share of the largest signature box; empty: the company default
     Column('updated',Float,nullable=False),Column('updated_by',String(32),ForeignKey('users.id'),nullable=True))
 saved_reports=Table('saved_reports',meta,Column('id',String(32),primary_key=True),
     Column('owner_id',String(32),ForeignKey('users.id'),nullable=False,index=True),Column('name',String(120),nullable=False),

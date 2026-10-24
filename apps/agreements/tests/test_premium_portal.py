@@ -87,6 +87,40 @@ class CompanySettings(Base):
         self.assertIn('Name: Danish Ather', xml)
         self.assertIn('Title: Chief Operating Officer', xml)
 
+    def test_signature_size_defaults_and_setting_reach_the_agreement(self):
+        from zipfile import ZipFile
+        import re as re_
+        self.login(self.super)
+        sizes = {x['key']: (x['signature_scale'], x['default_signature_scale']) for x in self.api.get('/api/admin/companies').json()['companies']}
+        self.assertEqual(sizes, {'scribe': (0.6, 0.6), 'ehs': (0.6, 0.6), '24-7': (0.85, 0.85)}, 'Naeem Abbas 60 %, Danish Ather 85 %')
+        for bad in (1.5, 0.1, 'big', True):
+            self.assertEqual(self.post('/api/admin/companies/scribe', {'signature_scale': bad}).status_code, 400, bad)
+        r = self.post('/api/admin/companies/scribe', {'signature': signature_png('Naeem Abbas', (600, 400)), 'signature_kind': 'drawn'})
+        self.assertEqual(r.status_code, 200, r.text)
+
+        def printed_height() -> int:
+            with db.engine.connect() as c:
+                company = companies.profile(c, SCRIBE)
+            payload = legacy.validate({'entity': SCRIBE, 'client_name': 'Northside Clinic', 'address': '1 Main St, Reno, NV 89501',
+                                       'effective_date': '2026-10-24', 'document_types': ['baa'], 'output_root': str(self.root)})
+            docs = legacy.build_documents(payload, 'TEST-SIZE', company)
+            target = self.root / 'size.docx'
+            generate_docx(docs[0]['blocks'], docs[0]['data'], 'TEST-SIZE', target)
+            with ZipFile(target) as z:
+                return int(re_.search(r'<wp:extent cx="\d+" cy="(\d+)"', z.read('word/document.xml').decode()).group(1))
+        from signature_store import MAX_HEIGHT
+        self.assertAlmostEqual(printed_height(), MAX_HEIGHT * 0.6, delta=2, msg='the default size: 60 % of the largest box')
+        r = self.post('/api/admin/companies/scribe', {'signature_scale': 0.75})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()['company']['signature_scale'], 0.75)
+        self.assertAlmostEqual(printed_height(), MAX_HEIGHT * 0.75, delta=2)
+        self.post('/api/admin/companies/scribe', {'signature_scale': 0.6})
+        with db.engine.connect() as c:
+            stored = c.execute(select(db.company_profiles.c.signature_scale).where(db.company_profiles.c.entity == SCRIBE)).scalar()
+        self.assertIsNone(stored, 'choosing the default again stores nothing, so it follows the default')
+        self.login(self.admin)
+        self.assertEqual(self.post('/api/admin/companies/scribe', {'signature_scale': 0.9}).status_code, 403)
+
     def test_rejects_images_without_a_signature(self):
         blank = Image.new('RGB', (400, 200), (250, 250, 250))
         out = io.BytesIO()

@@ -17,7 +17,7 @@ import subprocess
 import threading
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
-from signature_store import image_xml
+from signature_store import MAX_HEIGHT, MAX_WIDTH, image_xml
 from entities import get_entity
 
 APP = Path(__file__).resolve().parent
@@ -148,8 +148,11 @@ def generate_docx(blocks, data, contract_id, path):
     data=dict(data)
     if data.get('_signature_bytes') or data.get('_signature_path'):
         raw=data.get('_signature_bytes') or Path(data['_signature_path']).read_bytes()
-        # The signature starts 780000 EMU after the column edge; it never runs past the end of the signature rule.
-        ext,drawing=image_xml(raw,data.get('_signature_crop'),max_width=min(2103120,(entity['width']//2-350)*635-780000-40000))
+        # The signature starts 780000 EMU after the column edge; it never runs past the end of the signature rule. Its size is
+        # the company's signature size (Company settings) as a share of the largest box.
+        scale=min(1.0,max(0.3,float(data.get('_signature_scale') or 1.0)))
+        width=min(MAX_WIDTH,(entity['width']//2-350)*635-780000-40000)
+        ext,drawing=image_xml(raw,data.get('_signature_crop'),max_width=int(width*scale),max_height=int(MAX_HEIGHT*scale))
         data['_signature_xml']=drawing
         parts['word/media/sa-signature.'+ext]=raw
         rel=f'<Relationship Id="rIdSASignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/sa-signature.{ext}"/>'

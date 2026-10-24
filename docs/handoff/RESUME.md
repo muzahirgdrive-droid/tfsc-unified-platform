@@ -179,7 +179,9 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        data kept everything identical and completed the viewer-held envelope; 39 v5 checks and a browser send/sign run
        over HTTPS on that server; fresh install passed the original 58 checks; the owner's real signatures (from the
        original compliance ZIP, extracted only to the scratchpad and deleted after) uploaded in Company settings printed
-       correctly, and the size limit was raised to 0.96 in after that check. ZIP: handoff-out/TFSC-Agreements-Deploy-2026-10-24-<sha>.zip.
+       correctly, and the size limit was raised to 0.96 in after that check. The owner then approved sizes on previews
+       of all nine signature pages: Naeem Abbas 60 %, Danish Ather 85 % of that box, now the defaults (migration 0005,
+       adjustable per company in Company settings). ZIP: handoff-out/TFSC-Agreements-Deploy-2026-10-24-<sha>.zip.
        Owner to do: save each company's signature in Admin > Company settings (or keep the installed images); confirm
        the 24-7 Consultancy signatory (the request listed Naeem Abbas as COO; Danish Ather kept); counsel review of
        LEGAL_REVIEW.md "Version 5"; DMARC enforcement + VMC + BIMI for the Gmail verified tick.

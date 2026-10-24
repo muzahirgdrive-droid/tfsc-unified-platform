@@ -216,6 +216,8 @@ def build_documents(data, contract_id, company=None):
     for kind in data['document_types']:
         current = dict(data)
         sig_path=signature_path(DATA_DIR,data['entity'])
+        # the size the company signature prints at (Company settings; otherwise the company default)
+        current['_signature_scale']=(company or {}).get('scale') or get_entity(data['entity'])['signature_scale']
         if company is not None:
             current['_signatory']=company['signatory']; current['_signatory_title']=company['title']
             if data.get('include_signature',True) and company.get('png'):

@@ -612,6 +612,12 @@
   document.querySelectorAll("dialog").forEach(dialog => dialog.addEventListener("click", event => { if (event.target === dialog) { const box = dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close(); } }));
   window.addEventListener("beforeunload", event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ""; } });
 
+  // The portal's screens live in scripts that load after this one (portal.js, esign.js, ... admin.js). DOMContentLoaded
+  // fires only after every deferred script has run, so the screens start once all of them exist, however fast /api/config
+  // answers (otherwise a reload of, say, Company settings could find its screen not loaded yet and stay empty).
+  const scriptsLoaded = document.readyState === "complete" ? Promise.resolve()
+    : new Promise(resolve => { document.addEventListener("DOMContentLoaded", resolve, {once: true}); window.addEventListener("load", resolve, {once: true}); });
+
   async function initialize() {
     if (location.protocol === "file:") {
       $("loading").hidden = true;
@@ -624,6 +630,7 @@
       state.config = config; state.catalog = config.catalog;
       const companySelect=$("entity");companySelect.replaceChildren();
       config.entities.forEach(entity=>{const option=el("option","",entity.name);option.value=entity.name;companySelect.append(option);});
+      await scriptsLoaded;
       window.portalReady?.(config);
       Object.entries(config.defaults || {}).forEach(([key, value]) => { if ($(key)) $(key).value = value; });
       (config.states || []).forEach(name => { const option = el("option"); option.value = name; $("us-states").append(option); });

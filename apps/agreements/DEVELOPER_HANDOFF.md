@@ -14,6 +14,7 @@ The plan, mapping each request to a design: `ARCHITECTURE-V5.md`.
 | `index.html`, `ui.css`, `portal.js`, `esign.js`, `clients.js`, `login.html`, `verify.html` | New app shell with a hash router (`#/home`, `#/agreements/<box>`, `#/envelope/<id>`, `#/send`, `#/clients/<id>`, `#/create`, `#/reports/<tab>`, `#/activity`, `#/admin/<page>`), the envelope wizard (documents, recipient cards, signing order, fields, options) and the field tagger; copyright and Help on every page. |
 | `sign.html`, `sign.js`, `sign.css`, `assets/fonts/` | Signing page: 16 signature styles (OFL fonts, licences beside them, files unmodified), separate initials style, draw or upload each. Inter (OFL) subset for the interface. |
 | `migrations/versions/0004_premium_portal.py` | New tables, audit columns and indexes; removes the old automatic 30-day expiry (a chosen expiry is kept). Additive only. |
+| `migrations/versions/0005_signature_size.py` | `company_profiles.signature_scale` (ADD COLUMN only). Empty means the company default (`entities.py` `signature_scale`: 0.6 Scribe Align and EHS, 0.85 24-7). `document_engine` multiplies the signature box (`signature_store.MAX_WIDTH`/`MAX_HEIGHT`) by it; Company settings has the slider (30–100 %). |
 
 Tests: `tests/test_premium_portal.py` (company settings and who may change them, the signature on generated
 agreements, the completion rule, expiry and links, placement, Home, reports in Excel and CSV, the activity log, the

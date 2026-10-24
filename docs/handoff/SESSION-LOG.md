@@ -239,4 +239,10 @@ start doing all the work from where you stop with all the chat history as well."
   Consultancy; treated as unconfirmed, Danish Ather (COO) kept and editable. Verified: 116 tests on SQLite, 69 on
   PostgreSQL 16; update from 25460c4 with data (identical afterwards; viewer-held envelope completed; default expiry
   removed, chosen expiry kept); 39 v5 checks and a browser send/sign run over HTTPS; fresh install passed 58 checks.
-
+- Signature size (owner, 2026-10-24, after previews of all nine signature pages with the real signatures): "too big";
+  85 % for Danish Ather, then 60 % for Naeem Abbas, approved. Implemented as a per-company signature size
+  (company_profiles.signature_scale, migration 0005, ADD COLUMN only; defaults in entities.py; slider in Company
+  settings, 30-100 %). The real signatures were extracted only to the scratchpad for previews and deleted after.  Found and fixed while testing it: reloading a screen could leave it empty when /api/config answered before the last
+  deferred script (admin.js) had run, because app.js started the screens straight away; it now waits for
+  DOMContentLoaded (all deferred scripts run). Verified: Company settings 8 of 8 reloads (failed from the second
+  before), and every screen renders after two reloads each.

@@ -33,7 +33,9 @@ image was installed, so the company side was blank.
   - type it and pick a style.
 - **Which signature is used.** Generation uses the company settings first. If none is saved, it falls back to an image
   installed with `agreements.sh signatures`. If neither exists, the builder shows a clear warning before you generate.
-- **Size and position.** The signature is trimmed to its ink and sized up to 2.3 × 0.96 in (space above the rule makes room for it). Its lower edge sits on the
+- **Size and position.** The signature is trimmed to its ink and sized up to 2.3 × 0.96 in (space above the rule makes room for it), times the company's signature size
+  (`company_profiles.signature_scale`, 30–100 %; defaults in `entities.py`: 60 % for Naeem Abbas, 85 % for Danish
+  Ather, approved by the owner on previews of all nine agreements). Its lower edge sits on the
   signature line, so it reads clearly and is never tiny.
 - **Defaults.** Naeem Abbas, Chief Executive Officer, for Scribe Align LLC and Extended Health Services Inc. Danish
   Ather, Chief Operating Officer, for 24-7 Consultancy LLC.

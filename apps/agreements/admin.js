@@ -63,10 +63,12 @@
     ["pointerup", "pointercancel", "pointerleave"].forEach(t => canvas.addEventListener(t, () => { last = null; }));
     return {canvas, clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; }, empty: () => !drawn, png: () => canvas.toDataURL("image/png")};
   }
-  function preview(src, label = "Signature:") {
+  // The largest signature box on the agreement (2.3 x 0.96 in) at the preview's scale; a company prints at a share of it.
+  const BOX = {w: 212, h: 88};
+  function preview(src, label = "Signature:", scale = 1) {
     const box = el("div", "sig-preview");
     const line = el("div", "line"); line.append(el("span", "", label), el("span")); box.append(line, el("small", "", "As it prints on the agreement's signature line"));
-    if (src) { const img = el("img"); img.alt = "Signature"; img.src = src; box.append(img); }
+    if (src) { const img = el("img"); img.alt = "Signature"; img.src = src; img.style.maxWidth = `${Math.round(BOX.w * scale)}px`; img.style.maxHeight = `${Math.round(BOX.h * scale)}px`; box.append(img); }
     else box.append(el("span", "sig-empty", "No signature saved"));
     return box;
   }
@@ -93,19 +95,31 @@
     about.append(field("Authorized signatory", name), field("Title", title, `Prints under the signature as “Title: …”. Default: ${c.default_signatory}, ${c.default_title}.`));
     const signing = el("div", "signing");
     signing.append(el("h3", "", "Signature on agreements"));
-    const state = {image: null, kind: null, remove: false};
+    const state = {image: null, kind: null, remove: false, scale: c.signature_scale};
     const src = c.has_signature ? `/api/companies/${encodeURIComponent(c.key)}/signature.png?v=${Date.now()}` : null;
-    let shown = preview(src);
+    let current = src;
+    let shown = preview(src, "Signature:", state.scale);
     signing.append(shown);
+    const redraw = image => { current = image; const next = preview(image, "Signature:", state.scale); shown.replaceWith(next); shown = next; };
     const source = el("p", "small muted", c.signature_source === "settings" ? `Saved in Company settings${c.signature_kind ? ` (${c.signature_kind})` : ""}.` : c.signature_source === "installed" ? "Installed on the server. Saving a new one here replaces it." : "Generated agreements leave the company signing line blank until a signature is saved.");
     signing.append(source);
-    const set = (image, kind) => { state.image = image; state.kind = kind; state.remove = false; const next = preview(image); shown.replaceWith(next); shown = next; source.textContent = "Not saved yet: select Save to use this signature."; };
+    const set = (image, kind) => { state.image = image; state.kind = kind; state.remove = false; redraw(image); source.textContent = "Not saved yet: select Save to use this signature."; };
+    // Signature size: a share of the largest box, previewed on the line as it will print
+    const size = input(String(Math.round(state.scale * 100)), "range", {min: 30, max: 100, step: 5});
+    size.setAttribute("aria-label", "Signature size");
+    const sizeValue = el("strong", "size-value", `${Math.round(state.scale * 100)} %`);
+    const sizeRow = el("div", "sig-size"); sizeRow.append(el("span", "", "Size on agreements"), size, sizeValue);
+    const defaultSize = Math.round(c.default_signature_scale * 100);
+    const reset = button(`Default (${defaultSize} %)`, () => { size.value = String(defaultSize); size.dispatchEvent(new Event("input")); }, "button button-quiet button-sm");
+    sizeRow.append(reset);
+    size.addEventListener("input", () => { state.scale = Number(size.value) / 100; sizeValue.textContent = `${size.value} %`; redraw(current); });
+    signing.append(sizeRow);
     const tools = el("div", "sig-tools");
     tools.append(button("Upload image", () => uploadDialog(set)), button("Draw", () => drawDialog(set)), button("Type a style", () => typeDialog(name.value || c.signatory, set)));
-    if (c.has_signature) tools.append(button("Remove", () => { state.remove = true; state.image = null; const next = preview(null); shown.replaceWith(next); shown = next; source.textContent = "Not saved yet: select Save to remove the signature."; }, "button button-ghost"));
+    if (c.has_signature) tools.append(button("Remove", () => { state.remove = true; state.image = null; redraw(null); source.textContent = "Not saved yet: select Save to remove the signature."; }, "button button-ghost"));
     signing.append(tools);
     const save = button(`Save ${c.short}`, async () => {
-      const body = {signatory: name.value, title: title.value};
+      const body = {signatory: name.value, title: title.value, signature_scale: state.scale};
       if (state.image) { body.signature = state.image; body.signature_kind = state.kind; }
       if (state.remove) body.remove_signature = true;
       await api(`/api/admin/companies/${encodeURIComponent(c.key)}`, body);

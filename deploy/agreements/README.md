@@ -80,6 +80,9 @@ Unattended install (no questions): `TFSC_DOMAIN=agreements.yourcompany.com sudo 
 - **Signature on agreements**: **Upload** a photo or scan of the signature (dark ink on white paper; the paper is made
   transparent and the image trimmed automatically), **Draw** it with a mouse, pen or finger, or **Type** the name and
   choose one of 16 handwriting styles. The preview shows it on the signature line as it will print. **Save**.
+- **Size on agreements**: how large the signature prints, from 30 % to 100 % of the largest size (2.3 × 0.96 inch);
+  the preview follows the slider. Set out of the box: 60 % for Naeem Abbas (Scribe Align and Extended Health
+  Services) and 85 % for Danish Ather (24-7 Consultancy), as approved; **Default** returns to these.
 
 From then on every generated BAA, Services Agreement and Mutual NDA for that company carries the signature on the
 line, with the signatory's name, title and the date. The builder shows the company's signature before you generate,
@@ -236,6 +239,7 @@ Database changes are applied automatically during the update.
 The update rebuilds the application (about 6 minutes in testing when its libraries change, under a minute
 otherwise) and keeps the site running until the new version starts. Updating to version 5 also:
 - removes the 30-day expiry that earlier releases gave every envelope by default (an expiry someone chose is kept);
+- prints company signatures at the approved sizes (Naeem Abbas 60 %, Danish Ather 85 %; adjustable per company);
 - completes envelopes that were waiting only for someone who needed to view them;
 - keeps signature images installed with `./agreements.sh signatures` until you save one under Admin > Company settings.
 
@@ -323,7 +327,9 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
 - **The real signatures** of Naeem Abbas and Danish Ather (supplied separately; never part of this package), uploaded
   under Admin > Company settings on that server, printed on the company signature line of a Scribe Align, an Extended
   Health Services and a 24-7 Consultancy agreement generated in the container, with no warning: up to 0.96 inch tall,
-  on the line, clear of the company name, the execution block on one page.
+  on the line, clear of the company name, the execution block on one page. Their sizes were then approved on the
+  signature pages of all nine agreements (BAA, Services Agreement and Mutual NDA for each company) and made the
+  defaults: Naeem Abbas 0.74 × 0.58 inch (60 %), Danish Ather 0.89 × 0.82 inch (85 %).
 - Memory after these runs: about 1.4 GB (the virus scanner 0.95 GB).
 
 **Not tested:** the Gmail verified tick and logo (they need your DNS records and a Verified Mark Certificate; the Email
