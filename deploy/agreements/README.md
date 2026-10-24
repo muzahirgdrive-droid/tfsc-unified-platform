@@ -330,6 +330,13 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   on the line, clear of the company name, the execution block on one page. Their sizes were then approved on the
   signature pages of all nine agreements (BAA, Services Agreement and Mutual NDA for each company) and made the
   defaults: Naeem Abbas 0.74 × 0.58 inch (60 %), Danish Ather 0.89 × 0.82 inch (85 %).
+- **This ZIP, with the approved sizes:** updated from version 4.2 (25460c4) holding data (43 seconds with the images
+  built): accounts, clients, generated files and the completed envelope identical, the database at its latest version,
+  and the 39 version 5 checks passed; the real signatures uploaded there printed on all nine agreements at exactly
+  0.74 × 0.58 inch (Naeem Abbas) and 0.89 × 0.82 inch (Danish Ather). Updated from the earlier version 5 ZIP: a
+  signature saved there before the update was kept and now prints at 60 % instead of full size, all other data
+  identical. Fresh install: the 58 original checks passed and every screen opened without a browser error.
+  Reloading any screen in the browser now always shows it (a reload could leave a screen empty before).
 - Memory after these runs: about 1.4 GB (the virus scanner 0.95 GB).
 
 **Not tested:** the Gmail verified tick and logo (they need your DNS records and a Verified Mark Certificate; the Email
