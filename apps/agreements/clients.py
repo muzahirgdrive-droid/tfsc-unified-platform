@@ -28,6 +28,7 @@ from esign_db import client_contacts, client_files, envelopes, inbound, inbound_
 from esign_db import documents as esign_documents
 
 CONTACT_ROLES = ('signatory', 'billing', 'compliance', 'other')
+VIEW_WINDOW = 30 * 60          # seconds: opening the same client again within this time is the same visit in the activity log
 FILE_CATEGORIES = ('contract', 'correspondence', 'identification', 'insurance', 'other')
 FILE_LIMIT = 15_000_000
 FILE_TYPES = {'.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -270,7 +271,10 @@ def install(app) -> None:  # noqa: C901  (route table)
             a = actor_of(request, c)
             client = client_for(c, a, client_id)
             seed_contacts(c, client)
-            db.log(c, a, 'client.viewed', client_id, {'client': client['name']})
+            # one entry per visit: switching tabs reloads the profile, which is not a new visit
+            if not c.execute(select(db.audit.c.id).where(db.audit.c.actor_id == a['id'], db.audit.c.created > time.time() - VIEW_WINDOW,
+                                                          db.audit.c.client_id == client_id, db.audit.c.action == 'client.viewed').limit(1)).first():
+                db.log(c, a, 'client.viewed', client_id, {'client': client['name']})
             owner = c.execute(select(db.users.c.name).where(db.users.c.id == client['owner_id'])).scalar()
             contacts = [contact_view(r) for r in c.execute(select(client_contacts).where(client_contacts.c.client_id == client_id)
                                                           .order_by(client_contacts.c.role, client_contacts.c.name)).mappings()]

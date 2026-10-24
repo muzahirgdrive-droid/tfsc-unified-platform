@@ -250,5 +250,9 @@ start doing all the work from where you stop with all the chat history as well."
   Found and fixed while doing it: (1) bulk send, a new client and an agreement saved by name created a second client
   when an Admin or the Super Admin worked on a team member's client (lookups only checked the actor's own clients);
   they now reuse the client the person can already see (clients.visible_client; own first, then most recently
-  updated), with a test that fails on the old code. (2) The Templates page put its list in the 232 px folder column.
+  updated), with a test that fails on the old code. (2) The Templates page put its list in the 232 px folder column.  (3) The Home Start menu was clipped by the hero (overflow hidden; on a phone the figures also covered it): the rings
+  are now painted inside the hero and the intro stacks above the figures. (4) The recipient role and Customize menus
+  were clipped by the recipient card. (5) Every tab switch on a client profile logged "Opened a client profile"; it is
+  now one entry per person per client per 30 minutes. Each checked in a browser (every menu item reachable) and (5)
+  with a test.
 

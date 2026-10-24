@@ -235,8 +235,11 @@ dialog::backdrop{background:rgba(11,31,58,.45);backdrop-filter:blur(2px)}
 .signature-line-preview small{font-size:11.5px;color:var(--ink-4)}
 
 /* ------------------------------------------------------------------ home */
-.home-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:28px;align-items:center;background:linear-gradient(120deg,#0b1f3a 0%,#123462 55%,#16488f 100%);color:#fff;border-radius:var(--radius-lg);padding:30px 32px;box-shadow:var(--shadow)}
-.home-hero:after{content:"";position:absolute;right:-120px;top:-160px;width:460px;height:460px;border-radius:50%;border:1px solid rgba(255,255,255,.08);box-shadow:0 0 0 50px rgba(255,255,255,.025),0 0 0 100px rgba(255,255,255,.02);pointer-events:none}
+.home-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:28px;align-items:center;background:linear-gradient(120deg,#0b1f3a 0%,#123462 55%,#16488f 100%);color:#fff;border-radius:var(--radius-lg);padding:30px 32px;box-shadow:var(--shadow)}
+/* The rings are painted inside the hero (no overflow to clip), so the Start menu can open below it. */
+.home-hero:after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(circle at calc(100% - 110px) 70px,transparent 229px,rgba(255,255,255,.08) 230px,rgba(255,255,255,.08) 231px,rgba(255,255,255,.045) 232px,rgba(255,255,255,.045) 280px,rgba(255,255,255,.02) 281px,rgba(255,255,255,.02) 330px,transparent 331px)}
+.home-hero>*{position:relative;z-index:1}
+.home-hero>:first-child{z-index:2}     /* the intro with the Start menu stays above the figures (stacked below it on a phone) */
 .home-hero h1{color:#fff;font-size:28px;margin:4px 0 6px;letter-spacing:-.02em}
 .home-hero p{margin:0;color:#c8d6ee}
 .home-hero .eyebrow{color:#8fb4ee}
@@ -392,8 +395,9 @@ a.kpi:hover{border-color:var(--primary-line)}
 .library-item[aria-disabled=true]{opacity:.6}
 .order-toggle{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;color:var(--ink)}
 .recipient-cards{display:grid;gap:12px}
-.recipient-card{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;border:1px solid var(--line-2);border-radius:var(--radius);background:#fff;overflow:hidden}
-.recipient-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--who,#1f55d6)}
+/* No overflow clipping: the role and Customize menus open past the card's edge. The stripe follows the rounded corners. */
+.recipient-card{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;border:1px solid var(--line-2);border-radius:var(--radius);background:#fff}
+.recipient-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--who,#1f55d6);border-radius:calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px)}
 .recipient-card .order{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;padding:16px 8px 16px 16px}
 .recipient-card .order input{width:52px;text-align:center;padding:6px;min-height:34px;font-weight:700}
 .recipient-card .order .drag{color:var(--ink-4);font-size:13px;letter-spacing:-2px;cursor:default}

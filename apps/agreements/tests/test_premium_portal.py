@@ -315,6 +315,18 @@ class SharedClients(Base):
         self.assertNotEqual(r.json()['id'], mine)
 
 
+    def test_opening_a_client_is_logged_once_per_visit_not_per_tab(self):
+        self.login(self.u1)
+        cid = self.post('/api/clients/new', {'name': 'Visit Clinic', 'entity': SCRIBE}).json()['id']
+        for _ in range(4):                               # the profile and three tab switches
+            self.assertEqual(self.api.get(f'/api/clients/{cid}/profile').status_code, 200)
+        self.login(self.admin)
+        self.api.get(f'/api/clients/{cid}/profile')
+        with db.engine.connect() as c:
+            views = c.execute(select(db.audit.c.actor_id).where(db.audit.c.client_id == cid, db.audit.c.action == 'client.viewed')).scalars().all()
+        self.assertEqual(sorted(views), sorted([self.u1['id'], self.admin['id']]), 'one entry per person per visit')
+
+
 class HomeReportsActivity(Base):
     def setUp(self):
         super().setUp()
