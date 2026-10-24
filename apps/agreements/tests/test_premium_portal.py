@@ -11,7 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from openpyxl import load_workbook
 from PIL import Image, ImageDraw
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 import companies
 import database as db
@@ -288,6 +288,31 @@ class Preparing(Base):
         self.assertEqual([f['kind'] for f in s['blocks'][0]['fields']], ['signature', 'name', 'date_signed'])
         self.assertGreater(s['blocks'][0]['fields'][0]['x'], 140, 'beside the label, on the line')
         self.assertEqual(len(s['initials'][0]), 1)
+
+
+class SharedClients(Base):
+    def test_admins_and_the_super_admin_reuse_their_teams_client_instead_of_creating_a_copy(self):
+        import clients
+        self.login(self.u1)
+        r = self.post('/api/clients/new', {'name': 'Shared Family Clinic', 'entity': SCRIBE})
+        self.assertEqual(r.status_code, 200, r.text)
+        mine = r.json()['id']
+        for user in (self.admin, self.super):          # u1's Admin and the Super Admin see u1's client
+            self.login(user)
+            self.assertEqual(self.post('/api/clients/new', {'name': 'shared family clinic ', 'entity': SCRIBE}).status_code, 409)
+            with db.engine.begin() as c:
+                self.assertEqual(clients.ensure_client(c, user, 'Shared Family Clinic', SCRIBE), mine, 'bulk send links the existing client')
+        self.login(self.super)
+        r = self.post('/api/clients', {'client_name': 'Shared Family Clinic', 'address': '1 Main St, Reno, NV 89501', 'entity': SCRIBE,
+                                       'effective_date': '2026-10-24', 'document_types': ['baa'], 'output_root': str(self.root)})
+        self.assertEqual((r.status_code, r.json().get('id')), (200, mine), r.text)
+        with db.engine.connect() as c:
+            count = c.execute(select(func.count()).select_from(db.clients).where(db.clients.c.name_key == clients.name_key('Shared Family Clinic'))).scalar()
+        self.assertEqual(count, 1)
+        self.login(self.ehs_user)                       # someone outside the team cannot see it, so gets their own client
+        r = self.post('/api/clients/new', {'name': 'Shared Family Clinic', 'entity': EHS})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertNotEqual(r.json()['id'], mine)
 
 
 class HomeReportsActivity(Base):

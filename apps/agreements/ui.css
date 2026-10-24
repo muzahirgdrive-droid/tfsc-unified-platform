@@ -283,6 +283,7 @@ a.kpi:hover{border-color:var(--primary-line)}
 
 /* ------------------------------------------------------------------ agreements (envelope folders and list) */
 .manage{display:grid;grid-template-columns:232px minmax(0,1fr);gap:22px;align-items:start}
+.manage.manage-single{grid-template-columns:minmax(0,1fr)}
 .folders{position:sticky;top:84px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:10px;box-shadow:var(--shadow-sm)}
 .folders .button-primary{width:100%;margin:2px 0 10px}
 .folders h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-4);margin:14px 10px 6px}

@@ -127,7 +127,7 @@
     view.append(pageHead(templates ? "Templates" : "Agreements", templates ? "Templates" : (FOLDERS.find(f => f[0] === list.box) || ["", "Agreements"])[1],
       templates ? "Reusable envelopes with their documents, recipients and fields. Use one to start a new envelope in seconds, or for bulk send."
         : "Every envelope you can see, by status. Select an envelope to see who has viewed and signed it.", actions));
-    const layout = el("div", "manage");
+    const layout = el("div", templates ? "manage manage-single" : "manage");     // Templates have no folder list beside them
     if (!templates) {
       const folders = el("nav", "folders"); folders.setAttribute("aria-label", "Envelope folders");
       folders.append(button("Send an envelope", startEnvelope, "button button-primary"));

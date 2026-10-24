@@ -183,9 +183,10 @@ def save_draft(c,a,data):
     if data.get('id'):
         row=client_allowed(c,a,data['id']);id=row['id'];owner=row['owner_id']
     else:
-        owner=a['id'];key=sec.digest(data['client_name'].strip().casefold())
-        row=c.execute(select(db.clients).where(db.clients.c.owner_id==owner,db.clients.c.name_key==key)).mappings().first()
-        id=row['id'] if row else db.uid()
+        # a client the person can already see (their team's included) is reused, never created a second time
+        found=clients.visible_client(c,a,data['client_name'])
+        row=c.execute(select(db.clients).where(db.clients.c.id==found[0])).mappings().first() if found else None
+        id=row['id'] if row else db.uid();owner=row['owner_id'] if row else a['id']
     data=dict(data,id=id)
     values=dict(name=data['client_name'],name_key=sec.digest(data['client_name'].strip().casefold()),address=data['address'],draft=data,updated=time.time())
     if row:c.execute(db.clients.update().where(db.clients.c.id==id).values(**values))

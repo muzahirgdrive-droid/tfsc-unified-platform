@@ -246,3 +246,9 @@ start doing all the work from where you stop with all the chat history as well."
   deferred script (admin.js) had run, because app.js started the screens straight away; it now waits for
   DOMContentLoaded (all deferred scripts run). Verified: Company settings 8 of 8 reloads (failed from the second
   before), and every screen renders after two reloads each.
+- Screenshot tour (owner asked for pictures of every feature), on a demo server from the final ZIP with fictional data.
+  Found and fixed while doing it: (1) bulk send, a new client and an agreement saved by name created a second client
+  when an Admin or the Super Admin worked on a team member's client (lookups only checked the actor's own clients);
+  they now reuse the client the person can already see (clients.visible_client; own first, then most recently
+  updated), with a test that fails on the old code. (2) The Templates page put its list in the 232 px folder column.
+

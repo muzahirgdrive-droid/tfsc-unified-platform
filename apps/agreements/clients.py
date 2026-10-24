@@ -17,7 +17,7 @@ import time
 
 from fastapi import Body, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 import database as db
@@ -46,6 +46,16 @@ def name_key(name: str) -> str:
     return sec.digest(name.strip().casefold())
 
 
+def visible_client(c, actor: dict, name: str):
+    """The client with this name that the actor can already see (their own first, then the most recently updated), or None.
+
+    Admins and the Super Admin work on their team's clients; looking only at the actor's own clients would create a second
+    profile for the same clinic and split its agreements, contacts and files between the two."""
+    return c.execute(select(db.clients.c.id, db.clients.c.owner_id)
+                     .where(sec.scope(actor, db.clients.c.owner_id), db.clients.c.name_key == name_key(name))
+                     .order_by(case((db.clients.c.owner_id == actor['id'], 0), else_=1), db.clients.c.updated.desc()).limit(1)).first()
+
+
 def client_for(c, actor: dict, client_id: str) -> dict:
     row = c.execute(select(db.clients).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).mappings().first()
     if not row:
@@ -67,9 +77,9 @@ def profile_values(payload: dict, current: dict | None = None) -> dict:
 
 
 def ensure_client(c, actor: dict, name: str, entity: str, email: str = '', signatory: str = '') -> str:
-    """The id of the actor's client with this name, created when missing (used by bulk send)."""
+    """The id of the client with this name that the actor can see, created when missing (used by bulk send)."""
     name = clean(name, 'Client name', 200, True)
-    row = c.execute(select(db.clients.c.id).where(db.clients.c.owner_id == actor['id'], db.clients.c.name_key == name_key(name))).first()
+    row = visible_client(c, actor, name)
     if row:
         return row[0]
     t = time.time()
@@ -242,9 +252,8 @@ def install(app) -> None:  # noqa: C901  (route table)
             name = clean(payload.get('name'), 'Client name', 200, True)
             entity = payload.get('entity') or (a['companies'][0] if a['companies'] else '')
             sec.ensure_company(a, entity)
-            existing = c.execute(select(db.clients.c.id).where(db.clients.c.owner_id == a['id'], db.clients.c.name_key == name_key(name))).first()
-            if existing:
-                raise HTTPException(409, 'You already have a client with this name. Open their profile.')
+            if visible_client(c, a, name):
+                raise HTTPException(409, 'A client with this name already exists. Open their profile.')
             t = time.time()
             cid = db.uid()
             address = clean(payload.get('address'), 'Address', 500)
