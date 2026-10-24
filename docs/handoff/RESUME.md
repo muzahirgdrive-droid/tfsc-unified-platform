@@ -177,7 +177,9 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        every page and email. Plan: apps/agreements/ARCHITECTURE-V5.md. Migration 0004 (additive).
        Verified: 116 Agreements tests (69 of them also on PostgreSQL 16); update from the 4.2 bundle (25460c4) holding
        data kept everything identical and completed the viewer-held envelope; 39 v5 checks and a browser send/sign run
-       over HTTPS on that server; fresh install passed the original 58 checks. ZIP: handoff-out/TFSC-Agreements-Deploy-2026-10-24-<sha>.zip.
+       over HTTPS on that server; fresh install passed the original 58 checks; the owner's real signatures (from the
+       original compliance ZIP, extracted only to the scratchpad and deleted after) uploaded in Company settings printed
+       correctly, and the size limit was raised to 0.96 in after that check. ZIP: handoff-out/TFSC-Agreements-Deploy-2026-10-24-<sha>.zip.
        Owner to do: save each company's signature in Admin > Company settings (or keep the installed images); confirm
        the 24-7 Consultancy signatory (the request listed Naeem Abbas as COO; Danish Ather kept); counsel review of
        LEGAL_REVIEW.md "Version 5"; DMARC enforcement + VMC + BIMI for the Gmail verified tick.

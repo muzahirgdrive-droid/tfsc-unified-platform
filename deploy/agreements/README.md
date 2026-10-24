@@ -320,6 +320,10 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   adopted, every field filled with **Start** / **Next**, **Finish**; the signed PDF carries the company signature on
   its line, the client's signature stamp, the date and initials on every page. Every screen, with no browser errors.
 - **Fresh install** of this ZIP: all of the original checks above passed again (58).
+- **The real signatures** of Naeem Abbas and Danish Ather (supplied separately; never part of this package), uploaded
+  under Admin > Company settings on that server, printed on the company signature line of a Scribe Align, an Extended
+  Health Services and a 24-7 Consultancy agreement generated in the container, with no warning: up to 0.96 inch tall,
+  on the line, clear of the company name, the execution block on one page.
 - Memory after these runs: about 1.4 GB (the virus scanner 0.95 GB).
 
 **Not tested:** the Gmail verified tick and logo (they need your DNS records and a Verified Mark Certificate; the Email
