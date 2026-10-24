@@ -224,3 +224,19 @@ start doing all the work from where you stop with all the chat history as well."
   run of every new feature locally and over HTTPS on a server updated from the previous release (ClamAV blocked
   EICAR on a client upload; Word converted in the container in 2.4 s; bulk send delivered by the worker container);
   the update kept every envelope and signed PDF identical; a fresh install passed the original 58 checks.
+
+- Version 5 (owner's Word file, 2026-10-24: "Plan best first. Make the fool proof architecture ... keep the users
+  already created and also everything created so far"). Plan first (apps/agreements/ARCHITECTURE-V5.md), then:
+  Company settings with the signatory, title and signature kept in the database (root cause of the blank company
+  signature: images could only be installed from the command line); signature printed on the line at a fixed size;
+  completion decided by signers only (viewers wait only with a signing order; settle() completes envelopes held by
+  viewers); no default expiry and links that keep working; smart field placement with initials on every page; the
+  client's documents in the send wizard; 16 OFL signature styles, separate initials, draw/upload for each; premium
+  shell, Home, Insights, report builder with Excel/CSV and saved reports, activity log with IP and browser; branded
+  emails in each website's colours with the Help address; Email trust checks; premium sign-in page; copyright and
+  Help everywhere. Found and fixed while testing: KPI tiles made phones scroll sideways; "end to end" wording implied
+  end-to-end encryption (reworded); emails lacked the Help address. The request named Naeem Abbas as COO for 24-7
+  Consultancy; treated as unconfirmed, Danish Ather (COO) kept and editable. Verified: 116 tests on SQLite, 69 on
+  PostgreSQL 16; update from 25460c4 with data (identical afterwards; viewer-held envelope completed; default expiry
+  removed, chosen expiry kept); 39 v5 checks and a browser send/sign run over HTTPS; fresh install passed 58 checks.
+

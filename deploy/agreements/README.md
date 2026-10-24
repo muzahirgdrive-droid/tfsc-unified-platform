@@ -233,7 +233,8 @@ sudo ./agreements.sh backup && sudo ./agreements.sh update
 Data lives in Docker volumes and is kept: users, clients, agreements, envelopes, signatures, mailboxes and backups.
 Database changes are applied automatically during the update.
 
-Updating to version 5 also:
+The update rebuilds the application (about 6 minutes in testing when its libraries change, under a minute
+otherwise) and keeps the site running until the new version starts. Updating to version 5 also:
 - removes the 30-day expiry that earlier releases gave every envelope by default (an expiry someone chose is kept);
 - completes envelopes that were waiting only for someone who needed to view them;
 - keeps signature images installed with `./agreements.sh signatures` until you save one under Admin > Company settings.
@@ -295,7 +296,34 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   release": the database changes were applied, and accounts, clients, envelopes, their histories and the signed PDFs
   were identical afterwards (the update took 30 seconds with the images built).
 
-**Not tested:** real Google Workspace mailboxes (app passwords, the service-account method and Gmail's own limits);
+**Version 5, tested from this ZIP on the same Docker host:**
+- **Update from version 4.2** (the release installed on your server, 25460c4), holding two accounts, three clients,
+  generated agreements, a completed envelope with replies, a signature installed with `./agreements.sh signatures`
+  and three envelopes still waiting: backup and restore test, then `./agreements.sh update` (6 minutes; the
+  application image is rebuilt once). Afterwards both people signed in with their own passwords; accounts, clients,
+  every generated file, the completed envelope, its history and its signed PDFs were identical. The envelope waiting
+  only on a viewer completed within a minute, and the signer and the viewer received the completed document and
+  certificate. The automatic 30-day expiry was removed; an expiry the sender chose (10 days) was kept. A second update
+  (version 5 to version 5) took 37 seconds and changed nothing.
+- **Version 5 features on the updated server, over HTTPS (39 checks):** the default signatories and titles; the
+  installed 24-7 Consultancy signature still printed; a phone photo of a signature saved in Company settings had its
+  grey paper removed and printed on a Scribe Align BAA with Naeem Abbas, Chief Executive Officer; a user could not
+  change company settings or open the activity log. The client's generated BAA was offered when sending; fields were
+  placed automatically (signature, date and initials on all 6 pages); the envelope had no expiry; the email came from
+  "Scribe Align LLC" in its website colours with the Help address; the client signed, and the envelope completed
+  without the viewer opening it, then the client, the viewer and the copy recipient received the documents and the
+  certificate. Home, Insights, an Excel and a CSV report, and the activity log (with IP address and browser, and
+  signer actions) worked, and the activity log downloaded to Excel.
+- **In a browser over HTTPS:** a signature photo uploaded in Company settings; a client's profile, **Send documents
+  for signature**, the BAA added from the library, a viewer and a copy recipient added, fields placed automatically,
+  sent; the client opened the emailed link, the date was filled in, a style and a different initials style were
+  adopted, every field filled with **Start** / **Next**, **Finish**; the signed PDF carries the company signature on
+  its line, the client's signature stamp, the date and initials on every page. Every screen, with no browser errors.
+- **Fresh install** of this ZIP: all of the original checks above passed again (58).
+- Memory after these runs: about 1.4 GB (the virus scanner 0.95 GB).
+
+**Not tested:** the Gmail verified tick and logo (they need your DNS records and a Verified Mark Certificate; the Email
+trust screen checks the records). Real Google Workspace mailboxes (app passwords, the service-account method and Gmail's own limits);
 check them with Send test email and Check inbox in step 5. How Gmail, Outlook and Apple Mail display the branded email
 (it was checked in a browser): send yourself a test envelope and look at it in the mail programs your clients use. A real Let's Encrypt certificate with your DNS. Ubuntu
 itself (the installer's Docker installation and `ufw` step). The off-site S3 copy, restoring on a new server, and
