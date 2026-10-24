@@ -538,7 +538,7 @@ def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = No
     panel = ''
     if security_note:
         rows = [('Your private link', f'This email contains a secure link to documents from {company.rstrip(".")}. It is unique to you: please do not forward this email or share the link or any access code.'),
-                ('Protected end to end', 'The link opens an encrypted (HTTPS) page. Every view and signature is recorded in a tamper-evident audit trail, and the completed documents come with a Certificate of Completion.')]
+                ('Protected at every step', 'The link opens an encrypted (HTTPS) page. Every view and signature is recorded in a tamper-evident audit trail, and the completed documents come with a Certificate of Completion.')]
         items = ''.join(f'<tr><td valign="top" width="26" style="padding:0 10px 12px 0;"><div style="width:22px;height:22px;border-radius:11px;background:{color};color:#FFFFFF;'
                         f'{font}font-size:12px;line-height:22px;text-align:center;font-weight:700;">&#10003;</div></td>'
                         f'<td style="padding:0 0 12px 0;{font}font-size:13px;line-height:20px;color:#3D4B63;"><strong style="color:#0F1B2D;">{t}</strong><br>{x}</td></tr>' for t, x in rows)

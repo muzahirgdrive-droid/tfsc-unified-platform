@@ -1,3 +1,24 @@
+# Version 5 (October 24, 2026): company signatures, premium portal, reports and activity log
+
+The plan, mapping each request to a design: `ARCHITECTURE-V5.md`.
+
+| Module | What it adds |
+|---|---|
+| `companies.py`, `admin.js` | Company settings (Super Admin): `company_profiles` (signatory, title, signature PNG in the database); `clean_signature` makes the paper transparent and trims to the ink; fallback to an image installed with `agreements.sh signatures`. Workspace settings (portal name, copyright holder, Help email, trust line) and `/api/public/workspace`. Email trust: SPF, DKIM, DMARC and BIMI read over DNS-over-HTTPS with the record to publish. |
+| `server.py`, `document_engine.py`, `signature_store.py`, `worker.py` | `build_documents(data, contract_id, company)`: the company's signature, signatory and title on the execution block; the image sits on the rule at a fixed maximum size (`image_xml(..., baseline=...)`). |
+| `esign.py` | Completion rule in `advance()`: signers decide; viewers wait only with `settings.ordered`; `settle()` (run by `sweep`) completes envelopes held only by viewers. No default expiry (`expire_days` 0). `/links` turns recipient links off and on. Field suggestions (`/suggestions`), the client library for the wizard (`/library`), more audit events (viewed, downloads, copied, template saved). |
+| `esign_pdf.py` | `suggest()`: execution anchors on generated agreements, label detection on uploads, initials on every page in a free spot; DocuSign-style signature and initials stamps. |
+| `insights.py`, `reports.js`, `home.js` | `/api/home` (counts and figures by scope), `/api/insights`, report datasets with chosen columns, Excel (openpyxl; cells written as text) and CSV export (formula-like cells neutralised), `saved_reports`, the merged activity log (audit table plus envelope events). Scope: `team(actor)`. |
+| `database.py` | `audit.ip` and `audit.user_agent` from the `request_meta` context variable set by the middleware. |
+| `mailer.py`, `entities.py` | Per-company email layout in the website colours (`color`, `accent`, `dark`, `display`). |
+| `index.html`, `ui.css`, `portal.js`, `esign.js`, `clients.js`, `login.html`, `verify.html` | New app shell with a hash router (`#/home`, `#/agreements/<box>`, `#/envelope/<id>`, `#/send`, `#/clients/<id>`, `#/create`, `#/reports/<tab>`, `#/activity`, `#/admin/<page>`), the envelope wizard (documents, recipient cards, signing order, fields, options) and the field tagger; copyright and Help on every page. |
+| `sign.html`, `sign.js`, `sign.css`, `assets/fonts/` | Signing page: 16 signature styles (OFL fonts, licences beside them, files unmodified), separate initials style, draw or upload each. Inter (OFL) subset for the interface. |
+| `migrations/versions/0004_premium_portal.py` | New tables, audit columns and indexes; removes the old automatic 30-day expiry (a chosen expiry is kept). Additive only. |
+
+Tests: `tests/test_premium_portal.py` (company settings and who may change them, the signature on generated
+agreements, the completion rule, expiry and links, placement, Home, reports in Excel and CSV, the activity log, the
+migration's data step). With `TEST_DATABASE_URL` set they also run on PostgreSQL.
+
 # Electronic signature (version 4.1, October 22, 2026)
 
 DocuSign-style signing inside TFSC Agreements (hosted edition: signers must reach the public address).

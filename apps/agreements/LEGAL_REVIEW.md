@@ -1,3 +1,38 @@
+# Version 5 changes for counsel (October 24, 2026)
+
+- **Company signature applied automatically.** Each company's signatory, title and signature image are kept in Company
+  settings, which only the Super Admin can change (every change is in the activity log). Every BAA, Services Agreement
+  and Mutual NDA generated for that company carries the image on the company's signature line, with the name, title
+  and the effective date. Confirm that each signatory authorizes this standing use of their signature, and who may
+  generate agreements in their name (any user assigned to the company). Defaults: Naeem Abbas, Chief Executive
+  Officer, for Scribe Align LLC and Extended Health Services Inc.; Danish Ather, Chief Operating Officer, for 24-7
+  Consultancy LLC. The request listed Naeem Abbas with the title Chief Operating Officer for 24-7 Consultancy; this was
+  treated as unconfirmed and the 24-7 Consultancy default was not changed. Correct it in Company settings if needed.
+- **Viewers no longer hold up completion.** An envelope completes when everyone who needs to sign has signed. A person
+  who only needs to view is sent the documents but does not have to open them, unless a signing order puts them before
+  a signer. Everyone, viewers included, receives the completed documents and the Certificate of Completion; the
+  certificate shows when each viewer was sent the documents and, if they opened them, when. Envelopes that were
+  waiting only for a viewer complete within minutes of the update, and that time is their completion time.
+- **No expiry by default; links keep working.** Envelopes no longer expire unless the sender chooses an expiry. The
+  update removes the automatic 30-day expiry that earlier releases set on envelopes still waiting for signatures; an
+  expiry the sender chose is kept. After completion, the link in each recipient's email keeps opening the completed
+  documents (behind the access code, if one was set) until the sender turns links off for that envelope. Decide
+  whether links should be turned off after a period, given that the documents may contain PHI.
+- **Security wording.** The signing page and emails say: "Encrypted connection · Tamper-evident audit trail · Built for
+  HIPAA-regulated organizations" (the Super Admin can change it). Each phrase describes something the portal does;
+  none claims HIPAA certification or compliance, which no software can grant by itself. The email's security panel
+  says the link opens an encrypted (HTTPS) page and that views and signatures are recorded. Please approve the wording.
+- **Activity log.** Records who generated, sent, opened, viewed, signed and downloaded each document, with time, IP
+  address and browser, for users and for signers. Admins see their team's entries and the Super Admin sees all;
+  entries can be exported to Excel. Set a retention period for this personal data.
+- **Signatures and initials.** Signers choose one of 16 handwriting styles made from their name (initials may use a
+  different style), draw, or upload an image of their signature and initials, after accepting the electronic record
+  and signature disclosure as before. Fields, including initials on every page, are placed automatically from the
+  document's signature block; the sender can move or remove them and remains responsible for their placement.
+- **Verified sender in Gmail.** The Email trust screen explains the requirements (SPF, DKIM, DMARC at enforcement, a
+  BIMI record and a Verified Mark Certificate). A VMC requires the logo to be a registered trademark; a Common Mark
+  Certificate shows the logo without the tick. Nothing in the application claims verification before Gmail grants it.
+
 # Version 4.2 changes for counsel (October 23, 2026)
 
 - **In-person signing.** A signer can sign on a device opened by a host (a TFSC Agreements user of the sending company)

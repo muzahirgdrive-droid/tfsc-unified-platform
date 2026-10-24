@@ -6,6 +6,8 @@ This package installs **TFSC Agreements only** on one Linux server with Docker:
   and colours;
 - a profile for every client: details, contacts and every document (generated, sent, signed, certificates, files the
   client sent back, files you upload);
+- a Home dashboard (counts you can select to open each list), reports on screen and in Excel, and an activity log of
+  who generated, opened, viewed, signed or downloaded what, when and from where;
 - user accounts and permissions;
 - encrypted backups with a nightly restore test;
 - a virus scan of every file that comes in: uploads, signer attachments and files clients attach to email replies;
@@ -23,7 +25,7 @@ address and a password that the Super Admin creates for them.
 | Address | One web address for Agreements, for example `agreements.yourcompany.com`, on a domain you control |
 | Mailboxes | The compliance mailboxes (Google Workspace): compliance@scribealign.com, compliance@extendedhealthservices.us, compliance@24-7consultancyllc.com, each with an app password (step 5) |
 | Safe place | A password manager for the generated secrets |
-| Later | The signature images for issued agreements; optionally an S3 bucket elsewhere for off-site backup copies |
+| Later | A clear image of each company signatory's signature (step 5), or draw it on screen; optionally an S3 bucket elsewhere for off-site backup copies |
 
 ## 1. Point the address at the server
 
@@ -65,11 +67,32 @@ Unattended install (no questions): `TFSC_DOMAIN=agreements.yourcompany.com sudo 
 1. Open `https://agreements.yourcompany.com/login`. Enter the **setup key** with your name, email and a password
    (at least 12 characters). You are now the Super Admin. The key works once; `./agreements.sh setup-key` shows it
    again until it is used.
-2. **Users & permissions** > **Create user**: name, email, role (User, Admin or Super Admin) and the companies the
+2. **Admin > Users & permissions** > **Create user**: name, email, role (User, Admin or Super Admin) and the companies the
    person may prepare agreements for. The screen shows a temporary password; give it to the person privately. They
    choose their own password at first sign-in. Use **Reset password** there if someone forgets theirs.
 
-## 5. Connect the company compliance mailboxes
+## 5. Company settings: who signs, and the signature on every agreement
+
+**Admin > Company settings** (Super Admin only) has one card per company:
+- **Authorized signatory** and **Title**, as they print under the company's signature line. Set out of the box:
+  Naeem Abbas, Chief Executive Officer, for Scribe Align and Extended Health Services; Danish Ather, Chief Operating
+  Officer, for 24-7 Consultancy. Change them here if that is not right.
+- **Signature on agreements**: **Upload** a photo or scan of the signature (dark ink on white paper; the paper is made
+  transparent and the image trimmed automatically), **Draw** it with a mouse, pen or finger, or **Type** the name and
+  choose one of 16 handwriting styles. The preview shows it on the signature line as it will print. **Save**.
+
+From then on every generated BAA, Services Agreement and Mutual NDA for that company carries the signature on the
+line, with the signatory's name, title and the date. The builder shows the company's signature before you generate,
+and warns when a company has none. The images are kept in the database, so the backups include them.
+
+Signature images installed earlier with `./agreements.sh signatures` keep working; saving one in Company settings
+replaces them.
+
+The same screen holds the workspace settings shown on every page and email: portal name, copyright holder (the
+"© year ... All rights reserved." line), the **Help email** (muzahir@scribealign.com) and the security line on the
+signing page.
+
+## 6. Connect the company compliance mailboxes
 
 Agreements sends signing requests, reminders and completed documents from each company's compliance mailbox, and reads
 that inbox (read-only) for client replies and bounce notices, which appear on the envelope. All three domains use
@@ -79,19 +102,29 @@ compliance@24-7consultancyllc.com:
 1. Sign in to Google as that mailbox. Under Google Account > Security, turn on **2-Step Verification**.
 2. Open https://myaccount.google.com/apppasswords, create an app password named "TFSC Agreements" and copy the
    16 characters.
-3. In Agreements: **Company mailboxes** > the company > "Send from this company's own mailbox", sign-in method
+3. In Agreements: **Admin > Company mailboxes** > the company > "Send from this company's own mailbox", sign-in method
    **App password**, paste it, keep "Read replies and bounce notices" on, and **Save**. The Google Workspace server
    settings are filled in.
 4. Select **Send test email**, then **Check inbox**. Both must report success; the message shows the real reason if not.
-5. If the company signs electronically (instead of the saved signature image), enter the signer's email
+5. Set the **sender name** to the company name (for example "Scribe Align LLC"); it is what the inbox shows.
+6. If the company signs electronically (instead of the saved signature image), enter the signer's email
    (Naeem Abbas or Danish Ather) in "Company signer's email".
+
+### The verified tick and the company logo in Gmail
+
+**Admin > Email trust & verified sender** checks each company domain's SPF, DKIM, DMARC and BIMI records live and
+gives the exact record to publish for anything missing (**Copy record**). The blue verified tick in Gmail is granted
+by Gmail, not by this application: it needs SPF and DKIM passing, DMARC at enforcement (`p=quarantine` or `p=reject`),
+the logo as an SVG Tiny PS file, a **Verified Mark Certificate** (from DigiCert, Entrust or GlobalSign, which needs a
+registered trademark for the logo) and a BIMI record. Until then, set each compliance mailbox's Google profile photo
+to the company logo: Gmail shows it to many recipients right away.
 
 If your Google Workspace administrator has turned off app passwords, use **Google Workspace service account** instead:
 create a service account and a JSON key in Google Cloud, then in the Google Admin console (Security > Access and data
 control > API controls > Domain-wide delegation) add its client ID with the scope `https://mail.google.com/`, and
 upload the JSON key on the Company mailboxes screen.
 
-## 6. Clients
+## 7. Clients
 
 **Clients** lists every client you can see. A client's profile has:
 - **Overview**: address, phone, email, website, specialty, NPI, tax ID and notes (**Edit details**).
@@ -104,53 +137,61 @@ upload the JSON key on the Company mailboxes screen.
 - **Signatures**, **Agreements** and **Activity**: every envelope, every generated agreement and the full history.
 
 Use **New client** to add a client before preparing anything, **Create agreement** to open the client in the
-agreement builder, and **Send documents for signature** to start an envelope for the client.
+agreement builder, and **Send documents for signature** to start an envelope for the client with the client's
+agreements and files offered first. The client's **Activity** tab shows who generated, sent, opened, viewed, signed
+and downloaded each document, and when.
 
-## 7. Send documents for signature
+## 8. Send documents for signature
 
-1. **Create agreement**: choose the company, enter the client, choose BAA, Services Agreement and/or Mutual NDA, the
-   services and the terms. The governing state starts at the company's state (Scribe Align Nevada, Extended Health
-   Services Missouri, 24-7 Consultancy Georgia) and applies to every agreement in the package. **Generate**, then
-   **Send for signature**: the client's signature, name, title and date fields are already placed.
-   Or start from **Signatures > New envelope** or a client profile and add your own documents: PDF, Word (DOCX, DOC,
-   ODT, RTF), text, PNG or JPEG; everything is converted to PDF.
-2. **Recipients**: who signs, who signs in person (a user of yours hosts it on their device; no email needed), who
-   needs to view, and who receives a copy, in a signing order (the same order means at the same time). Optional access
-   code and private message per person. **+ Add me** adds yourself.
-3. **Fields**: signature, initials, date signed, full/first/last name, email, company, title, text, number, date,
-   checkbox, radio buttons, dropdown, attachment (the signer uploads a file) and note. A field can be required,
-   read-only with a value you fill in, limited in length, checked as letters, number, email, phone, ZIP or date, carry
-   help text, or appear only when a checkbox, radio button or dropdown has a given value. **Initials on every page**
-   places initials for the selected recipient.
-4. **Options**: reminders, expiration and its warning, attaching the completed documents to the final email, and
-   whether recipients may assign the documents to someone else. **Send**.
-5. The client receives an email from the company's compliance mailbox with the company's logo and a **REVIEW
-   DOCUMENT** button. On the signing page they accept the electronic record disclosure, follow **Start** / **Next**
-   to each field, adopt a signature (a style made from their name, drawn, or uploaded), and select **Finish**. Under
-   **Other actions** they can **Finish later** (the same link brings their entries back), **Assign to someone else**,
-   download, print or decline.
-6. Follow progress under **Signatures** (folders, search, company and date filters, **Expiring soon**): who has viewed
-   and signed, email delivery, client replies, the history. Use **Resend**, **Correct recipients and fields** (change,
-   add or remove anyone who has not signed yet), **Correct details** or **Void**. An in-person signing is started with
-   **Start in-person signing** on the envelope. When everyone has signed, everyone (including copy recipients) receives
-   the completed documents and the Certificate of Completion by email, and the compliance mailbox gets a copy.
-7. **Bulk send** sends a template to a list of people (pasted or a CSV file), each in their own envelope.
-   **Reports** shows sent, completed, completion rate, time to complete, waiting and declined envelopes by company,
-   sender and month, with a CSV download.
-8. Anyone can check a completed PDF at `https://agreements.yourcompany.com/verify`.
+1. **Home > Start > Send an envelope** (or **Agreements > Start**, or **Send documents for signature** on a client).
+   Choose the company, and the client if there is one. **Documents**: drag files from your computer (PDF, Word: DOCX,
+   DOC, ODT, RTF; text, PNG or JPEG; everything is converted to PDF), or pick the client's generated agreements and
+   files. Or create the agreements first: **Create agreement** (company, client, BAA, Services Agreement and/or Mutual
+   NDA, services and terms; the governing state starts at the company's state), **Generate**, then **Send for
+   signature**.
+2. **Recipients**: one card per person with name, email and a role (**Needs to sign**, **Signs in person**, **Needs to
+   view**, **Receives a copy**). The client's signatory is filled in. **Customize** adds an access code or a private
+   message for that person; the bin removes them; **Add recipient** adds another. Turn on **Set signing order** to
+   number the people (the same number means at the same time); without it everyone receives the email at once.
+3. **Fields** are placed for you: the signature, name, title and today's date on the signature block, required fields,
+   and initials on every page in a free spot near the bottom. Drag any field to move it, select it to change or delete
+   it, or drag new ones from the palette. **Auto-place fields** places them again; **Initials on every page** adds
+   initials for the selected person.
+4. **Options**: the documents **never expire** unless you choose an expiry; reminders; attaching the completed
+   documents to the final email; whether recipients may assign the documents to someone else. **Send**.
+5. The client receives an email in the company's colours from the company's compliance mailbox, with a **REVIEW
+   DOCUMENT** button. On the signing page they accept the electronic record disclosure, follow **Start** / **Next** to
+   each field (today's date is already filled in), and adopt a signature and initials: one of 16 styles made from their
+   name (initials can use a different style), drawn, or uploaded (signature and initials separately). **Finish**.
+   Under **Other actions** they can **Finish later**, **Assign to someone else**, download, print or decline.
+6. **Completion**: the envelope completes when everyone who needs to sign has signed. Someone who only needs to view
+   never holds it up (unless a signing order puts them before a signer). Everyone, including viewers and copy
+   recipients, then receives the completed documents and the Certificate of Completion by email, and the compliance
+   mailbox gets a copy.
+7. Follow progress under **Agreements** (Action required, Waiting for others, Expiring soon, Completed, Drafts, All
+   sent, Declined, Voided, Expired): who has viewed and signed, email delivery, client replies, the history.
+   **Resend**, **Correct**, and under **More**: copy into a new envelope, save as template, void. Signing links never
+   expire on their own; after completion the links in recipients' emails keep opening the completed documents until you
+   choose **More > Turn off recipient links**.
+8. **Bulk send** (Home > Start) sends a template to a list of people, each in their own envelope.
+9. Anyone can check a completed PDF at `https://agreements.yourcompany.com/verify`.
 
-## 8. Signature images
+## 9. Home, reports and the activity log
 
-Put the four files (`Naeem Abbas.png`, `Naeem Abbas.json`, `Danish Ather.png`, `Danish Ather.json`) in a folder on the
-server, then:
+- **Home**: Action required, Waiting for others, Expiring soon and Completed; select a count to open that list. Below:
+  documents sent, pending signature, completed, completion rate and agreements generated (for all companies or one),
+  the latest activity and quick actions.
+- **Reports > Insights**: sent and completed by month, completion funnel, time to complete, by company, top clients,
+  each chart with its table.
+- **Reports > Report builder**: choose the data (envelopes, recipients, generated agreements or clients; for Admins
+  also user activity and users), the columns, the dates, the company, the status, the client and the person; **Run
+  report** to see it on screen, **Download Excel** or **Download CSV**, and **Save this report** to run it again.
+- **Activity log** (Admins and the Super Admin): every action by people, signers and the system, with time, person,
+  action, client, IP address and browser; filter by when, who, what, client or a search, and download it in Excel or
+  CSV.
+A User sees their own work, an Admin their own and their team's, and the Super Admin everything.
 
-```
-sudo ./agreements.sh signatures /root/signatures
-```
-
-Delete that folder after you have checked one generated agreement. The images are never part of this package.
-
-## 9. Backups
+## 10. Backups
 
 - Automatic: every night at 2:00 in your time zone (full backup weekly, changes daily, 14 days kept), every database
   change within a minute in between, all encrypted. After each backup a restore test rebuilds a copy and checks it.
@@ -189,7 +230,13 @@ mv tfsc-agreements tfsc-agreements-previous && mv TFSC-Agreements-Deploy-NEW tfs
 sudo ./agreements.sh backup && sudo ./agreements.sh update
 ```
 
-Data lives in Docker volumes and is kept; database changes are applied automatically during the update.
+Data lives in Docker volumes and is kept: users, clients, agreements, envelopes, signatures, mailboxes and backups.
+Database changes are applied automatically during the update.
+
+Updating to version 5 also:
+- removes the 30-day expiry that earlier releases gave every envelope by default (an expiry someone chose is kept);
+- completes envelopes that were waiting only for someone who needed to view them;
+- keeps signature images installed with `./agreements.sh signatures` until you save one under Admin > Company settings.
 
 ## Changing settings later
 
