@@ -105,6 +105,11 @@ class CompanySettings(Base):
         r = self.post('/api/admin/workspace', {'help_email': 'help@scribealign.com', 'copyright_holder': 'TFSC'})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(self.api.get('/api/public/workspace').json()['copyright_holder'], 'TFSC')
+        # Emails name the Help address too
+        import mailer
+        from entities import get_entity
+        self.assertIn('help@scribealign.com', mailer.layout(get_entity(SCRIBE), 'Please sign', '<p>Hello</p>', security_note=True))
+        self.assertIn('help@scribealign.com', mailer.text_footer(get_entity(SCRIBE), None, True))
         # Every page without an account shows the copyright and the Help address (filled in from these settings)
         for page in ('/login', '/verify'):
             html = self.api.get(page).text

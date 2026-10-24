@@ -551,6 +551,9 @@ def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = No
         extras.append(('Button not working?', f'Copy this address into your browser:<br><span style="word-break:break-all;color:#30476B;">{esc(button[1])}</span>'))
     if contact:
         extras.append(('Questions about the documents?', f'Reply to this email or write to <a href="mailto:{contact}" style="color:{color};text-decoration:none;">{contact}</a>.'))
+    if ws.get('help_email'):
+        help_email = esc(ws['help_email'])
+        extras.append(('Trouble opening or signing?', f'Please email <a href="mailto:{help_email}" style="color:{color};text-decoration:none;">{help_email}</a> with your concern.'))
     extra_html = ''.join(f'<p style="margin:0 0 14px 0;"><strong style="color:#0F1B2D;">{t}</strong><br>{x}</p>' for t, x in extras)
     trust = esc(ws.get('trust_line') or '')
     year = time.gmtime().tm_year
@@ -588,6 +591,9 @@ def text_footer(entity: dict, box: dict | None, security_note: bool) -> str:
                      'The link opens an encrypted page; every view and signature is recorded in a tamper-evident audit trail.')
     if box and box.get('address'):
         lines.append(f"Questions about these documents? Reply to this email or contact {box['address']}.")
+    help_email = _workspace().get('help_email')
+    if help_email:
+        lines.append(f"Trouble opening or signing? Please email {help_email} with your concern.")
     company = entity.get('display') or entity['name']
     lines.append(f"{company} · {entity.get('address', '')}")
     lines.append(f"© {time.gmtime().tm_year} {company.rstrip('.')}. All rights reserved. Sent from the {company} secure document portal.")
