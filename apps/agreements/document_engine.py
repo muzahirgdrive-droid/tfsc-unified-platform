@@ -111,7 +111,7 @@ def _signature(text, data, contract_id, final_clause='', source_exact=False):
         ['Date: '+date,'Date: ______________________________'],
     ],signature=True,width=entity['width'])
     signing_p=_p(company_signature,'SASignature',keep=True,align='left')
-    line='<w:p><w:pPr><w:pStyle w:val="SASignature"/><w:keepNext/><w:spacing w:before="820" w:after="140"/>'+f'<w:tabs><w:tab w:val="left" w:leader="underscore" w:pos="{entity["width"]//2-350}"/></w:tabs></w:pPr>'+_run('Signature: ')+'<w:r><w:tab/></w:r>'
+    line='<w:p><w:pPr><w:pStyle w:val="SASignature"/><w:keepNext/><w:spacing w:before="1180" w:after="140"/>'+f'<w:tabs><w:tab w:val="left" w:leader="underscore" w:pos="{entity["width"]//2-350}"/></w:tabs></w:pPr>'+_run('Signature: ')+'<w:r><w:tab/></w:r>'
     body=body.replace(signing_p,line+data.get('_signature_xml','')+'</w:p>',1)
     body=body.replace(signing_p,line+'</w:p>',1)
     if not source_exact:
