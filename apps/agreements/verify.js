@@ -1,6 +1,11 @@
 "use strict";
 (() => {
   const result = document.getElementById("result");
+  fetch("/api/public/workspace").then(r => r.json()).then(w => {
+    document.getElementById("footer-copyright").textContent = `© ${w.year} ${w.copyright_holder}. All rights reserved.`;
+    const help = document.getElementById("footer-help-email");
+    if (w.help_email) { help.textContent = w.help_email; help.href = `mailto:${w.help_email}`; }
+  }).catch(() => {});
   document.getElementById("file").addEventListener("change", async event => {
     const file = event.target.files[0];
     if (!file) return;

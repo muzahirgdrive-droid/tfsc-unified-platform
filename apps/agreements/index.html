@@ -5,47 +5,76 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="__CSRF_TOKEN__">
   <meta name="color-scheme" content="light">
-  <title>TFSC Compliance</title>
+  <title>TFSC Agreements</title>
   <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/tfsc.css">
   <link rel="stylesheet" href="/portal.css">
-  <link rel="stylesheet" href="/esign.css">
   <link rel="stylesheet" href="/clients.css">
+  <link rel="stylesheet" href="/ui.css">
   <script src="/portal.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/studio.js" defer></script>
   <script src="/esign.js" defer></script>
   <script src="/clients.js" defer></script>
+  <script src="/home.js" defer></script>
+  <script src="/reports.js" defer></script>
+  <script src="/admin.js" defer></script>
 </head>
-<body>
-  <a class="skip-link" href="#contract-form">Skip to contract form</a>
-  <aside class="studio-sidebar" aria-label="Workspace navigation">
-    <a href="/" class="sidebar-brand" aria-label="TFSC Compliance home"><img src="/assets/tfsc-logo.png" alt="Twenty Four Seven Consultancy" width="3248" height="895"><span class="product-name">TFSC <strong>Compliance</strong></span><small>AGREEMENT WORKSPACE</small></a>
-    <p class="nav-label">YOUR WORKSPACE</p>
-    <button type="button" class="sidebar-current" id="show-builder"><span>▤</span> Create agreement <span class="nav-dot"></span></button>
-    <nav class="studio-nav" aria-label="Agreement steps">
+<body data-view="home">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="topbar-brand" href="#/home" aria-label="TFSC Agreements home"><img src="/assets/tfsc-logo.png" alt="" width="3248" height="895"><span class="brand-text"><strong>Agreements</strong><small>Secure portal</small></span></a>
+      <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Open the menu" aria-expanded="false" aria-controls="topnav"><span></span><span></span><span></span></button>
+      <nav class="topnav" id="topnav" aria-label="Main">
+        <a href="#/home" data-nav="home">Home</a>
+        <a href="#/agreements" data-nav="agreements">Agreements<span class="nav-count" id="esign-count" hidden></span></a>
+        <a href="#/templates" data-nav="templates">Templates</a>
+        <a href="#/clients" data-nav="clients">Clients</a>
+        <a href="#/create" data-nav="create">Create agreement</a>
+        <a href="#/reports" data-nav="reports">Reports</a>
+        <a href="#/activity" data-nav="activity" id="nav-activity" hidden>Activity log</a>
+        <div class="nav-menu" id="nav-admin" hidden>
+          <button type="button" class="nav-menu-button" data-nav="admin" aria-expanded="false" aria-haspopup="true">Admin<span class="chevron" aria-hidden="true"></span></button>
+          <div class="menu-list" role="menu" hidden>
+            <a role="menuitem" href="#/admin/users">Users &amp; permissions</a>
+            <a role="menuitem" href="#/admin/companies" data-super>Company settings</a>
+            <a role="menuitem" href="#/admin/mailboxes" data-super>Company mailboxes</a>
+            <a role="menuitem" href="#/admin/email-trust" data-super>Email trust &amp; verified sender</a>
+          </div>
+        </div>
+      </nav>
+      <div class="topbar-right">
+        <span class="secure-pill" title="Your connection to this portal is encrypted"><span class="lock" aria-hidden="true"></span>Secure</span>
+        <button class="icon-round" id="help-button" type="button" aria-label="Help">?</button>
+        <div class="user-menu">
+          <button type="button" class="avatar-button" id="user-button" aria-expanded="false" aria-haspopup="true"><span class="avatar" id="user-avatar">·</span><span class="user-text"><strong id="account-name"></strong><small id="account-role"></small></span><span class="chevron" aria-hidden="true"></span></button>
+          <div class="menu-list menu-right" role="menu" hidden>
+            <p class="menu-heading" id="account-email"></p>
+            <button type="button" role="menuitem" id="account-password">Change password</button>
+            <button type="button" role="menuitem" id="logout">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="workspace" id="main" tabindex="-1">
+    <div id="app-error" class="alert alert-error" role="alert" hidden></div>
+    <div id="status-message" class="alert alert-success" role="status" hidden></div>
+    <div id="loading" class="loading-panel" role="status"><span class="spinner"></span>Preparing your workspace…</div>
+
+    <section id="home-view" class="portal-view" aria-label="Home"></section>
+
+    <section id="builder-view" class="builder-view" hidden aria-labelledby="builder-title">
+      <div class="page-head"><div><p class="eyebrow">CREATE AGREEMENT</p><h1 id="builder-title">Prepare a new agreement</h1><p class="page-sub">Business Associate Agreement, Services Agreement and Mutual NDA on your company letterhead, in Word and PDF.</p></div></div>
+    <nav class="studio-nav stepper" aria-label="Agreement steps">
       <button type="button" data-step="client-panel" aria-current="step"><span>01</span>Client details</button>
       <button type="button" data-step="documents-panel"><span>02</span>Documents</button>
       <button type="button" data-step="services-panel"><span>03</span>Services &amp; fees</button>
       <button type="button" data-step="terms-panel"><span>04</span>Agreement terms</button>
       <button type="button" data-step="output-panel"><span>05</span>Sign &amp; export</button>
     </nav>
-    <button class="workspace-switch" id="show-history" type="button">▱ Clients</button><button class="workspace-switch" id="show-esign" type="button">✎ Signatures<span class="nav-count" id="esign-count" hidden></span></button><button class="workspace-switch" id="show-users" type="button" hidden>♙ Users &amp; permissions</button><button class="workspace-switch" id="show-mailboxes" type="button" hidden>✉ Company mailboxes</button>
-    <div class="sidebar-bottom"><span class="avatar">TF</span><div>TFSC COMPLIANCE<small>Private company workspace</small></div></div>
-  </aside>
-  <header class="app-header">
-    <a class="brand" href="/" aria-label="TFSC Compliance home"><span class="header-home">TFSC Compliance</span><span class="header-divider">/</span><span class="header-context">Create agreement</span></a>
-    <div class="header-right"><div class="account-menu"><span id="account-name" class="account-name"></span><button type="button" class="button button-quiet" id="account-password">Password</button><button type="button" class="button button-quiet" id="logout">Sign out</button></div><button class="text-button" id="help-button" type="button">Quick guide <span aria-hidden="true">↗</span></button></div>
-  </header>
-
-  <main class="workspace">
-    <div class="page-intro"><div><p class="eyebrow">CONTRACT MANAGEMENT, SIMPLIFIED</p><h1>Every agreement.<br><span>Precisely prepared.</span></h1><p>Your companies. Your terms. One seamless workspace.</p></div><div class="intro-label"><div><strong>03</strong><span>Company entities</span></div><div><strong id="catalog-total">19</strong><span>Available services</span></div><div><strong>Word + PDF</strong><span>Ready to share</span></div></div></div>
-    <div class="studio-progress"><span id="stage-label">01 / 05 · Client details</span><div><i id="stage-progress"></i></div><span>Built around your business</span></div>
-
-    <div id="app-error" class="alert alert-error" role="alert" hidden></div>
-    <div id="status-message" class="alert alert-success" role="status" hidden></div>
-    <div id="loading" class="loading-panel" role="status"><span class="spinner"></span>Preparing your workspace…</div>
-
+    <div class="studio-progress"><span id="stage-label">01 / 05 · Client details</span><div><i id="stage-progress"></i></div><span id="catalog-total-wrap"><span id="catalog-total">19</span> services available</span></div>
     <form id="contract-form" hidden novalidate>
       <div class="workspace-grid">
         <div class="form-column">
@@ -83,7 +112,7 @@
 
           <section class="panel" id="output-panel" aria-labelledby="output-heading">
             <div class="panel-heading"><div class="step">05</div><div><p class="eyebrow">READY TO FILE</p><h2 id="output-heading">Sign &amp; export</h2></div></div>
-            <div class="panel-body"><div class="signature-settings"><div><p class="eyebrow">AUTHORIZED SIGNATORY</p><h3 id="signatory-name">Naeem Abbas</h3><p id="signatory-title">Chief Executive Officer · SCRIBE ALIGN LLC</p></div><div class="field"><label for="signature-upload">Company signature image</label><input type="file" id="signature-upload" accept="image/png,image/jpeg"><p class="field-note" id="signature-status" role="status">No signature image has been supplied.</p></div><label class="check-inline"><input id="include-signature" type="checkbox" checked>Automatically include the saved company signature</label><p class="field-note">Upload an authorized PNG or JPEG once. It stays on this computer and appears in Word and PDF exports. A visible signature can be copied or photographed.</p></div><div class="field"><label for="output_root">Output folder <span class="required">*</span></label><div class="folder-input"><input id="output_root" name="output_root" placeholder="Choose the folder for your client agreements" required><button class="button button-quiet" type="button" id="choose-folder">Choose folder</button></div><p class="field-note">A client folder and separate agreement subfolders are created automatically. Each generation is kept as a new version.</p></div><div class="folder-preview" aria-label="Output folder structure"><span class="folder-line">▱ <strong id="folder-client">Client legal name</strong></span><div id="folder-baa">└ Business Associate Agreement <span>.docx &nbsp; .pdf</span></div><div id="folder-services">└ Services Agreement <span>.docx &nbsp; .pdf</span></div><div id="folder-nda" hidden>└ Mutual Nondisclosure Agreement <span>.docx &nbsp; .pdf</span></div></div></div>
+            <div class="panel-body"><div class="signature-settings signature-card"><div class="signature-who"><p class="eyebrow">AUTHORIZED SIGNATORY</p><h3 id="signatory-name">Naeem Abbas</h3><p id="signatory-title">Chief Executive Officer · SCRIBE ALIGN LLC</p></div><div class="signature-line-preview" aria-live="polite"><img id="signature-preview" alt="" hidden><span class="signature-rule"></span><small>Signature as it prints on the agreement</small></div><p class="field-note" id="signature-status" role="status">Checking the saved company signature…</p><label class="check-inline"><input id="include-signature" type="checkbox" checked>Sign the company side automatically with the saved signature</label><p class="field-note" id="signature-manage"><a href="#/admin/companies" id="signature-settings-link">Change the signatory or signature in Admin › Company settings</a></p></div><div class="field"><label for="output_root">Output folder <span class="required">*</span></label><div class="folder-input"><input id="output_root" name="output_root" placeholder="Choose the folder for your client agreements" required><button class="button button-quiet" type="button" id="choose-folder">Choose folder</button></div><p class="field-note">A client folder and separate agreement subfolders are created automatically. Each generation is kept as a new version.</p></div><div class="folder-preview" aria-label="Output folder structure"><span class="folder-line">▱ <strong id="folder-client">Client legal name</strong></span><div id="folder-baa">└ Business Associate Agreement <span>.docx &nbsp; .pdf</span></div><div id="folder-services">└ Services Agreement <span>.docx &nbsp; .pdf</span></div><div id="folder-nda" hidden>└ Mutual Nondisclosure Agreement <span>.docx &nbsp; .pdf</span></div></div></div>
           </section>
         </div>
 
@@ -95,15 +124,20 @@
       </div>
     </form>
     <div class="step-actions"><button type="button" class="button button-quiet" id="step-back">← Back</button><span id="step-caption">Client information</span><button type="button" class="button button-primary" id="step-next">Continue →</button></div>
+    </section>
+
     <section id="history-view" class="portal-view" hidden></section>
-    <section id="users-view" class="portal-view" hidden><div class="history-toolbar"><div><p class="eyebrow">WORKSPACE ACCESS</p><h2>Users &amp; permissions</h2></div><button type="button" class="button button-primary" id="add-user">Create user</button></div><p class="portal-note">Assign contracting companies and manage the users in your team.</p><div class="portal-toolbar"><input id="users-search" type="search" placeholder="Search name or email" aria-label="Search users"><button type="button" class="button button-quiet" id="users-refresh">Search</button></div><div class="panel"><div class="panel-body"><table class="portal-table"><thead><tr><th>User</th><th>Role</th><th>Companies</th><th>Status</th><th>Manage</th></tr></thead><tbody id="users-table"></tbody></table></div></div><div class="portal-paging"><button class="button button-quiet" id="users-prev" type="button">Previous</button><span id="users-page"></span><button class="button button-quiet" id="users-next" type="button">Next</button></div></section>
+    <section id="users-view" class="portal-view" hidden><div class="page-head"><div><p class="eyebrow">ADMIN</p><h1>Users &amp; permissions</h1><p class="page-sub">Create users, assign the companies they work for, and manage your team.</p></div><button type="button" class="button button-primary" id="add-user">Create user</button></div><div class="portal-toolbar"><input id="users-search" type="search" placeholder="Search name or email" aria-label="Search users"><button type="button" class="button button-quiet" id="users-refresh">Search</button></div><div class="panel table-card"><div class="panel-body"><table class="portal-table"><thead><tr><th>User</th><th>Role</th><th>Companies</th><th>Status</th><th>Manage</th></tr></thead><tbody id="users-table"></tbody></table></div></div><div class="portal-paging"><button class="button button-quiet" id="users-prev" type="button">Previous</button><span id="users-page"></span><button class="button button-quiet" id="users-next" type="button">Next</button></div></section>
     <section id="esign-view" class="portal-view" hidden></section>
     <section id="mailbox-view" class="portal-view" hidden></section>
-    <footer class="app-footer"><span>TFSC <span class="footer-divider">/</span> COMPLIANCE</span><span id="app-version">Local edition</span></footer>
+    <section id="reports-view" class="portal-view" hidden></section>
+    <section id="activity-view" class="portal-view" hidden></section>
+    <section id="admin-view" class="portal-view" hidden></section>
   </main>
+  <footer class="app-footer"><div class="footer-inner"><span id="copyright">© 2026 TFSC Agreements. All rights reserved.</span><span class="footer-links"><button type="button" class="text-button" id="footer-help">Help</button><span class="footer-dot" aria-hidden="true">·</span><span class="footer-secure"><span class="lock" aria-hidden="true"></span>Encrypted connection</span><span class="footer-dot" aria-hidden="true">·</span><span id="app-version">Hosted edition</span></span></div></footer>
 
   <dialog id="preview-dialog" class="preview-dialog"><div class="dialog-heading"><div><p class="eyebrow">AGREEMENT REVIEW</p><h2>Review the draft wording</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close preview">×</button></div><p class="preview-caveat">This is a text preview. Generated Word and PDF files include your letterhead, pagination and signature pages.</p><div id="preview-tabs" class="preview-tabs" role="tablist" aria-label="Document preview"></div><div id="preview-content" class="preview-content"></div><div class="dialog-footer"><span>Review names, scope, prices and dates before sharing.</span><button class="button button-primary close-dialog" type="button">Back to agreement</button></div></dialog>
-  <dialog id="help-dialog" class="help-dialog"><div class="dialog-heading"><div><p class="eyebrow">QUICK GUIDE</p><h2>From client details to contract.</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close guide">×</button></div><ol class="help-steps"><li><strong>Enter the parties and effective date.</strong><p>Open an existing client to reuse their details. Choose “Start a new agreement” before opening a client to build a standalone service engagement.</p></li><li><strong>Choose your documents and services.</strong><p>Generate the BAA, the Services Agreement, the Mutual NDA, or any combination. Every selected service adds its applicable scope, responsibilities and price.</p></li><li><strong>Review the terms and save location.</strong><p>The initial date is today. Change it whenever needed. The BAA may use a separate date. The source letterhead is preserved.</p></li><li><strong>Preview, then generate.</strong><p>Word and PDF copies are saved in the client’s folder. Use Save draft to reopen client details and pricing later. Generation also saves your draft.</p></li></ol><div class="help-note"><strong>Local files, under your control</strong><p>Your browser connects to a local service on this computer. Use “Stop TFSC Compliance.cmd” in the application folder to stop it. Closing this browser tab does not stop the local service. Keep the application folder and client output folders in a location you trust.</p></div><div class="dialog-footer"><span>Need a different term? Edit the Word copy after generation.</span><button class="button button-primary close-dialog" type="button">Get started</button></div></dialog>
+  <dialog id="help-dialog" class="help-dialog portal-dialog"><div class="dialog-heading"><div><p class="eyebrow">HELP &amp; SUPPORT</p><h2>How can we help?</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close help">×</button></div><div class="dialog-body"><div class="help-contact"><span class="help-icon" aria-hidden="true">✉</span><div><strong>Need help?</strong><p>Please email <a id="help-email-link" href="mailto:muzahir@scribealign.com">muzahir@scribealign.com</a> with your concern.</p></div></div><a class="button button-primary" id="help-email-button" href="mailto:muzahir@scribealign.com?subject=TFSC%20Agreements%20support">Email support</a><h3 class="help-subhead">Quick guide</h3><ol class="help-steps"><li><strong>Create the agreement.</strong><p>Create agreement › choose the company, the client and the documents (BAA, Services Agreement, Mutual NDA), then Generate. Word and PDF copies are saved to the client.</p></li><li><strong>Send it for signature.</strong><p>Select Send for signature on the generated agreement, or Start › Send an envelope. Signature, initials, name and date fields are placed for you; drag any of them to adjust.</p></li><li><strong>Follow it to completion.</strong><p>Home shows what needs your action, what is waiting for others and what is completed. Everyone receives the completed documents and the Certificate of Completion by email.</p></li><li><strong>Find anything later.</strong><p>Clients keep every agreement, envelope, signed copy and file. Reports export to Excel; Admins see the full activity log.</p></li></ol></div></dialog>
 <dialog id="folder-dialog" class="portal-dialog"><div class="dialog-heading"><h2>Choose an output folder</h2><button type="button" class="icon-button close-dialog" aria-label="Close folder browser">×</button></div><div class="dialog-body"><p class="portal-note" id="folder-explanation">Browse folders on this computer, or enter a new absolute folder path.</p><div class="folder-controls"><input id="folder-path" aria-label="Folder path"><button type="button" id="folder-go" class="button button-quiet">Browse</button><button type="button" id="folder-up" class="button button-quiet">Up</button><button type="button" id="folder-roots" class="button button-quiet">Locations</button></div><p id="folder-status" class="folder-status" role="status"></p><div id="folder-list" class="folder-list"></div><button type="button" id="folder-select" class="button button-primary">Use this folder</button></div></dialog>
 <dialog id="user-dialog" class="portal-dialog"><div class="dialog-heading"><h2 id="user-dialog-title">Create user</h2><button type="button" class="icon-button close-dialog" aria-label="Close user form">×</button></div><div class="dialog-body"><form id="user-form"><div id="new-user-fields"><div class="user-form-grid"><div class="field"><label for="user-name">Full name</label><input id="user-name" maxlength="150"></div><div class="field"><label for="user-email">Email</label><input id="user-email" type="email"></div></div><div class="field"><label for="user-role">Role</label><select id="user-role"><option value="user">User</option><option value="admin">Admin</option><option value="super_admin">Super Admin</option></select></div><div class="field" id="manager-field"><label for="user-manager">Assign to Admin</label><select id="user-manager"><option value="">No assigned Admin</option></select></div></div><p class="eyebrow">PERMITTED CONTRACTING COMPANIES</p><div id="company-permissions" class="permission-options"></div><div id="user-message" role="status"></div><button type="submit" class="button button-primary" id="user-save">Save user</button></form></div></dialog>
 <dialog id="password-dialog" class="portal-dialog"><div class="dialog-heading"><h2>Change your password</h2><button class="icon-button close-dialog" type="button" aria-label="Close password form">×</button></div><form id="password-form" class="dialog-body"><div class="field"><label for="current-password">Current password</label><input type="password" id="current-password" autocomplete="current-password" required></div><div class="field"><label for="account-new-password">New password</label><input type="password" id="account-new-password" autocomplete="new-password" minlength="12" maxlength="200" required></div><div id="password-message" role="status"></div><button class="button button-primary" type="submit">Update password</button></form></dialog>

@@ -18,7 +18,8 @@ BASELINE_TABLES = {'audit', 'clients', 'contracts', 'crm_account_links', 'crm_ac
                    'crm_provision_requests', 'agreement_reviews', 'documents', 'jobs', 'oidc_accounts', 'oidc_states', 'sessions', 'settings', 'tfsc_outbox',
                    'throttle', 'users'}
 # Columns that later migrations add to baseline tables: a pre-Alembic install gets them from those migrations.
-LATER_COLUMNS = {'clients': ('profile', 'created')}
+LATER_COLUMNS = {'clients': ('profile', 'created'), 'audit': ('ip', 'user_agent')}
+LATER_INDEXES = {'audit': ('ix_audit_created', 'ix_audit_actor_created')}
 
 
 def config(connection=None) -> Config:
@@ -37,6 +38,8 @@ def baseline_metadata(metadata) -> MetaData:
             copy = table.to_metadata(baseline)
             for name in LATER_COLUMNS.get(table.name, ()):
                 copy._columns.remove(copy.c[name])
+            for index in [i for i in copy.indexes if i.name in LATER_INDEXES.get(table.name, ())]:
+                copy.indexes.discard(index)
     return baseline
 
 

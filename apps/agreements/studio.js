@@ -38,22 +38,6 @@
   $('generate-services').addEventListener('change',() => window.studioNavigate(active));
   $('new-client').addEventListener('click',() => window.studioNavigate('client-panel'));
   $('saved-client').addEventListener('change',() => window.studioNavigate('client-panel'));
-  $('signature-upload').addEventListener('change',async event => {
-    const file=event.target.files[0]; if(!file) return;
-    const status=$('signature-status');
-    if(file.size>2000000) { status.textContent='Choose a PNG or JPEG smaller than 2 MB.'; return; }
-    const upload=event.target; upload.disabled=true;
-    status.textContent='Saving signature on this computer…';
-    try {
-      const encoded=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});
-      const response=await fetch('/api/signature',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify({image:encoded,entity:$("entity").value})});
-      const result=await response.json(); if(!response.ok) throw new Error(result.error);
-      status.textContent='Signature saved. It will be included in new agreements.';
-      $('include-signature').checked=true;
-      const entry=entities.find(e=>e.name===$('entity').value); if(entry) entry.signature_available=true;
-    } catch(error) { status.textContent=error.message||'The signature could not be saved.'; }
-    finally { upload.disabled=false; upload.value=''; }
-  });
   window.updateCompanyEntity = (resetAddress=true) => {
     const entry=entities.find(e=>e.name===$('entity').value); if(!entry) return;
     $('entity-signatory').textContent=`Authorized signatory: ${entry.signatory}, ${entry.title}`;
@@ -61,7 +45,12 @@
     $('signatory-name').textContent=entry.signatory;
     $('signatory-title').textContent=`${entry.title} · ${entry.name}`;
     document.querySelector('.summary-entity').textContent=entry.name;
-    $('signature-status').textContent=entry.signature_available ? `${entry.signatory}'s signature is saved and ready to use.` : `Upload ${entry.signatory}'s authorized signature image.`;
+    // The company signature comes from Admin > Company settings; show it exactly as it sits on the signature line.
+    const preview=$('signature-preview');
+    preview.hidden=!entry.signature_available;
+    if(entry.signature_available) preview.src=`/api/companies/${encodeURIComponent(entry.key)}/signature.png?v=${Date.now()}`;
+    $('signature-status').textContent=entry.signature_available ? `${entry.signatory}'s signature is saved and signs the company side automatically.` : `No signature is saved for ${entry.signatory} yet. A Super Admin adds it in Admin › Company settings; until then the company signing line is left blank.`;
+    $('signature-status').classList.toggle('field-warning',!entry.signature_available);
     if(resetAddress){ $('provider_address').value=entry.address; $('provider_email').value=entry.email; $('governing_state').value=entry.governing_state||''; $('governing_state').dispatchEvent(new Event('input',{bubbles:true})); }
   };
   $('entity').addEventListener('change',()=>window.updateCompanyEntity(true));

@@ -6,7 +6,8 @@ import database as db
 import security as sec
 import server as legacy
 import crm_bridge
-from entities import get_entity,signature_path
+import companies
+from entities import get_entity
 from document_engine import generate_docx,convert_to_pdf
 
 def claim():
@@ -39,6 +40,7 @@ def process(job):
             sec.ensure_company(actor,payload['entity'])
             crm_bridge.check_worker(c,job)
             db.log(c,actor,'contract.generation_started',job['client_id'],{'job_id':job['id']})
+            company=companies.profile(c,payload['entity'])
         root=Path(payload['output_root']).resolve()
         if not db.LOCAL and not root.is_relative_to(db.OUTPUT):raise ValueError('Output destination is outside managed storage.')
         folder=root/legacy.folder_slug(payload['client_name'])/get_entity(payload['entity'])['key']/actor['id'][:8]
@@ -46,7 +48,7 @@ def process(job):
         stage=Path(tempfile.mkdtemp(prefix='.tfsc-',dir=root))
         # All worker processes use the configured signature store, never request-specific globals.
         legacy.DATA_DIR=db.DATA
-        docs=legacy.build_documents(payload,cid);files=[]
+        docs=legacy.build_documents(payload,cid,company);files=[]
         for doc in docs:
             sub=stage/doc['title'];sub.mkdir()
             stem=legacy.DOCUMENT_STEMS[doc['type']]+' '+cid
@@ -57,7 +59,8 @@ def process(job):
                 if len(body)<1000:raise ValueError('Document output is incomplete.')
                 files.append(dict(id=db.uid(),contract_id=cid,name=path.name,kind=path.suffix[1:],agreement=doc['type'],path=str(folder/doc['title']/path.name),sha256=hashlib.sha256(body).hexdigest(),size=len(body),body=body,source=path))
         warnings=[]
-        if payload.get('include_signature') and not signature_path(db.DATA,payload['entity']).is_file():warnings.append('No company signature was available. Signing lines are blank.')
+        if payload.get('include_signature') and not company['png']:warnings.append('No company signature is saved for '+company['signatory']+'. The company signing line is blank. A Super Admin can add it under Admin > Company settings.')
+        payload=dict(payload,company_signatory={'name':company['signatory'],'title':company['title'],'signature':company['source'] or 'none'})
         result=dict(ok=True,contract_id=cid,id=job['client_id'],folder=str(folder),warnings=warnings,
             files=[dict(name=f['name'],type=f['kind'],agreement=f['agreement'],url='/files/'+f['id']) for f in files])
         with db.engine.begin() as c:

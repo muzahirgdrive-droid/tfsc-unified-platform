@@ -155,7 +155,8 @@ class Lifecycle(Base):
         self.assertEqual((client['role_name'], client['email'], company['role_name']), ('Client', 'jane@client.test', 'Company signer'))
         self.assertEqual(company['email'], 'naeem@scribealign.test')
         kinds = sorted(f['kind'] for f in env['fields'] if f['recipient_id'] == client['id'])
-        self.assertEqual(kinds, sorted(['signature', 'name', 'title', 'date_signed'] * 2))
+        # Signature block on each agreement, initials on every page.
+        self.assertEqual(kinds, sorted(['signature', 'name', 'title', 'date_signed'] * 2 + ['initials'] * sum(d['pages'] for d in env['documents'])))
         sig = next(f for f in env['fields'] if f['kind'] == 'signature' and f['recipient_id'] == client['id'])
         self.assertEqual(sig['page'], 2)
         self.assertGreater(sig['x'], 306)
@@ -173,7 +174,7 @@ class Lifecycle(Base):
         self.assertEqual(len(self.smtp.to('office@client.test')), 1)
         self.assertEqual(self.smtp.to('naeem@scribealign.test'), [], 'the company signer waits for routing order 2')
         invite = self.smtp.to('jane@client.test')[0]
-        self.assertEqual(invite['msg']['From'], 'Scribe Align Compliance <compliance@scribealign.test>')
+        self.assertEqual(invite['msg']['From'], 'Scribe Align LLC <compliance@scribealign.test>', 'the sender name is the company')
         self.assertEqual(invite['msg']['Subject'], 'Please sign <b>now</b>')
         self.assertNotIn('<b>now', invite['msg'].get_body(preferencelist=('html',)).get_content())
         self.assertTrue(self.smtp.logins, 'the mailbox signs in to SMTP with its app password')
@@ -215,7 +216,7 @@ class Lifecycle(Base):
             self.assertIn('TFSC Envelope ID: ' + env['ref'], text)
             self.assertIn('Jane Example', text)
             self.assertIn('Managing Member', text)
-            self.assertIn('Signed electronically by:', text)
+            self.assertIn('Signed by:', text)
             self.assertEqual(self.api.get(f"/api/verify/{doc['final_sha256']}").json()['match'], True)
         cert = self.api.get(f"/api/esign/envelopes/{env['id']}/certificate")
         cert_text = ''.join(p.extract_text() for p in PdfReader(io.BytesIO(cert.content)).pages)
@@ -234,7 +235,7 @@ class Lifecycle(Base):
         combined = jane.get(base + 'completed')
         self.assertEqual(combined.status_code, 200)
         self.assertEqual(len(PdfReader(io.BytesIO(combined.content)).pages), 4 + len(PdfReader(io.BytesIO(cert.content)).pages))
-        activity = [a['action'] for a in self.api.get(f'/api/clients/{client_id}/activity').json()['activity']]
+        activity = [a['code'] for a in self.api.get(f'/api/clients/{client_id}/activity').json()['activity']]
         self.assertIn('esign.completed', activity)
         self.assertIn('esign.sent', activity)
 
@@ -252,8 +253,8 @@ class Lifecycle(Base):
         prepared = []
         for client_, base, state in sessions:
             self.sign_post(client_, base, 'consent', state)
-            state = self.sign_post(client_, base, 'adopt', state, {'kind': 'typed', 'signature': signature_png()}).json()
-            prepared.append((client_, base, state, {f['id']: True if f['kind'] == 'signature' else 'Owner' for f in state['fields']}))
+            state = self.sign_post(client_, base, 'adopt', state, {'kind': 'typed', 'signature': signature_png(), 'initials': signature_png('JE', (120, 60))}).json()
+            prepared.append((client_, base, state, {f['id']: True if f['kind'] in ('signature', 'initials') else 'Owner' for f in state['fields']}))
         gate = threading.Barrier(2)
         results = []
 
@@ -504,8 +505,8 @@ class Permissions(Base):
         self.assertEqual(jane.post(base + 'api/consent', json={}).status_code, 403, 'signer actions need the page token')
         bob_field = [f for f in self.api.get(f"/api/esign/envelopes/{env['id']}").json()['fields'] if f['recipient_id'] == bob_id][0]
         self.sign_post(jane, base, 'consent', state)
-        state = self.sign_post(jane, base, 'adopt', state, {'kind': 'drawn', 'signature': signature_png()}).json()
-        values = {f['id']: True if f['kind'] == 'signature' else 'X' for f in state['fields']} | {bob_field['id']: True}
+        state = self.sign_post(jane, base, 'adopt', state, {'kind': 'drawn', 'signature': signature_png(), 'initials': signature_png('JE', (120, 60))}).json()
+        values = {f['id']: True if f['kind'] in ('signature', 'initials') else 'X' for f in state['fields']} | {bob_field['id']: True}
         self.assertEqual(self.sign_post(jane, base, 'finish', state, {'values': values}).status_code, 200)
         with db.engine.connect() as c:
             self.assertIsNone(c.execute(select(t.fields.c.value).where(t.fields.c.id == bob_field['id'])).scalar(), "Jane cannot fill Bob's field")
@@ -724,7 +725,8 @@ class Pdf(unittest.TestCase):
                 out = esign_pdf.stamp(raw, 'TEST-1', [dict(box, page=1, kind='initials', value='initialed', recipient_id='r')], {'r': {'initials_png': png}})
                 image = Image.open(io.BytesIO(esign_pdf.render_page(out, 1, 72))).convert('L')
                 self.assertEqual(image.size, (round(width), round(height)))
-                self.assertLess(image.getpixel((160, 180)), 60, 'inside the field')
+                # Initials are drawn at a natural size from the field's left edge, vertically centred (100 + 4 points, 150 + 30).
+                self.assertLess(image.getpixel((112, 180)), 60, 'inside the field')
                 self.assertGreater(image.getpixel((60, 400)), 200, 'elsewhere stays white')
 
     def test_hash_chain_detects_reordering(self):
@@ -747,7 +749,7 @@ class Pdf(unittest.TestCase):
         self.assertNotIn('<script>', html)
         self.assertNotIn('<svg>', html)
         self.assertIn('&lt;script&gt;', html)
-        self.assertIn('Do not share this email', html)
+        self.assertIn('please do not forward this email', html)
 
 
 if __name__ == '__main__':

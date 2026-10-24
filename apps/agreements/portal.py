@@ -11,10 +11,10 @@ import database as db
 import security as sec
 import server as legacy
 import crm_bridge
-from entities import ENTITIES, signature_path
-from signature_store import image_info
+import companies
+from entities import ENTITIES
 
-VERSION='4.0.0'
+VERSION='5.0.0'
 ORIGIN=os.getenv('TFSC_ORIGIN','http://127.0.0.1:8765').rstrip('/')
 if not db.LOCAL and (not ORIGIN.startswith('https://') or db.URL.startswith('sqlite')):
     raise RuntimeError('VPS mode requires TFSC_ORIGIN=https://your-domain and DATABASE_URL=postgresql+psycopg://...')
@@ -33,6 +33,7 @@ access=logging.getLogger('tfsc.access')
 async def boundary(request,call_next):
     from urllib.parse import urlsplit
     started=time.perf_counter();rid=uuid.uuid4().hex;telemetry.request_id.set(rid)
+    db.request_meta.set((request.client.host if request.client else '',request.headers.get('user-agent','')[:300]))
     host=request.headers.get('host','')
     allowed={urlsplit(ORIGIN).netloc}
     if db.LOCAL:allowed.add('localhost:'+str(urlsplit(ORIGIN).port or 80))
@@ -167,10 +168,12 @@ def favicon():return Response(status_code=204)
 
 @app.get('/api/config')
 def config(request:Request):
-    with db.engine.connect() as c:a=sec.get_actor(request,c)
-    entities=[{k:e[k] for k in ('name','short','key','signatory','title','address','email','governing_state')} | {'signature_available':signature_path(db.DATA,e['name']).is_file()} for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
+    with db.engine.connect() as c:
+        a=sec.get_actor(request,c);people=companies.signatories(c);workspace=companies.public_workspace(c)
+    # Signatory and title come from Company settings; signature_available says whether generated agreements carry a signature.
+    entities=[{k:e[k] for k in ('name','short','key','address','email','governing_state','color','accent','logo')} | {'signatory':people[e['name']]['signatory'],'title':people[e['name']]['title'],'signature_available':people[e['name']]['source'] is not None} for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
     return dict(catalog=legacy.CATALOG,defaults=legacy.DEFAULTS,states=sorted(legacy.STATES),entities=entities,output_root=str(db.OUTPUT),version=VERSION,
-        user=sec.public(a),local=db.LOCAL,can_manage_signatures=a['role']=='super_admin',crm=bool(os.getenv('TFSC_CRM_URL')))
+        user=sec.public(a),local=db.LOCAL,can_manage_signatures=a['role']=='super_admin',crm=bool(os.getenv('TFSC_CRM_URL')),workspace=workspace)
 
 def client_allowed(c,a,id):
     row=c.execute(select(db.clients).where(db.clients.c.id==id,sec.scope(a,db.clients.c.owner_id))).mappings().first()
@@ -221,12 +224,6 @@ def history(id:str,request:Request,page:int=0):
             sent=c.execute(select(env_table.c.id,env_table.c.ref,env_table.c.status).where(env_table.c.contract_id==r['id'],env_table.c.status!='template').order_by(env_table.c.created)).mappings().all()
             result.append(dict(id=r['id'],entity=r['entity'],created=r['created'],owner='Legacy record (author unavailable)' if r['legacy'] else r['owner'],files=[dict(x,url='/files/'+x['id']) for x in docs],envelopes=[dict(x) for x in sent]))
         return {'client':dict(id=client['id'],name=client['name'],address=client['address']),'contracts':result,'has_more':len(rows)>20}
-@app.get('/api/clients/{id}/activity')
-def activity(id:str,request:Request,page:int=0):
-    with db.engine.connect() as c:
-        a=sec.get_actor(request,c);client_allowed(c,a,id)
-        rows=c.execute(select(db.audit).where(db.audit.c.client_id==id).order_by(db.audit.c.created.desc(),db.audit.c.id).limit(51).offset(max(0,page)*50)).mappings().all()
-        return {'activity':[dict(r) for r in rows[:50]],'has_more':len(rows)>50}
 
 @app.get('/files/{id}')
 def download(id:str,request:Request):
@@ -244,7 +241,8 @@ def preview(payload:dict,request:Request):
     with db.engine.begin() as c:
         a=sec.get_actor(request,c);d=legacy.validate(payload);sec.ensure_company(a,d['entity'])
         if d['id']:client_allowed(c,a,d['id']);db.log(c,a,'contract.previewed',d['id'])
-    docs=legacy.build_documents(d,'TFSC-PREVIEW')
+    with db.engine.connect() as c:company=companies.profile(c,d['entity'],with_image=False)
+    docs=legacy.build_documents(d,'TFSC-PREVIEW',company)
     return {'documents':[{k:v for k,v in x.items() if k!='data'} for x in docs]}
 
 def output_path(raw,a):
@@ -400,12 +398,8 @@ def signature(payload:dict,request:Request):
         a=sec.get_actor(request,c)
         if a['role']!='super_admin':raise HTTPException(403,'Only the Super Admin can replace company signatures.')
         sec.ensure_company(a,payload.get('entity'))
-        try:raw=base64.b64decode(payload.get('image',''),validate=True)
-        except Exception:raise HTTPException(400,'Invalid image.')
-        if not 1<=len(raw)<=2_000_000:raise HTTPException(400,'Image must be smaller than 2 MB.')
-        image_info(raw);path=signature_path(db.DATA,payload['entity']);path.parent.mkdir(parents=True,exist_ok=True)
-        temp=path.with_name(db.uid()+'.tmp');temp.write_bytes(raw);temp.replace(path);path.with_suffix('.json').unlink(missing_ok=True)
-        db.log(c,a,'signature.updated',detail={'entity':payload['entity']});return {'ok':True}
+        # Saved in Company settings, like an image uploaded there.
+        companies.save_profile(c,a,ENTITIES[payload['entity']],{'signature':payload.get('image',''),'signature_kind':'uploaded'});return {'ok':True}
 
 @app.post('/api/import-legacy')
 def import_legacy(request:Request):
@@ -426,16 +420,20 @@ import clients
 clients.install(app)
 import esign_bulk
 esign_bulk.install(app)
-PUBLIC={'styles.css','tfsc.css','portal.css','login.js','sign.js','sign.css','verify.js'}
-PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css'}
+companies.install(app)
+import insights
+insights.install(app)
+PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','login.js','sign.js','sign.css','verify.js'}
+PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):
     if name in PRIVATE:
         with db.engine.connect() as c:sec.get_actor(request,c)
     elif name not in PUBLIC:raise HTTPException(404,'Not found.')
     return FileResponse(db.APP/name)
+ASSETS=re.compile(r'tfsc-logo\.png|brand/(scribe|ehs|24-7)\.png|fonts/(Poppins-Regular\.ttf|Poppins-SemiBold\.ttf|Inter-var\.woff2|sig-[a-z]+\.ttf)')
 @app.get('/assets/{name:path}')
 def asset(name:str):
-    if name not in ('tfsc-logo.png','fonts/Poppins-Regular.ttf','fonts/Poppins-SemiBold.ttf','fonts/sig-mrdafoe.ttf','fonts/sig-sacramento.ttf','fonts/sig-greatvibes.ttf',
-                    'brand/scribe.png','brand/ehs.png','brand/24-7.png'):raise HTTPException(404,'Not found.')
+    # Logos and fonts only (signature styles, the interface typeface); never the letterhead templates.
+    if not ASSETS.fullmatch(name) or not (db.APP/'assets'/name).is_file():raise HTTPException(404,'Not found.')
     return FileResponse(db.APP/'assets'/name,headers={'Cache-Control':'public, max-age=86400'})

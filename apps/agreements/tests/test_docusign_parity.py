@@ -69,14 +69,14 @@ class Parity(Base):
         html = msg.get_body(preferencelist=('html',)).get_content()
         self.assertIn('cid:logo.ehs@tfsc', html)
         self.assertIn('REVIEW DOCUMENT', html)
-        self.assertIn('#22303A', html, 'the banner uses the company colour')
-        self.assertNotIn('INC..', html)
+        self.assertIn('#1C2A39', html, 'the banner uses the company colour (from extendedhealthservices.us)')
+        self.assertNotIn('INC..', html.upper())
         images = {p.get('Content-ID'): p.get_content_type() for p in msg.walk() if p.get('Content-ID')}
         self.assertEqual(images, {'<logo.ehs@tfsc>': 'image/png', '<doc.ehs@tfsc>': 'image/png'})
         logo = next(p for p in msg.walk() if p.get('Content-ID') == '<logo.ehs@tfsc>').get_payload(decode=True)
         self.assertEqual(logo, (APP / 'assets' / 'brand' / 'ehs.png').read_bytes())
         _, base, state = self.signer(self.smtp.link(msg and self.smtp.to('pat@clinic.test')[0]))
-        self.assertEqual(state['brand'], {'logo': '/assets/brand/ehs.png', 'color': '#22303A', 'accent': '#FACA32'})
+        self.assertEqual(state['brand'], {'logo': '/assets/brand/ehs.png', 'color': '#1C2A39', 'accent': '#FBCD35'})
         self.assertEqual(self.api.get('/assets/brand/ehs.png').status_code, 200, 'logos are public so emails and the signing page can show them')
         self.assertEqual(self.api.get('/assets/brand/../../portal.py').status_code, 404)
 

@@ -4,8 +4,19 @@
   const $ = id => document.getElementById(id);
   const app = $("sign-app");
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  const S = {state: null, values: {}, pending: null, tab: "type", style: 0, ink: {"draw-signature": false, "draw-initials": false}, upload: "", attempted: false, zoom: 1};
-  const STYLES = [["SigA", "Mr Dafoe"], ["SigB", "Sacramento"], ["SigC", "Great Vibes"]];
+  const S = {state: null, values: {}, pending: null, tab: "type", style: 0, initialsStyle: -1, ink: {"draw-signature": false, "draw-initials": false}, upload: "", uploadInitials: "", attempted: false, zoom: 1};
+  // Signature styles: OFL script fonts served by the portal, loaded when the Adopt dialog opens.
+  const STYLES = [["Herr Von Muellerhoff", "herrvonmuellerhoff"], ["Mrs Saint Delafield", "mrssaintdelafield"], ["Monsieur La Doulaise", "monsieurladoulaise"], ["Great Vibes", "greatvibes"],
+    ["Allura", "allura"], ["Alex Brush", "alexbrush"], ["Pinyon Script", "pinyonscript"], ["Parisienne", "parisienne"], ["Sacramento", "sacramento"], ["Dancing Script", "dancingscript"],
+    ["La Belle Aurore", "labelleaurore"], ["Kristi", "kristi"], ["Cedarville Cursive", "cedarvillecursive"], ["Dawning of a New Day", "dawningofanewday"], ["Rouge Script", "rougescript"], ["Ephesis", "ephesis"]];
+  const INK = "#1b2a6b";
+  const family = index => `Sig-${STYLES[index][1]}`;
+  const fonts = new Map();
+  function loadFont(index) {
+    const key = STYLES[index][1];
+    if (!fonts.has(key)) fonts.set(key, new FontFace(family(index), `url(/assets/fonts/sig-${key}.ttf)`).load().then(face => { document.fonts.add(face); return face; }));
+    return fonts.get(key);
+  }
   const LABELS = {signature: "Sign", initials: "Initial", date_signed: "Date signed", name: "Full name", first_name: "First name", last_name: "Last name", email: "Email",
     company: "Company", title: "Title", text: "Text", number: "Number", date: "MM/DD/YYYY", checkbox: "", radio: "", dropdown: "Select", attachment: "Attach a file", note: ""};
   const AUTO = ["date_signed", "name", "first_name", "last_name", "email"];
@@ -53,8 +64,14 @@
     const b = state.brand || {};
     if (b.color) document.documentElement.style.setProperty("--brand", b.color);
     if (b.accent) document.documentElement.style.setProperty("--accent", b.accent);
-    if (b.logo) { const logo = $("company-logo"); logo.src = b.logo; logo.alt = state.company; logo.hidden = false; $("company").classList.add("visually-hidden"); }
+    if (b.logo) { const logo = $("company-logo"); logo.src = b.logo; logo.alt = state.company; logo.hidden = false; }
+    const portal = state.portal || {};
+    if (portal.trust_line) $("trust-line").textContent = portal.trust_line;
+    $("footer-copyright").textContent = `© ${portal.year || new Date().getFullYear()} ${(state.company_display || state.company).replace(/\.$/, "")}. All rights reserved.`;
+    if (portal.help_email) { $("help-email").textContent = portal.help_email; $("help-email").href = `mailto:${portal.help_email}`; }
+    $("help-sender").textContent = `Contact ${state.sender} at ${state.sender_email}, or reply to the email you received.`;
   }
+  $("footer-help").addEventListener("click", () => $("help-dialog").showModal());
 
   // ------------------------------------------------------------------ rendering
   function render(state) {
@@ -122,7 +139,7 @@
 
   function senderMessage(state) {
     const box = $("sender-message");
-    $("sender-line").textContent = `${state.sender} (${state.company}) sent you: ${state.subject}`;
+    $("sender-line").textContent = `${state.sender} (${state.company_display || state.company}) sent you: ${state.subject}`;
     $("sender-text").textContent = state.message || "";
     $("sender-note").textContent = state.recipient.note ? `Note for you: ${state.recipient.note}` : "";
     $("sender-note").hidden = !state.recipient.note;
@@ -186,13 +203,14 @@
     const label = f.label || o.tooltip || LABELS[f.kind];
     let node;
     if (f.kind === "signature" || f.kind === "initials") {
-      node = el("button", `field sig${f.required ? " required" : ""}`);
+      node = el("button", `field sig${f.kind === "initials" ? " initials" : ""}${f.required ? " required" : ""}`);
       node.type = "button";
       node.disabled = !state.can_act;
       node.addEventListener("click", () => toggleSignature(f));
       paintSignature(node, f);
     } else if (AUTO.includes(f.kind)) {
       node = el("div", "field auto", autoValue(f));
+      if (f.kind === "date_signed") node.title = "Today's date, filled in automatically when you sign";
     } else if (f.kind === "note") {
       node = el("div", "field note", o.text || ""); node.setAttribute("role", "note");
     } else if (f.kind === "checkbox") {
@@ -349,6 +367,11 @@
     if (!S.state || !S.state.can_act || !["signer", "in_person"].includes(S.state.recipient.role)) { show("guide", false); return; }
     const left = missing();
     $("finish").disabled = left.length > 0;
+    const map = visibleMap();
+    const total = (S.state.fields || []).filter(f => map.get(f.id) && f.required && !AUTO.includes(f.kind) && f.kind !== "note" && !(f.options || {}).readonly).length;
+    const pill = $("progress");
+    pill.textContent = left.length ? `${Math.max(0, total - left.length)} of ${total} required fields done` : "All required fields done";
+    pill.classList.toggle("done", !left.length);
     document.querySelectorAll(".field.required, .field.input").forEach(node => node.classList.toggle("missing", S.attempted && left.some(f => f.id === node.dataset.field)));
     const guide = $("guide");
     guide.hidden = false;
@@ -443,85 +466,140 @@
     catch (e) { fail(e.message); }
   });
 
-  // ------------------------------------------------------------------ adopt signature
+  // ------------------------------------------------------------------ adopt signature and initials
   function initialsOf(name) { return name.split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 3); }
+  // Crop a canvas to its ink, with a little room around it, so stamps size the mark itself.
+  function trimmed(canvas) {
+    const ctx = canvas.getContext("2d"), {width, height} = canvas, data = ctx.getImageData(0, 0, width, height).data;
+    let x0 = width, y0 = height, x1 = -1, y1 = -1;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (data[(y * width + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return null;
+    const pad = Math.max(4, Math.round((y1 - y0) * 0.06));
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(width - 1, x1 + pad); y1 = Math.min(height - 1, y1 + pad);
+    const out = el("canvas"); out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+    out.getContext("2d").drawImage(canvas, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+    return out.toDataURL("image/png");
+  }
+  async function textImage(text, index, width, height) {
+    await loadFont(index);
+    const canvas = el("canvas"); canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    let size = height * 0.6;
+    ctx.font = `${size}px "${family(index)}"`;
+    while (ctx.measureText(text).width > width * 0.9 && size > 10) { size -= 2; ctx.font = `${size}px "${family(index)}"`; }
+    ctx.fillStyle = INK; ctx.textBaseline = "middle"; ctx.fillText(text, width * 0.05, height * 0.55);
+    return trimmed(canvas);
+  }
+  // An uploaded photo or scan: light paper made transparent, then trimmed (the server does the same again).
+  async function cleanUpload(dataUrl) {
+    const img = new Image(); img.src = dataUrl; await img.decode();
+    const scale = Math.min(1, 1600 / img.width, 800 / img.height);
+    const canvas = el("canvas"); canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext("2d"); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), d = pixels.data;
+    const levels = []; for (let i = 0; i < d.length; i += 16) levels.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+    levels.sort((a, b) => a - b);
+    const paper = levels[Math.floor(levels.length * 0.8)] || 255, edge = Math.max(40, paper - 28), ramp = Math.max(1, edge * 0.45);
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 255) continue;
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      d[i + 3] = lum >= edge ? 0 : Math.min(255, Math.round((edge - lum) * 255 / ramp));
+    }
+    ctx.putImageData(pixels, 0, 0);
+    return trimmed(canvas);
+  }
   function openAdopt() {
     $("adopt-name").value = S.state.recipient.name || "";
     $("adopt-initials").value = initialsOf($("adopt-name").value);
     $("adopt-error").hidden = true;
-    styles(); $("adopt-dialog").showModal();
+    const pick = $("initials-style");
+    if (!pick.options.length) { pick.append(new Option("Same as the signature", "-1")); STYLES.forEach(([title], i) => pick.append(new Option(title, String(i)))); }
+    styles(); $("adopt-dialog").showModal(); preview();
   }
   function styles() {
     const box = $("styles"); box.replaceChildren();
-    STYLES.forEach(([family, title], index) => {
+    STYLES.forEach(([title], index) => {
       const option = el("label", "style-option");
       const radio = el("input"); radio.type = "radio"; radio.name = "style"; radio.checked = index === S.style; radio.setAttribute("aria-label", title);
-      radio.addEventListener("change", () => { S.style = index; });
-      const name = el("span", "style-name", $("adopt-name").value || "Your name"); name.style.fontFamily = family;
-      const initials = el("span", "style-initials", $("adopt-initials").value || "YN"); initials.style.fontFamily = family;
+      radio.addEventListener("change", () => { S.style = index; preview(); });
+      const name = el("span", "style-name", $("adopt-name").value || "Your name");
+      const initials = el("span", "style-initials", $("adopt-initials").value || "YN");
+      loadFont(index).then(() => { name.style.fontFamily = initials.style.fontFamily = `"${family(index)}"`; }).catch(() => {});
+      option.title = title;
       option.append(radio, name, initials); box.append(option);
     });
   }
-  $("adopt-name").addEventListener("input", () => { $("adopt-initials").value = initialsOf($("adopt-name").value); styles(); });
-  $("adopt-initials").addEventListener("input", styles);
+  // What will be adopted: [signature data URL, initials data URL, how the signature was made].
+  async function chosen() {
+    const name = $("adopt-name").value.trim(), initials = $("adopt-initials").value.trim();
+    const initialsStyle = S.initialsStyle >= 0 ? S.initialsStyle : S.style;
+    if (S.tab === "draw") return [S.ink["draw-signature"] ? trimmed($("draw-signature")) : null, S.ink["draw-initials"] ? trimmed($("draw-initials")) : null, "drawn"];
+    if (S.tab === "upload") return [S.upload || null, S.uploadInitials || (initials ? await textImage(initials, initialsStyle, 420, 220) : null), "uploaded"];
+    return [name ? await textImage(name, S.style, 1200, 300) : null, initials ? await textImage(initials, initialsStyle, 420, 220) : null, "typed"];
+  }
+  let previewTimer = null;
+  function preview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      try {
+        const [signature, initials] = await chosen();
+        $("preview-signature").src = signature || ""; $("preview-signature").style.visibility = signature ? "visible" : "hidden";
+        $("preview-initials").src = initials || ""; $("preview-initials").style.visibility = initials ? "visible" : "hidden";
+      } catch (_) { /* preview only */ }
+    }, 120);
+  }
+  $("adopt-name").addEventListener("input", () => { $("adopt-initials").value = initialsOf($("adopt-name").value); styles(); preview(); });
+  $("adopt-initials").addEventListener("input", () => { styles(); preview(); });
+  $("initials-style").addEventListener("change", () => { S.initialsStyle = Number($("initials-style").value); preview(); });
   document.querySelectorAll("[data-tab]").forEach(tab => tab.addEventListener("click", () => {
     S.tab = tab.dataset.tab;
     document.querySelectorAll("[data-tab]").forEach(t => t.setAttribute("aria-selected", String(t === tab)));
     ["type", "draw", "upload"].forEach(name => show(`tab-${name}`, name === S.tab));
+    preview();
   }));
 
-  async function textImage(text, family, width, height) {
-    await document.fonts.load(`80px ${family}`);
-    const canvas = el("canvas"); canvas.width = width; canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    let size = height * 0.62;
-    ctx.font = `${size}px ${family}`;
-    while (ctx.measureText(text).width > width * 0.92 && size > 10) { size -= 2; ctx.font = `${size}px ${family}`; }
-    ctx.fillStyle = "#14246b"; ctx.textBaseline = "middle"; ctx.fillText(text, width * 0.04, height * 0.55);
-    return canvas.toDataURL("image/png");
-  }
-
+  // Drawing pads: smoothed strokes whose width follows pen pressure.
   ["draw-signature", "draw-initials"].forEach(id => {
     const canvas = $(id), ctx = canvas.getContext("2d");
-    let drawing = false;
-    const point = event => { const box = canvas.getBoundingClientRect(); return [(event.clientX - box.left) * canvas.width / box.width, (event.clientY - box.top) * canvas.height / box.height]; };
-    canvas.addEventListener("pointerdown", event => { drawing = true; canvas.setPointerCapture(event.pointerId); const [x, y] = point(event); ctx.beginPath(); ctx.moveTo(x, y); });
+    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = INK;
+    let last = null;
+    const point = event => { const box = canvas.getBoundingClientRect(); return [(event.clientX - box.left) * canvas.width / box.width, (event.clientY - box.top) * canvas.height / box.height, event.pressure || 0.5]; };
+    canvas.addEventListener("pointerdown", event => { canvas.setPointerCapture(event.pointerId); last = point(event); });
     canvas.addEventListener("pointermove", event => {
-      if (!drawing) return;
-      const [x, y] = point(event);
-      ctx.lineWidth = 3.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#14246b";
-      ctx.lineTo(x, y); ctx.stroke(); S.ink[id] = true;
+      if (!last) return;
+      const p = point(event);
+      ctx.lineWidth = 3.5 + p[2] * 3;
+      ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.quadraticCurveTo(last[0], last[1], (last[0] + p[0]) / 2, (last[1] + p[1]) / 2); ctx.lineTo(p[0], p[1]); ctx.stroke();
+      last = p; S.ink[id] = true;
     });
-    ["pointerup", "pointercancel", "pointerleave"].forEach(name => canvas.addEventListener(name, () => { drawing = false; }));
+    ["pointerup", "pointercancel", "pointerleave"].forEach(name => canvas.addEventListener(name, () => { if (last) preview(); last = null; }));
   });
   document.querySelectorAll("[data-clear]").forEach(button => button.addEventListener("click", () => {
-    const canvas = $(button.dataset.clear); canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); S.ink[button.dataset.clear] = false;
+    const canvas = $(button.dataset.clear); canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); S.ink[button.dataset.clear] = false; preview();
   }));
-  $("upload-signature").addEventListener("change", () => {
-    const file = $("upload-signature").files[0]; S.upload = "";
+  [["upload-signature", "upload-preview", "upload"], ["upload-initials", "upload-initials-preview", "uploadInitials"]].forEach(([input, img, key]) => $(input).addEventListener("change", () => {
+    const file = $(input).files[0]; S[key] = "";
     if (!file) return;
-    if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 1500000) { $("adopt-error").textContent = "Choose a PNG or JPEG image smaller than 1.5 MB."; $("adopt-error").hidden = false; return; }
+    if (!["image/png", "image/jpeg"].includes(file.type) || file.size > 5000000) { $("adopt-error").textContent = "Choose a PNG or JPEG image smaller than 5 MB."; $("adopt-error").hidden = false; return; }
     const reader = new FileReader();
-    reader.onload = () => { S.upload = reader.result; $("upload-preview").src = reader.result; $("upload-preview").hidden = false; $("adopt-error").hidden = true; };
+    reader.onload = async () => {
+      const cleaned = await cleanUpload(reader.result).catch(() => null);
+      if (!cleaned) { $("adopt-error").textContent = "No signature was found in that image. Use dark ink on light paper, or draw it instead."; $("adopt-error").hidden = false; return; }
+      S[key] = cleaned; $(img).src = cleaned; $(img).hidden = false; $("adopt-error").hidden = true; preview();
+    };
     reader.readAsDataURL(file);
-  });
+  }));
 
   $("adopt-confirm").addEventListener("click", async () => {
     const name = $("adopt-name").value.trim(), initials = $("adopt-initials").value.trim();
     const fail = text => { $("adopt-error").textContent = text; $("adopt-error").hidden = false; };
     if (!name || !initials) { fail("Enter your full name and initials."); return; }
     try {
-      const family = STYLES[S.style][0];
-      let payload;
-      if (S.tab === "draw") {
-        if (!S.ink["draw-signature"] || !S.ink["draw-initials"]) { fail("Draw both your signature and your initials."); return; }
-        payload = {kind: "drawn", signature: $("draw-signature").toDataURL("image/png"), initials: $("draw-initials").toDataURL("image/png")};
-      } else if (S.tab === "upload") {
-        if (!S.upload) { fail("Choose an image of your signature."); return; }
-        payload = {kind: "uploaded", signature: S.upload, initials: await textImage(initials, family, 300, 200)};
-      } else payload = {kind: "typed", signature: await textImage(name, family, 900, 240), initials: await textImage(initials, family, 300, 200)};
+      const [signature, initialsImage, kind] = await chosen();
+      if (!signature) { fail(S.tab === "draw" ? "Draw your signature." : S.tab === "upload" ? "Choose an image of your signature." : "Enter your name."); return; }
+      if (!initialsImage) { fail(S.tab === "draw" ? "Draw your initials." : "Enter your initials."); return; }
       const kept = {...S.values};
-      const state = await call("api/adopt", payload);
+      const state = await call("api/adopt", {kind, signature, initials: initialsImage});
       $("adopt-dialog").close();
       const pending = S.pending; S.pending = null;
       render(state);

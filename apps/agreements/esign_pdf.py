@@ -9,6 +9,7 @@ import datetime as dt
 import hashlib
 import io
 import os
+import re
 import subprocess
 import tempfile
 import zoneinfo
@@ -30,7 +31,6 @@ from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate
 MAX_PAGES = 200
 INK = colors.HexColor('#1D2B64')
 MUTED = colors.HexColor('#5B6475')
-ACCENT = colors.HexColor('#1C7CD5')
 
 _FONT_DIRS = ('/usr/share/fonts/truetype/liberation2', '/usr/share/fonts/truetype/liberation')
 _fonts = None
@@ -175,6 +175,169 @@ def placement(anchor: dict, kind: str) -> dict:
     return {'x': round(x, 1), 'y': round(base - 13, 1), 'w': 150.0, 'h': 16.0}
 
 
+# ------------------------------------------------------------------ suggested fields for any document
+# Labels that mark where a signer acts. A label counts when its line is short and leaves room to fill in (a colon, a run of
+# underscores, or nothing after it); "Name: Naeem Abbas" is already filled and is skipped.
+_LABELS = (
+    ('signature', re.compile(r"(?:(?:client|customer|provider|company|authori[sz]ed|recipient|signer|patient|employee|member|witness|owner)(?:'s)?\s+)?"
+                             r"(?:signature|sign\s+here|signed\s+by)\b", re.I)),
+    ('initials', re.compile(r'(?:(?:client|customer)(?:\'s)?\s+)?initials?\b', re.I)),
+    ('name', re.compile(r'(?:(?:print(?:ed)?|full|typed)\s+)?name\b', re.I)),
+    ('title', re.compile(r'(?:title|position|designation)\b', re.I)),
+    ('date_signed', re.compile(r'(?:date(?:\s+signed)?|signed\s+on)\b', re.I)),
+)
+FIELD_BOX = {'signature': (170.0, 40.0), 'initials': (52.0, 24.0), 'name': (150.0, 15.0), 'title': (150.0, 15.0), 'date_signed': (110.0, 15.0)}
+INITIALS = FIELD_BOX['initials']
+
+
+def _text_boxes(page) -> list[dict]:
+    """Lines of text in display space (from the top): x, top, right, baseline, size and text. Widths are estimates."""
+    height, bottom, left = float(page.mediabox.height), float(page.mediabox.bottom), float(page.mediabox.left)
+    out = []
+
+    def visit(text, cm, tm, font, size):
+        text = text.strip()
+        if not text:
+            return
+        a, b, c, d, e, f = tm
+        A, B, C, D, E, F = cm
+        x, y = e * A + f * C + E, e * B + f * D + F
+        scale = (abs(a * A + b * C) or 1.0)
+        fs = max(4.0, min(72.0, float(size or 11) * scale))
+        width = pdfmetrics.stringWidth(text.encode('latin-1', 'replace').decode('latin-1'), 'Helvetica', fs)
+        base = height - (y - bottom)
+        out.append({'x': x - left, 'right': x - left + width, 'top': base - fs * 0.85, 'base': base, 'size': fs, 'text': text})
+    page.extract_text(visitor_text=visit)
+    return out
+
+
+def _overlaps(box: dict, lines: list[dict], pad: float = 3) -> bool:
+    for t in lines:
+        if box['x'] - pad < t['right'] and t['x'] < box['x'] + box['w'] + pad and box['y'] - pad < t['base'] + t['size'] * 0.25 and t['top'] < box['y'] + box['h'] + pad:
+            return True
+    return False
+
+
+def _label(text: str):
+    """(kind, label length, blank) when the line starts with a signing label."""
+    clean = text.strip()
+    if len(clean) > 70:
+        return None
+    for kind, pattern in _LABELS:
+        m = pattern.match(clean)
+        if not m:
+            continue
+        rest = clean[m.end():]
+        if rest[:1] not in ('', ':', '_', ' ', '.', '-'):
+            return None
+        after = rest.lstrip(' :.-')
+        blank = not after.strip('_ ')
+        if not blank and not (':' in rest[:3] or '_' in rest):
+            return None             # body text that merely starts with "Date" or "Name"
+        return kind, m.end() + (len(rest) - len(rest.lstrip(' :.-'))), blank
+    return None
+
+
+def _field_at(kind: str, line: dict, label_len: int, page_w: float) -> dict:
+    w, h = FIELD_BOX[kind]
+    label = line['text'][:label_len]
+    x = line['x'] + pdfmetrics.stringWidth(label.encode('latin-1', 'replace').decode('latin-1') + ' ', 'Helvetica', line['size']) + 2
+    if x + w > page_w - 18:
+        w = max(min(w, 80.0), page_w - 18 - x)
+    y = line['base'] - h + (2 if kind == 'signature' else 3)
+    return {'kind': kind, 'x': round(x, 1), 'y': round(y, 1), 'w': round(w, 1), 'h': h}
+
+
+def _page_number(lines: list[dict], height: float) -> dict | None:
+    for t in lines:
+        if t['base'] > height * 0.8 and re.match(r'page\b', t['text'], re.I):
+            return t
+    return None
+
+
+def initials_spot(page, size: list[float], lines: list[dict], generated: bool, slot: int = 0) -> dict:
+    """A free spot for one signer's initials on a page. Agreements generated here: in the band between the body text and the
+    footer, on the side away from the page counter. Other documents: the first free corner, bottom-right first."""
+    width, height = size[0], size[1]
+    w, h = INITIALS
+    if generated:
+        number = _page_number(lines, height)
+        if number:
+            body = [t for t in lines if t['base'] < number['base'] - 4]
+            lowest = max((t['base'] for t in body), default=height * 0.75)
+            left = min((t['x'] for t in body), default=54.0)
+            bottom = number['base'] + 4
+            top = max(lowest + 5, bottom - h)
+            box = {'x': round(left + slot * (w + 8), 1), 'y': round(top, 1), 'w': w, 'h': round(max(16.0, min(h, bottom - top)), 1)}
+            if number['x'] > width / 2 or box['x'] + w < number['x'] - 6:
+                return box
+    corners = [(width - 28 - w - slot * (w + 8), height - 30 - h), (28 + slot * (w + 8), height - 30 - h),
+               (width - 28 - w - slot * (w + 8), 24), (28 + slot * (w + 8), 24)]
+    for x, y in corners:
+        box = {'x': round(x, 1), 'y': round(y, 1), 'w': w, 'h': h}
+        if not _overlaps(box, lines):
+            return box
+    x, y = corners[0]
+    return {'x': round(x, 1), 'y': round(y, 1), 'w': w, 'h': h}
+
+
+def suggest(raw: bytes, generated: bool, signers: int = 1) -> dict:
+    """Where signers should act on a document: signing blocks (signature, name, title, date) and initials for each page.
+
+    blocks: one per signer in reading order, each a list of fields on one page. For agreements generated here the
+    block is the client's column of the signature table (the company side is already signed). initials[i][p] is a spot
+    for signer i on page p+1.
+    """
+    reader = PdfReader(io.BytesIO(raw), strict=False)
+    pages = []
+    for page in reader.pages[:MAX_PAGES]:
+        rotation = int(page.rotation or 0) % 360
+        w, h = float(page.mediabox.width), float(page.mediabox.height)
+        size = [h, w] if rotation in (90, 270) else [w, h]
+        pages.append((page, size, _text_boxes(page) if not rotation else []))
+    blocks = []
+    anchors = execution_anchors(raw) if generated else None
+    if anchors:
+        side = anchors['client']
+        fields = [dict(placement(side['signature'], 'signature'), kind='signature')]
+        for kind, key in (('name', 'name'), ('title', 'title'), ('date_signed', 'date')):
+            if key in side and (side[key]['blank'] or key == 'date'):
+                fields.append(dict(placement(side[key], kind), kind=kind, w=110.0 if kind == 'date_signed' else 150.0))
+        blocks.append({'page': anchors['page'], 'fields': fields})
+    elif not generated:
+        for number, (page, size, lines) in enumerate(pages, start=1):
+            found = []
+            for line in lines:
+                hit = _label(line['text'])
+                if hit:
+                    found.append((hit[0], line, hit[1], hit[2]))
+            for kind, line, length, blank in sorted(found, key=lambda f: (f[1]['base'], f[1]['x'])):
+                if kind != 'signature' or not blank:
+                    continue
+                fields, filled = [_field_at('signature', line, length, size[0])], False
+                for other, oline, olength, oblank in found:
+                    if other in ('name', 'title', 'date_signed') and abs(oline['x'] - line['x']) < 40 and 0 < oline['base'] - line['base'] < 150:
+                        if not oblank:
+                            filled = True       # e.g. "Name: Naeem Abbas": the other party's column, already completed
+                        elif not any(f['kind'] == other for f in fields):
+                            fields.append(_field_at(other, oline, olength, size[0]))
+                blocks.append({'page': number, 'fields': fields, 'prefilled': filled})
+        # Columns waiting for someone come first; one that already names its signer goes last.
+        blocks.sort(key=lambda b: b.get('prefilled', False))
+        if not blocks and pages:
+            # No signature line in the document: a signature and date for each signer in the free space at the end.
+            number = len(pages)
+            page, size, lines = pages[-1]
+            lowest = max((t['base'] for t in lines), default=60.0)
+            left = min((t['x'] for t in lines), default=54.0)
+            for i in range(max(1, signers)):
+                top = min(lowest + 30 + i * 62, size[1] - 70)
+                blocks.append({'page': number, 'fields': [{'kind': 'signature', 'x': round(left, 1), 'y': round(top, 1), 'w': 170.0, 'h': 40.0},
+                                                          {'kind': 'date_signed', 'x': round(left + 196, 1), 'y': round(top + 24, 1), 'w': 110.0, 'h': 15.0}]})
+    initials = [[initials_spot(page, size, lines, generated, slot) for page, size, lines in pages] for slot in range(max(1, signers))]
+    return {'blocks': blocks, 'initials': initials, 'generated': bool(anchors)}
+
+
 def initials_box(size: list[float], bottom_margin: float | None) -> dict:
     """Default spot for per-page initials: left of the footer page counter, just below the body text."""
     width, height = size[0], size[1]
@@ -206,12 +369,25 @@ def _fit_text(c, text, font, box_w, size):
     return text, size
 
 
-def _draw_image(c, png: bytes, x, y, w, h):
+def _draw_image(c, png: bytes, x, y, w, h, left=False):
     image = ImageReader(io.BytesIO(png))
     iw, ih = image.getSize()
     scale = min(w / iw, h / ih)
     dw, dh = iw * scale, ih * scale
-    c.drawImage(image, x, y + (h - dh) / 2, dw, dh, mask='auto')
+    c.drawImage(image, x if left else x + (w - dw) / 2, y + (h - dh) / 2, dw, dh, mask='auto')
+
+
+STAMP_LINE = colors.HexColor('#5B7FB9')
+SIGNATURE_INK_MAX = 24.0     # points: about a third of an inch, as in the familiar e-signature stamp
+INITIALS_INK_MAX = 15.0
+
+
+def _bracket(c, x, y, h, tick=4.0):
+    c.setStrokeColor(STAMP_LINE)
+    c.setLineWidth(0.6)
+    c.line(x, y + 1, x, y + h - 1)
+    c.line(x, y + h - 1, x + tick, y + h - 1)
+    c.line(x, y + 1, x + tick, y + 1)
 
 
 def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) -> bytes:
@@ -246,18 +422,18 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
             signer = signers.get(f['recipient_id'], {})
             kind = f['kind']
             if kind == 'signature' and signer.get('signature_png'):
-                c.setStrokeColor(ACCENT)
-                c.setLineWidth(0.8)
-                c.line(x, y + 1, x, y + h - 1)
-                c.line(x, y + h - 1, x + 5, y + h - 1)
-                c.line(x, y + 1, x + 5, y + 1)
+                # A thin bracket, "Signed by:" and the signature ID in small grey type, the ink at a natural size.
+                _bracket(c, x, y, h)
                 c.setFillColor(MUTED)
-                c.setFont(regular, 5.5)
-                c.drawString(x + 4, y + h - 6.5, 'Signed electronically by:')
-                c.drawString(x + 4, y + 2, _safe_text(signer.get('signature_id', '')[:16].upper(), regular))
-                _draw_image(c, signer['signature_png'], x + 4, y + 8, w - 6, h - 16)
+                c.setFont(regular, 5)
+                c.drawString(x + 4.5, y + h - 6, 'Signed by:')
+                c.drawString(x + 4.5, y + 2.2, _safe_text(signer.get('signature_id', '')[:16].upper(), regular))
+                ink = min(h - 15, SIGNATURE_INK_MAX)
+                _draw_image(c, signer['signature_png'], x + 5, y + 7.5 + (h - 15 - ink) / 2, min(w - 9, 150), ink, left=True)
             elif kind == 'initials' and signer.get('initials_png'):
-                _draw_image(c, signer['initials_png'], x + 1, y + 1, w - 2, h - 2)
+                _bracket(c, x, y, h, 3)
+                ink = min(h - 6, INITIALS_INK_MAX)
+                _draw_image(c, signer['initials_png'], x + 4, y + (h - ink) / 2, w - 7, ink, left=True)
             elif kind == 'note':
                 continue
             elif kind == 'radio':

@@ -26,12 +26,13 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import and_, delete, func, or_, select, text, update
 
+import companies
 import database as db
 import esign_pdf
 import mailer
 import security as sec
 from entities import ENTITIES, get_entity
-from esign_db import documents, envelopes, events, fields, inbound, inbound_files, outbox, recipients, sign_sessions, tokens
+from esign_db import client_contacts, documents, envelopes, events, fields, inbound, inbound_files, outbox, recipients, sign_sessions, tokens
 
 log = logging.getLogger('tfsc.esign')
 ROLES = ('signer', 'in_person', 'viewer', 'cc')
@@ -51,13 +52,14 @@ VALIDATIONS = {
     'zip': (re.compile(r'\d{5}(-\d{4})?'), 'a ZIP code (12345 or 12345-6789)'),
     'date': (re.compile(r'(0[1-9]|1[0-2])/(0[1-9]|[12]\d|3[01])/(19|20)\d{2}'), 'a date as MM/DD/YYYY'),
 }
-SETTINGS = {'reminder_delay': (2, 1, 30), 'reminder_every': (3, 0, 30), 'expire_days': (30, 1, 365), 'warn_days': (3, 0, 30)}
-FLAGS = {'attach_completed': True, 'allow_reassign': True}
+# expire_days 0: the envelope never expires (the default); the sender may set an expiration.
+SETTINGS = {'reminder_delay': (2, 1, 30), 'reminder_every': (3, 0, 30), 'expire_days': (0, 0, 365), 'warn_days': (3, 0, 30)}
+# ordered: the sender set a signing order, so people who only view also wait for their turn and hold up those after them.
+FLAGS = {'attach_completed': True, 'allow_reassign': True, 'ordered': False}
 OPEN_STATUSES = ('sent', 'delivered')
 DONE_STATUSES = ('signed', 'completed')
 INACTIVE = ('reassigned',)                     # replaced by someone else; no longer part of the routing
 PAGE_DPI = 120
-LINK_DAYS_AFTER_COMPLETION = 60
 SESSION_SECONDS = 4 * 3600
 LABELS = {
     'created': 'Envelope created', 'sent': 'Envelope sent', 'routed': 'Sent to recipient', 'delivered': 'Viewed by recipient',
@@ -67,7 +69,8 @@ LABELS = {
     'reminder': 'Reminder sent', 'expiring': 'Expiration warning sent', 'expired': 'Envelope expired', 'completed': 'Envelope completed',
     'bounced': 'Email undeliverable', 'mail_failed': 'Email could not be sent', 'replied': 'Reply received by email', 'portal_session': 'Opened from a TFSC Agreements account',
     'saved': 'Saved to finish later', 'reassigned': 'Assigned to someone else', 'host_session': 'In-person signing started by the host',
-    'attachment': 'Attachment uploaded', 'removed': 'Recipient removed',
+    'attachment': 'Attachment uploaded', 'removed': 'Recipient removed', 'downloaded': 'Downloaded the documents', 'links_off': 'Recipient links turned off',
+    'links_on': 'Recipient links turned back on',
 }
 
 
@@ -250,12 +253,14 @@ def create(c, actor: dict, payload: dict) -> dict:
         if not rows:
             raise HTTPException(400, 'This contract has no PDF documents to send.')
         _default_setup(c, envelope, contract, box)
+    elif client:
+        _client_signer(c, envelope, client)
     client_name = (client['name'] if client else '') or ''
     listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else (titles[0] if titles else 'documents')
     subject = f'Please sign: {listed}' + (f' - {client_name}' if client_name else '')
     signatory = (contract['payload'].get('client_signatory') if contract else '') or ''
     message = (f"Hello{' ' + signatory if signatory else ''},\n\nPlease review and sign the {'documents' if not titles else 'agreements' if len(titles) > 1 else 'agreement'} from "
-               f"{entity['name'].rstrip('.')}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
+               f"{entity['display'].rstrip('.')}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
     c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(subject=clean(payload.get('subject') or subject, 'Subject', 200),
                                                                                message=clean(payload.get('message') or message, 'Message', 4000)))
     record(c, envelope['id'], 'created', actor['name'], detail={'documents': titles})
@@ -277,6 +282,9 @@ def _default_setup(c, envelope: dict, contract: dict, box: dict) -> None:
         company = dict(client, id=db.uid(), role_name='Company signer', routing_order=2, name=entity['signatory'], email=box.get('signer_email') or '')
         c.execute(recipients.insert().values(**company))
     for doc in c.execute(select(documents).where(documents.c.envelope_id == envelope['id'])).mappings():
+        # The client initials every page, in the free band above the footer.
+        for page, spot in enumerate(suggestion(bytes(doc['pdf']), doc['sha256'], True, 1)['initials'][0], start=1):
+            add_field(c, envelope['id'], doc['id'], client['id'], page, 'initials', spot, True)
         anchors = esign_pdf.execution_anchors(bytes(doc['pdf']))
         if not anchors:
             continue
@@ -291,6 +299,21 @@ def _default_setup(c, envelope: dict, contract: dict, box: dict) -> None:
             add_field(c, envelope['id'], doc['id'], client['id'], anchors['page'], kind, esign_pdf.placement(anchor, kind), required)
         if company:
             add_field(c, envelope['id'], doc['id'], company['id'], anchors['page'], 'signature', esign_pdf.placement(anchors['company']['signature'], 'signature'), True)
+
+
+def _client_signer(c, envelope: dict, client: dict) -> None:
+    """An envelope started from a client: the client's signatory signs (from their latest agreement, else their signatory contact)."""
+    draft = client['draft'] or {}
+    name, email = (draft.get('client_signatory') or '').strip(), (draft.get('client_email') or '').strip()
+    if not email:
+        contact = c.execute(select(client_contacts.c.name, client_contacts.c.email).where(client_contacts.c.client_id == client['id'], client_contacts.c.role == 'signatory',
+                                                                                        client_contacts.c.email != '').order_by(client_contacts.c.updated.desc()).limit(1)).first()
+        if contact:
+            name, email = contact[0], contact[1]
+    if not (name and email):
+        return
+    c.execute(recipients.insert().values(id=db.uid(), envelope_id=envelope['id'], role='signer', role_name='Client', routing_order=1, name=name[:150], email=email[:200].lower(),
+                                         access_code=None, note='', status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=now()))
 
 
 def add_field(c, envelope_id, document_id, recipient_id, page, kind, box, required=True, label='', options=None):
@@ -311,6 +334,11 @@ def save_draft(c, actor: dict, envelope: dict, payload: dict) -> None:
         values['settings'] = settings_value(payload['settings'], envelope['settings'])
     if envelope['status'] == 'template' and 'template_name' in payload:
         values['template_name'] = clean(payload['template_name'], 'Template name', 150, True)
+    if 'client_id' in payload and payload['client_id'] != envelope['client_id']:
+        client_id = payload['client_id'] or None
+        if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).first():
+            raise HTTPException(404, 'Client not found.')
+        values['client_id'] = client_id
     if 'recipients' in payload:
         _replace_recipients(c, envelope, payload)
     c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(**values))
@@ -639,7 +667,8 @@ def send(c, actor: dict, envelope: dict, ip: str, ua: str) -> None:
     except mailer.MailboxNotReady as exc:
         raise HTTPException(409, str(exc)) from None
     t = now()
-    expires = t + envelope['settings']['expire_days'] * 86400
+    days = envelope['settings'].get('expire_days') or 0
+    expires = t + days * 86400 if days else None
     c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(status='sent', sent_at=t, expires_at=expires, updated=t, version=envelope['version'] + 1))
     envelope.update(status='sent', sent_at=t, expires_at=expires)
     record(c, envelope['id'], 'sent', actor['name'], ip=ip, ua=ua, detail={'recipients': len(rs), 'documents': len(docs)})
@@ -650,10 +679,19 @@ def send(c, actor: dict, envelope: dict, ip: str, ua: str) -> None:
 
 
 def advance(c, envelope: dict) -> None:
-    """Notify everyone whose turn has come; start completion when every signer and viewer is done."""
+    """Notify everyone whose turn has come; start completion when every signer has signed.
+
+    People who only view never hold up completion of an envelope that has signers (they receive the completed documents
+    like everyone else). With a signing order they still wait for their turn, and those after them wait for them. An
+    envelope that only asks people to view completes when they have all viewed it.
+    """
     rs = [dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()]
-    pending = [r for r in rs if r['role'] != 'cc' and r['status'] not in DONE_STATUSES + INACTIVE]
-    if not pending:
+    active = [r for r in rs if r['status'] not in INACTIVE and r['role'] != 'cc']
+    deciders = [r for r in active if r['role'] in SIGNING_ROLES] or active
+    settings = envelope.get('settings') or {}
+    ordered = settings['ordered'] if 'ordered' in settings else len({r['routing_order'] for r in active}) > 1
+    pending = [r for r in active if r['status'] not in DONE_STATUSES and (r in deciders or ordered)]
+    if all(r['status'] in DONE_STATUSES for r in deciders):
         t = now()
         c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(status='completing', completion_next=t, updated=t))
         envelope['status'] = 'completing'
@@ -707,6 +745,7 @@ def resend(c, actor: dict, envelope: dict, recipient_id: str | None) -> int:
         else:
             recipient_email(c, envelope, dict(r), 'invite')
         record(c, envelope['id'], 'resent', actor['name'], recipient_id=r['id'], detail={'to': r['email']})
+        db.log(c, actor, 'esign.resent', envelope['client_id'], {'envelope': envelope['ref'], 'to': r['email']})
         count += 1
     if not count:
         raise HTTPException(400, 'Nobody is waiting to act on this envelope. Correct a recipient who could not be reached.')
@@ -756,10 +795,11 @@ def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> 
     env_values = {}
     if payload.get('expire_days') is not None:
         days = settings_value({'expire_days': payload['expire_days']})['expire_days']
-        env_values.update(expires_at=now() + days * 86400, expiry_warned=False)
+        env_values.update(expires_at=now() + days * 86400 if days else None, expiry_warned=False,
+                          settings=dict(envelope['settings'], expire_days=days))
         changed.append({'expiration_days': days})
     if payload.get('settings'):
-        settings = settings_value({k: v for k, v in payload['settings'].items() if k != 'expire_days'}, envelope['settings'])
+        settings = settings_value({k: v for k, v in payload['settings'].items() if k != 'expire_days'}, env_values.get('settings', envelope['settings']))
         env_values['settings'] = settings
         changed.append({'settings': True})
     if not changed:
@@ -947,8 +987,8 @@ def open_link(token: str, request: Request):
             c.execute(delete(tokens).where(tokens.c.id == row['id']))
         r = dict(c.execute(select(recipients).where(recipients.c.id == row['recipient_id'])).mappings().one())
         envelope = dict(c.execute(select(envelopes).where(envelopes.c.id == r['envelope_id'])).mappings().one())
-        if envelope['status'] == 'completed' and envelope['completed_at'] < now() - LINK_DAYS_AFTER_COMPLETION * 86400:
-            return _message_page('This link has expired', f"Contact {mailer.load(c, envelope['entity'])['address'] or 'the sender'} for a copy of the completed documents.", 410)
+        if (envelope['settings'] or {}).get('links_off'):
+            return _message_page('This link is no longer active', f"The sender turned off links to these documents. Contact {mailer.load(c, envelope['entity'])['address'] or 'the sender'} for a copy.", 410)
         key = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(24)
         c.execute(delete(sign_sessions).where(sign_sessions.c.expires < now()))
@@ -1007,7 +1047,8 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
                timezone=entity['timezone'], expires_at=envelope['expires_at'], role_label=ROLE_LABELS[r['role']],
                allow_reassign=can_act and envelope['settings'].get('allow_reassign', True) and r['role'] in ('signer', 'viewer') and session['via'] == 'email',
                progress=(r['progress'] or {}).get('values', {}) if can_act else {}, in_person=in_person,
-               host=user_row(c, r['host_id'] or envelope['owner_id'])['name'] if r['role'] == 'in_person' else '')
+               host=user_row(c, r['host_id'] or envelope['owner_id'])['name'] if r['role'] == 'in_person' else '',
+               company_display=entity['display'], company_address=entity['address'], portal=companies.public_workspace(c))
     if r['status'] == 'reassigned' and r['reassigned_to']:
         other = c.execute(select(recipients.c.name, recipients.c.email).where(recipients.c.id == r['reassigned_to'])).first()
         out['reassigned_to'] = f'{other[0]} ({other[1]})' if other else ''
@@ -1096,11 +1137,12 @@ def clean_image(value: str, label: str) -> bytes:
         with PILImage.open(io.BytesIO(raw)) as image:
             if image.format not in ('PNG', 'JPEG') or image.width > 3000 or image.height > 1500:
                 raise ValueError(f'Use a PNG or JPEG {label} image of at most 3000 x 1500 pixels.')
-            image = image.convert('RGBA')
-            box = image.getbbox()
-            if not box:
-                raise ValueError(f'The {label} is empty.')
-            image = image.crop(box)
+        # Paper made transparent and trimmed to the ink, so the stamp sizes the mark itself, not the margins around it.
+        try:
+            cleaned = companies.clean_signature(raw)
+        except ValueError:
+            raise ValueError(f'The {label} is empty.') from None
+        with PILImage.open(io.BytesIO(cleaned)) as image:
             image.thumbnail((900, 300))
             out = io.BytesIO()
             image.save(out, format='PNG', optimize=True)
@@ -1264,7 +1306,7 @@ def reassign(c, session: dict, r: dict, envelope: dict, payload: dict, request: 
     ip, ua = _actor_info(request)
     record(c, envelope['id'], 'reassigned', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'to': address, 'name': name, 'reason': reason})
     notify(c, envelope, 'reassigned', f"{r['name']} ({r['email']})", f'Assigned to {name} ({address}). Reason: {reason}')
-    db.log(c, None, 'esign.reassigned', envelope['client_id'], {'envelope': envelope['ref'], 'from': r['email'], 'to': address})
+    db.log(c, None, 'esign.reassigned', envelope['client_id'], {'envelope': envelope['ref'], 'from': r['email'], 'to': address}, who=f"{r['name']} (signer)")
     advance(c, envelope)
 
 
@@ -1339,7 +1381,7 @@ def decline(c, session: dict, r: dict, envelope: dict, reason: str, request: Req
     record(c, envelope['id'], 'declined', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'reason': reason})
     _closing_emails(c, envelope, 'declined', reason, exclude=r['id'])
     notify(c, dict(envelope, status='declined'), 'declined', f"{r['name']} ({r['email']})", f'Reason: {reason}')
-    db.log(c, None, 'esign.declined', envelope['client_id'], {'envelope': envelope['ref'], 'by': r['email']})
+    db.log(c, None, 'esign.declined', envelope['client_id'], {'envelope': envelope['ref'], 'by': r['email']}, who=f"{r['name']} (signer)")
 
 
 # ------------------------------------------------------------------ completion (worker)
@@ -1444,9 +1486,26 @@ def _due(envelope: dict, pending: list[dict], t: float) -> bool:
     return False
 
 
+def settle() -> int:
+    """Complete envelopes in which every signer has signed but someone who only views has not (the completion rule changed
+    in 5.0: viewers no longer hold up completion)."""
+    open_signer = select(recipients.c.id).where(recipients.c.envelope_id == envelopes.c.id, recipients.c.role.in_(SIGNING_ROLES),
+                                                recipients.c.status.notin_(DONE_STATUSES + INACTIVE))
+    has_signer = select(recipients.c.id).where(recipients.c.envelope_id == envelopes.c.id, recipients.c.role.in_(SIGNING_ROLES),
+                                               recipients.c.status.notin_(INACTIVE))
+    with db.engine.connect() as c:
+        ids = [r[0] for r in c.execute(select(envelopes.c.id).where(envelopes.c.status == 'sent', ~open_signer.exists(), has_signer.exists()))]
+    for envelope_id in ids:
+        with write_tx() as c:
+            envelope = lock(c, envelope_id)
+            if envelope['status'] == 'sent':
+                advance(c, envelope)
+    return len(ids)
+
+
 def sweep() -> int:
     t = now()
-    count = 0
+    count = settle()
     with db.engine.connect() as c:
         open_envelopes = {e['id']: dict(e) for e in c.execute(select(envelopes.c.id, envelopes.c.settings, envelopes.c.expires_at, envelopes.c.expiry_warned,
                                                                      envelopes.c.sent_at).where(envelopes.c.status == 'sent')).mappings()}
@@ -1544,6 +1603,7 @@ def summary(c, rows: list[dict]) -> list[dict]:
     for r in rows:
         ps = people.get(r['id'], [])
         acting = [p for p in ps if p['role'] != 'cc' and p['status'] not in INACTIVE]
+        acting = [p for p in acting if p['role'] in SIGNING_ROLES] or acting     # progress counts signers: viewers never hold up completion
         out.append({k: r[k] for k in ('id', 'ref', 'subject', 'status', 'entity', 'client_id', 'sent_at', 'updated', 'completed_at', 'expires_at', 'template_name', 'created')}
                    | {'client': clients.get(r['client_id'], ''), 'sender': owners.get(r['owner_id'], ''), 'recipients': ps,
                       'progress': [sum(p['status'] in DONE_STATUSES for p in acting), len(acting)],
@@ -1559,7 +1619,8 @@ def hosted_by(c, r: dict, envelope: dict) -> str:
 def detail(c, actor: dict, envelope: dict) -> dict:
     entity = get_entity(envelope['entity'])
     docs = [dict(d) for d in c.execute(select(documents.c.id, documents.c.name, documents.c.pages, documents.c.page_sizes, documents.c.sha256, documents.c.final_sha256,
-                                              documents.c.source, documents.c.agreement, documents.c.recipient_id).where(documents.c.envelope_id == envelope['id'])
+                                              documents.c.source, documents.c.agreement, documents.c.recipient_id, documents.c.source_document_id)
+                                       .where(documents.c.envelope_id == envelope['id'])
                                        .order_by(documents.c.position)).mappings()]
     bottom = entity['bottom'] / 20
     for d in docs:
@@ -1626,7 +1687,7 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = ''
         cond = and_(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity), envelopes.c.id.in_(waiting_for(actor)))
     else:
         statuses = {'waiting': ('sent', 'completing'), 'completed': ('completed',), 'drafts': ('draft',), 'declined': ('declined',), 'voided': ('voided',),
-                    'expired': ('expired',), 'templates': ('template',)}.get(box)
+                    'expired': ('expired',), 'templates': ('template',), 'sent': ('sent', 'completing', 'completed', 'declined', 'voided', 'expired')}.get(box)
         cond = visible(actor)
         cond = and_(cond, envelopes.c.status.in_(statuses)) if statuses else and_(cond, envelopes.c.status != 'template')
     if entity:
@@ -1663,6 +1724,77 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = ''
     return {'envelopes': out, 'has_more': len(rows) > 50, 'page': page, 'counts': counts}
 
 
+# ------------------------------------------------------------------ preparing a draft: suggested fields, the client's documents
+_SUGGESTED: dict = {}
+AGREEMENT_TITLES = {'baa': 'Business Associate Agreement', 'services': 'Services Agreement', 'nda': 'Mutual NDA'}
+SENDABLE = ('.pdf', '.docx', '.doc', '.odt', '.rtf', '.txt', '.png', '.jpg', '.jpeg')
+
+
+def suggestion(raw: bytes, sha: str, generated: bool, signers: int) -> dict:
+    key = (sha, generated, signers)
+    if key not in _SUGGESTED:
+        if len(_SUGGESTED) > 300:
+            _SUGGESTED.clear()
+        _SUGGESTED[key] = esign_pdf.suggest(raw, generated, signers)
+    return _SUGGESTED[key]
+
+
+def library_items(c, actor: dict, envelope: dict) -> list[dict]:
+    """The client's documents that can go into this envelope: generated agreements (newest first) and files on the profile."""
+    if not envelope['client_id']:
+        return []
+    import clients
+    client = clients.client_for(c, actor, envelope['client_id'])
+    items, seen = [], set()
+    rows = c.execute(select(db.documents.c.id, db.documents.c.name, db.documents.c.agreement, db.documents.c.size, db.contracts.c.id.label('contract_id'),
+                            db.contracts.c.created, db.contracts.c.entity).join(db.contracts, db.contracts.c.id == db.documents.c.contract_id)
+                     .where(db.contracts.c.client_id == client['id'], db.documents.c.kind == 'pdf', sec.scope(actor, db.contracts.c.owner_id),
+                            sec.company_scope(actor, db.contracts.c.entity)).order_by(db.contracts.c.created.desc()).limit(60)).mappings().all()
+    for r in rows:
+        latest = (r['agreement'], r['entity']) not in seen
+        seen.add((r['agreement'], r['entity']))
+        items.append({'id': r['id'], 'source': 'generated', 'title': AGREEMENT_TITLES.get(r['agreement'], r['name']), 'name': r['name'], 'agreement': r['agreement'],
+                      'created': r['created'], 'entity': r['entity'], 'contract_id': r['contract_id'], 'size': r['size'], 'latest': latest,
+                      'usable': r['entity'] == envelope['entity']})
+    import esign_db
+    for f in c.execute(select(esign_db.client_files.c.id, esign_db.client_files.c.name, esign_db.client_files.c.size, esign_db.client_files.c.created,
+                              esign_db.client_files.c.category, esign_db.client_files.c.scan).where(esign_db.client_files.c.client_id == client['id'])
+                       .order_by(esign_db.client_files.c.created.desc()).limit(60)).mappings():
+        if f['name'].lower().endswith(SENDABLE):
+            items.append({'id': f['id'], 'source': 'file', 'title': f['name'], 'name': f['name'], 'created': f['created'], 'size': f['size'],
+                          'category': f['category'], 'scan': f['scan'], 'usable': f['scan'] != 'infected'})
+    return items
+
+
+def library_document(c, actor: dict, envelope: dict, source: str, item_id: str) -> tuple[str, bytes, str, str | None, str | None]:
+    """(name, bytes, kind, generated document id, agreement) of a library item, after checking it belongs to the envelope's client."""
+    import clients
+    import crm_bridge
+    if not envelope['client_id']:
+        raise HTTPException(400, 'Choose a client for this envelope first.')
+    if source == 'generated':
+        row = c.execute(select(db.documents, db.contracts.c.client_id, db.contracts.c.entity).join(db.contracts, db.contracts.c.id == db.documents.c.contract_id)
+                        .where(db.documents.c.id == item_id, db.documents.c.kind == 'pdf', sec.scope(actor, db.contracts.c.owner_id),
+                               sec.company_scope(actor, db.contracts.c.entity))).mappings().first()
+        if not row or row['client_id'] != envelope['client_id']:
+            raise HTTPException(404, 'Agreement not found.')
+        if row['entity'] != envelope['entity']:
+            raise HTTPException(400, f"This agreement belongs to {row['entity']}. Send it from an envelope of that company.")
+        crm_bridge.check_download(c, row)
+        client = c.execute(select(db.clients.c.name).where(db.clients.c.id == envelope['client_id'])).scalar() or ''
+        label = re.sub(r'[\\/:*?"<>|]+', '', client).strip()
+        title = AGREEMENT_TITLES.get(row['agreement'], re.sub(r'\.pdf$', '', row['name'], flags=re.I))
+        return (f'{title} - {label}' if label else title)[:180] + '.pdf', bytes(row['body']), 'generated', row['id'], row['agreement']
+    if source == 'file':
+        f = clients.file_for(c, actor, item_id)
+        if f['client_id'] != envelope['client_id']:
+            raise HTTPException(404, 'File not found.')
+        if f['scan'] == 'infected':
+            raise HTTPException(400, 'This file failed the virus scan and cannot be sent.')
+        return f['name'], bytes(f['body']), 'upload', None, None
+    raise ValueError('Choose a document.')
+
+
 # ------------------------------------------------------------------ routes
 def install(app) -> None:  # noqa: C901  (route table)
     from fastapi import Body
@@ -1684,9 +1816,73 @@ def install(app) -> None:  # noqa: C901  (route table)
 
     @app.get('/api/esign/envelopes/{envelope_id}')
     def api_detail(envelope_id: str, request: Request):
+        with db.engine.begin() as c:
+            a = actor_of(request, c)
+            envelope = get_envelope(c, a, envelope_id, hosting=True)
+            if envelope['status'] not in ('draft', 'template'):
+                db.log(c, a, 'esign.viewed', envelope['client_id'], {'envelope': envelope['ref'], 'subject': envelope['subject']})
+            return detail(c, a, envelope)
+
+    @app.get('/api/esign/envelopes/{envelope_id}/suggestions')
+    def api_suggestions(envelope_id: str, request: Request, signers: int = 1):
         with db.engine.connect() as c:
             a = actor_of(request, c)
-            return detail(c, a, get_envelope(c, a, envelope_id, hosting=True))
+            get_envelope(c, a, envelope_id)
+            docs = c.execute(select(documents.c.id, documents.c.sha256, documents.c.source, documents.c.agreement, documents.c.pdf)
+                             .where(documents.c.envelope_id == envelope_id, documents.c.source != 'attachment')).mappings().all()
+        signers = max(1, min(int(signers), 10))
+        return {'documents': {d['id']: suggestion(bytes(d['pdf']), d['sha256'], d['source'] == 'generated' or bool(d['agreement']), signers) for d in docs}}
+
+    @app.get('/api/esign/envelopes/{envelope_id}/library')
+    def api_library(envelope_id: str, request: Request):
+        with db.engine.connect() as c:
+            a = actor_of(request, c)
+            return {'items': library_items(c, a, get_envelope(c, a, envelope_id))}
+
+    @app.post('/api/esign/envelopes/{envelope_id}/library')
+    def api_library_add(envelope_id: str, request: Request, payload: dict = Body(...)):
+        with db.engine.connect() as c:
+            a = actor_of(request, c)
+            name, raw, kind, source_id, agreement = library_document(c, a, get_envelope(c, a, envelope_id), str(payload.get('source', '')), str(payload.get('id', '')))
+        if kind == 'upload':
+            raw, name = esign_pdf.to_pdf(name, raw)
+        with write_tx() as c:
+            a = actor_of(request, c)
+            get_envelope(c, a, envelope_id)
+            envelope = lock(c, envelope_id)
+            if envelope['status'] not in ('draft', 'template'):
+                raise HTTPException(409, 'Documents can be added only to a draft.')
+            if source_id and c.execute(select(documents.c.id).where(documents.c.envelope_id == envelope_id, documents.c.source_document_id == source_id)).first():
+                raise HTTPException(409, 'This agreement is already in the envelope.')
+            add_document(c, envelope, name, raw, kind, source_id, agreement)
+            values = {'updated': now(), 'version': envelope['version'] + 1}
+            if envelope['status'] == 'draft' and envelope['subject'].startswith('Please sign: documents'):
+                titles = [AGREEMENT_TITLES.get(r[0], '') for r in c.execute(select(documents.c.agreement).where(documents.c.envelope_id == envelope_id,
+                                                                                                              documents.c.source == 'generated').order_by(documents.c.position))]
+                titles = [x for x in titles if x]
+                if titles:
+                    listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else titles[0]
+                    client = c.execute(select(db.clients.c.name).where(db.clients.c.id == envelope['client_id'])).scalar() or ''
+                    values['subject'] = clean(f'Please sign: {listed}' + (f' - {client}' if client else ''), 'Subject', 200)
+            c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(**values))
+            db.log(c, a, 'esign.document_added', envelope['client_id'], {'envelope': envelope['ref'], 'document': name})
+            return detail(c, a, get_envelope(c, a, envelope_id))
+
+    @app.post('/api/esign/envelopes/{envelope_id}/links')
+    def api_links(envelope_id: str, request: Request, payload: dict = Body(...)):
+        ip, ua = _actor_info(request)
+        with write_tx() as c:
+            a = actor_of(request, c)
+            get_envelope(c, a, envelope_id)
+            envelope = lock(c, envelope_id)
+            if envelope['status'] != 'completed':
+                raise HTTPException(409, 'Links can be turned off once the envelope is completed. To stop an envelope in progress, void it.')
+            off = payload.get('active') is False
+            c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(settings=dict(envelope['settings'], links_off=off), updated=now(),
+                                                                                    version=envelope['version'] + 1))
+            record(c, envelope_id, 'links_off' if off else 'links_on', a['name'], ip=ip, ua=ua)
+            db.log(c, a, 'esign.links_off' if off else 'esign.links_on', envelope['client_id'], {'envelope': envelope['ref']})
+            return detail(c, a, get_envelope(c, a, envelope_id))
 
     @app.post('/api/esign/envelopes/{envelope_id}/draft')
     def api_save(envelope_id: str, request: Request, payload: dict = Body(...)):
@@ -1743,7 +1939,8 @@ def install(app) -> None:  # noqa: C901  (route table)
         row = c.execute(select(documents).where(documents.c.id == document_id)).mappings().first()
         if not row:
             raise HTTPException(404, 'Document not found.')
-        get_envelope(c, a, row['envelope_id'], hosting=True)
+        row = dict(row)
+        row['_envelope'] = get_envelope(c, a, row['envelope_id'], hosting=True)
         return row
 
     @app.get('/api/esign/documents/{document_id}/page/{page}.png')
@@ -1761,42 +1958,49 @@ def install(app) -> None:  # noqa: C901  (route table)
 
     @app.get('/api/esign/documents/{document_id}/file')
     def api_document(document_id: str, request: Request, final: int = 0):
-        with db.engine.connect() as c:
+        with db.engine.begin() as c:
             a = actor_of(request, c)
             row = _doc_for_sender(c, a, document_id)
             body = row['final_pdf'] if final else row['pdf']
             if not body:
                 raise HTTPException(404, 'The completed document is not ready yet.')
             name = row['name'] if not final else re.sub(r'\.pdf$', '', row['name'], flags=re.I) + ' (completed).pdf'
+            db.log(c, a, 'esign.document_downloaded', row['_envelope']['client_id'], {'envelope': row['_envelope']['ref'], 'document': name,
+                                                                                       'version': 'completed' if final else 'original'})
         return Response(bytes(body), media_type='application/pdf', headers={'Content-Disposition': 'attachment; filename="' + name.replace('"', '') + '"'})
 
     @app.get('/api/esign/envelopes/{envelope_id}/certificate')
     def api_certificate(envelope_id: str, request: Request):
-        with db.engine.connect() as c:
-            envelope = get_envelope(c, actor_of(request, c), envelope_id)
-        if not envelope['certificate']:
-            raise HTTPException(404, 'The certificate is created when the envelope is completed.')
+        with db.engine.begin() as c:
+            a = actor_of(request, c)
+            envelope = get_envelope(c, a, envelope_id)
+            if not envelope['certificate']:
+                raise HTTPException(404, 'The certificate is created when the envelope is completed.')
+            db.log(c, a, 'esign.certificate_downloaded', envelope['client_id'], {'envelope': envelope['ref']})
         return Response(bytes(envelope['certificate']), media_type='application/pdf',
                         headers={'Content-Disposition': f'attachment; filename="Certificate of Completion {envelope["ref"]}.pdf"'})
 
     @app.get('/api/esign/envelopes/{envelope_id}/combined')
     def api_combined(envelope_id: str, request: Request):
-        with db.engine.connect() as c:
-            envelope = get_envelope(c, actor_of(request, c), envelope_id)
+        with db.engine.begin() as c:
+            a = actor_of(request, c)
+            envelope = get_envelope(c, a, envelope_id)
             parts = [bytes(r[0]) for r in c.execute(select(documents.c.final_pdf).where(documents.c.envelope_id == envelope_id).order_by(documents.c.position)) if r[0]]
-        if envelope['status'] != 'completed' or not parts:
-            raise HTTPException(404, 'The envelope is not completed yet.')
+            if envelope['status'] != 'completed' or not parts:
+                raise HTTPException(404, 'The envelope is not completed yet.')
+            db.log(c, a, 'esign.completed_downloaded', envelope['client_id'], {'envelope': envelope['ref']})
         return Response(esign_pdf.combine(parts + [bytes(envelope['certificate'])]), media_type='application/pdf',
                         headers={'Content-Disposition': f'attachment; filename="Completed {envelope["ref"]}.pdf"'})
 
     @app.get('/api/esign/attachments/{file_id}')
     def api_reply_file(file_id: str, request: Request):
-        with db.engine.connect() as c:
+        with db.engine.begin() as c:
             a = actor_of(request, c)
             row = c.execute(select(inbound_files, inbound.c.envelope_id).join(inbound, inbound.c.id == inbound_files.c.inbound_id).where(inbound_files.c.id == file_id)).mappings().first()
             if not row or not row['envelope_id']:
                 raise HTTPException(404, 'Attachment not found.')
-            get_envelope(c, a, row['envelope_id'])
+            envelope = get_envelope(c, a, row['envelope_id'])
+            db.log(c, a, 'esign.attachment_downloaded', envelope['client_id'], {'envelope': envelope['ref'], 'file': row['name']})
         return Response(bytes(row['body']), media_type='application/octet-stream',
                         headers={'Content-Disposition': 'attachment; filename="' + row['name'].replace('"', '') + '"', 'X-Content-Type-Options': 'nosniff'})
 
@@ -1830,7 +2034,9 @@ def install(app) -> None:  # noqa: C901  (route table)
         with write_tx() as c:
             a = actor_of(request, c)
             get_envelope(c, a, envelope_id)
-            delete_draft(c, lock(c, envelope_id))
+            envelope = lock(c, envelope_id)
+            delete_draft(c, envelope)
+            db.log(c, a, 'esign.deleted', envelope['client_id'], {'envelope': envelope['ref'], 'template': envelope['status'] == 'template'})
             return {'ok': True}
 
     @app.post('/api/esign/envelopes/{envelope_id}/copy')
@@ -1843,6 +2049,8 @@ def install(app) -> None:  # noqa: C901  (route table)
             if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(a, db.clients.c.owner_id))).first():
                 raise HTTPException(404, 'Client not found.')
             target = copy(c, a, source, as_template=template_name, client_id=client_id if source['status'] == 'template' else None)
+            db.log(c, a, 'esign.template_saved' if template_name else 'esign.copied', target['client_id'],
+                   {'envelope': source['ref'], 'new': target['ref'], 'template': template_name or ''})
             return detail(c, a, get_envelope(c, a, target['id']))
 
     @app.post('/api/esign/envelopes/{envelope_id}/sign-now')
@@ -2043,20 +2251,24 @@ def install(app) -> None:  # noqa: C901  (route table)
 
     @app.get('/sign/r/{recipient_id}/document/{document_id}')
     def sign_document(recipient_id: str, document_id: str, request: Request):
-        with db.engine.connect() as c:
-            _, _, envelope, row = _signer_doc(c, request, recipient_id, document_id)
+        ip, ua = _actor_info(request)
+        with write_tx() as c:
+            _, r, envelope, row = _signer_doc(c, request, recipient_id, document_id)
             completed = envelope['status'] == 'completed' and row['final_pdf']
             body = bytes(row['final_pdf'] if completed else row['pdf'])
-        name = re.sub(r'\.pdf$', '', row['name'], flags=re.I) + (' (completed)' if completed else '') + '.pdf'
+            name = re.sub(r'\.pdf$', '', row['name'], flags=re.I) + (' (completed)' if completed else '') + '.pdf'
+            record(c, envelope['id'], 'downloaded', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'document': name})
         return Response(body, media_type='application/pdf', headers={'Content-Disposition': 'attachment; filename="' + name.replace('"', '') + '"'})
 
     @app.get('/sign/r/{recipient_id}/completed')
     def sign_completed(recipient_id: str, request: Request):
-        with db.engine.connect() as c:
+        ip, ua = _actor_info(request)
+        with write_tx() as c:
             _, r, envelope = signer_session(c, request, recipient_id)
             if envelope['status'] != 'completed' or r['status'] == 'declined':
                 raise HTTPException(404, 'The documents are not completed yet.')
             parts = [bytes(x[0]) for x in c.execute(select(documents.c.final_pdf).where(documents.c.envelope_id == envelope['id']).order_by(documents.c.position))]
+            record(c, envelope['id'], 'downloaded', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'document': f"Completed {envelope['ref']}.pdf"})
         return Response(esign_pdf.combine(parts + [bytes(envelope['certificate'])]), media_type='application/pdf',
                         headers={'Content-Disposition': f'attachment; filename="Completed {envelope["ref"]}.pdf"'})
 

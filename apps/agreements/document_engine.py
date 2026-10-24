@@ -105,13 +105,13 @@ def _signature(text, data, contract_id, final_clause='', source_exact=False):
     company_signature = 'Signature: __________________________'
     body += _table([entity['name'],client], [
         [company_signature,'Signature: __________________________'],
-        ['Name: '+entity['signatory'],'Name: '+(_text(data.get('client_signatory')) or '____________________________')],
-        ['Title: '+entity['title'],'Title: '+(_text(data.get('client_title')) or '_____________________________')],
+        ['Name: '+_text(data.get('_signatory') or entity['signatory']),'Name: '+(_text(data.get('client_signatory')) or '____________________________')],
+        ['Title: '+_text(data.get('_signatory_title') or entity['title']),'Title: '+(_text(data.get('client_title')) or '_____________________________')],
         # The company signs as of the effective date; the client's line is dated when the client signs.
         ['Date: '+date,'Date: ______________________________'],
     ],signature=True,width=entity['width'])
     signing_p=_p(company_signature,'SASignature',keep=True,align='left')
-    line='<w:p><w:pPr><w:pStyle w:val="SASignature"/><w:keepNext/><w:spacing w:before="660" w:after="140"/>'+f'<w:tabs><w:tab w:val="left" w:leader="underscore" w:pos="{entity["width"]//2-350}"/></w:tabs></w:pPr>'+_run('Signature: ')+'<w:r><w:tab/></w:r>'
+    line='<w:p><w:pPr><w:pStyle w:val="SASignature"/><w:keepNext/><w:spacing w:before="820" w:after="140"/>'+f'<w:tabs><w:tab w:val="left" w:leader="underscore" w:pos="{entity["width"]//2-350}"/></w:tabs></w:pPr>'+_run('Signature: ')+'<w:r><w:tab/></w:r>'
     body=body.replace(signing_p,line+data.get('_signature_xml','')+'</w:p>',1)
     body=body.replace(signing_p,line+'</w:p>',1)
     if not source_exact:
@@ -146,9 +146,10 @@ def generate_docx(blocks, data, contract_id, path):
         infos=z.infolist()
         parts={i.filename:z.read(i.filename) for i in infos}
     data=dict(data)
-    if data.get('_signature_path'):
-        raw=Path(data['_signature_path']).read_bytes()
-        ext,drawing=image_xml(raw,data.get('_signature_crop'))
+    if data.get('_signature_bytes') or data.get('_signature_path'):
+        raw=data.get('_signature_bytes') or Path(data['_signature_path']).read_bytes()
+        # The signature starts 780000 EMU after the column edge; it never runs past the end of the signature rule.
+        ext,drawing=image_xml(raw,data.get('_signature_crop'),max_width=min(2103120,(entity['width']//2-350)*635-780000-40000))
         data['_signature_xml']=drawing
         parts['word/media/sa-signature.'+ext]=raw
         rel=f'<Relationship Id="rIdSASignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/sa-signature.{ext}"/>'

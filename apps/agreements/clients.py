@@ -261,6 +261,7 @@ def install(app) -> None:  # noqa: C901  (route table)
             a = actor_of(request, c)
             client = client_for(c, a, client_id)
             seed_contacts(c, client)
+            db.log(c, a, 'client.viewed', client_id, {'client': client['name']})
             owner = c.execute(select(db.users.c.name).where(db.users.c.id == client['owner_id'])).scalar()
             contacts = [contact_view(r) for r in c.execute(select(client_contacts).where(client_contacts.c.client_id == client_id)
                                                           .order_by(client_contacts.c.role, client_contacts.c.name)).mappings()]

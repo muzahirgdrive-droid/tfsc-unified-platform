@@ -87,7 +87,7 @@ class PortalTests(unittest.TestCase):
                 Path(row['path']).unlink()
         # Database copies remain accessible after original disk copies are removed.
         url=result['files'][0]['url'];self.assertEqual(self.api.get(url).status_code,200)
-        actions=[r['action'] for r in self.api.get('/api/clients/'+cid+'/activity').json()['activity']]
+        actions=[r['code'] for r in self.api.get('/api/clients/'+cid+'/activity').json()['activity']]
         self.assertIn('contract.generated',actions);self.assertIn('document.downloaded',actions)
         self.login(self.u2);self.assertEqual(self.api.get(url).status_code,404);self.assertEqual(self.api.get('/api/jobs/'+id).status_code,404)
         self.login(self.admin);self.assertEqual(self.api.get(url).status_code,200)

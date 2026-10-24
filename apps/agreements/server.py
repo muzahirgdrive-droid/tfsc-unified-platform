@@ -209,12 +209,18 @@ def save_client(data):
     return data['id']
 
 
-def build_documents(data, contract_id):
+def build_documents(data, contract_id, company=None):
+    # company: who signs and with which signature (Company settings in the web portal); without it, the signature image
+    # saved on this computer is used.
     documents = []
     for kind in data['document_types']:
         current = dict(data)
         sig_path=signature_path(DATA_DIR,data['entity'])
-        if data.get('include_signature',True) and sig_path.is_file():
+        if company is not None:
+            current['_signatory']=company['signatory']; current['_signatory_title']=company['title']
+            if data.get('include_signature',True) and company.get('png'):
+                current['_signature_bytes']=company['png']; current['_signature_crop']=company.get('crop')
+        elif data.get('include_signature',True) and sig_path.is_file():
             current['_signature_path']=str(sig_path)
             meta=sig_path.with_suffix('.json')
             if meta.exists(): current['_signature_crop']=json.loads(meta.read_text()).get('crop')

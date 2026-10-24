@@ -25,7 +25,7 @@ def build_nda(data, contract_id):
     term, survival = years(data.get('nda_term_years', 2)), years(data.get('nda_survival_years', 3))
     provider_address = _clean(data.get('provider_address')) or entity['address']
     client_notice = _clean(data.get('client_email')) or 'the authorized signatory at the address stated above'
-    company_notice = _clean(data.get('provider_email')) or f"the {entity['title']} at the address stated above"
+    company_notice = _clean(data.get('provider_email')) or f"the {data.get('_signatory_title') or entity['title']} at the address stated above"
     sections = [
         ('1. Purpose', [
             f'The Parties wish to exchange information solely for the purpose of {purpose} (the "Purpose"). This Agreement governs Confidential Information either Party discloses for the Purpose. It does not obligate either Party to disclose any particular information or to enter into any further agreement or transaction.']),

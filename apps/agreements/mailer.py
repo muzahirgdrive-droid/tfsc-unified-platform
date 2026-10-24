@@ -71,7 +71,7 @@ def origin() -> str:
 def defaults(entity_name: str) -> dict:
     entity = get_entity(entity_name)
     address = DEFAULT_ADDRESSES.get(entity_name, '')
-    return dict(entity=entity_name, address=address, display_name=f"{entity['short']} Compliance", mode='off', auth='password', login=address,
+    return dict(entity=entity_name, address=address, display_name=entity['display'], mode='off', auth='password', login=address,
                 secret=None, sa_key=None, imap_enabled=True, signer_email='', notify=DEFAULT_NOTIFY, imap_uidvalidity=None, imap_last_uid=None,
                 imap_last_poll=None, imap_error=None, imap_lease=None, smtp_error=None, last_test={}, updated=0.0, updated_by=None, **GOOGLE)
 
@@ -130,7 +130,7 @@ def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
         raise ValueError('Choose how this company sends email.')
     previous = dict(box)
     box['address'] = valid_email(text('address', 200)) if text('address', 200) else ''
-    box['display_name'] = text('display_name', 150) or f"{get_entity(entity_name)['short']} Compliance"
+    box['display_name'] = text('display_name', 150) or get_entity(entity_name)['display']
     if re.search(r'[\r\n<>"]', box['display_name']):
         raise ValueError('The sender name cannot contain line breaks, quotes or angle brackets.')
     box['auth'] = payload.get('auth', box['auth'])
@@ -515,59 +515,91 @@ def inline_images(entity_name: str) -> list[tuple[str, bytes]]:
     return [(f"logo.{entity['key']}@tfsc", logo_png(entity)), (f"doc.{entity['key']}@tfsc", document_icon(entity['accent']))]
 
 
+def _workspace() -> dict:
+    import companies
+    return companies.cached_workspace()
+
+
 def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = None, button: tuple[str, str] | None = None, security_note: bool = False,
            link_text: bool = False) -> str:
-    key, color, accent = entity['key'], entity['color'], entity['accent']
+    """The branded email: logo and a secure-document badge, a hero in the company's website colours with the call to action, the
+    message, a security panel, then contacts and the company footer. Tables and inline styles, so Gmail and Outlook render it."""
+    key, color, accent, dark = entity['key'], entity['color'], entity['accent'], entity.get('dark', INK)
     contact = esc(box['address']) if box and box.get('address') else ''
-    font = 'font-family:Arial,Helvetica,sans-serif;'
+    company = esc(entity.get('display') or entity['name'])
+    ws = _workspace()
+    font = "font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"
     button_html = ''
     if button:
-        button_html = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px auto 4px auto;"><tr>'
-                       f'<td align="center" bgcolor="{accent}" style="background:{accent};border-radius:4px;">'
-                       f'<a href="{esc(button[1])}" target="_blank" style="display:inline-block;padding:14px 34px;{font}font-size:15px;font-weight:bold;'
-                       f'color:{INK};text-decoration:none;letter-spacing:.6px;">{esc(button[0])}</a></td></tr></table>')
-    sections = []
+        button_html = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px auto 2px auto;"><tr>'
+                       f'<td align="center" bgcolor="{accent}" style="background:{accent};border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,.25);">'
+                       f'<a href="{esc(button[1])}" target="_blank" style="display:inline-block;padding:15px 38px;{font}font-size:15px;font-weight:700;'
+                       f'color:{INK};text-decoration:none;letter-spacing:.4px;border-radius:8px;">{esc(button[0])}</a></td></tr></table>')
+    panel = ''
     if security_note:
-        sections.append(('Do not share this email', f'This email contains a secure link to documents from {esc(entity["name"].rstrip("."))}. Please do not share this email, '
-                                                    f'the link or any access code with others.'))
-        if link_text and button:
-            sections.append(('If the button does not work', f'Copy this address into your web browser: <span style="word-break:break-all;color:#30476B;">{esc(button[1])}</span>'))
-        sections.append(('Questions about the documents?', 'If you need to change the documents or have questions about their details, reply to this email'
-                                                           + (f' or write to {contact}' if contact else '') + '.'))
-        sections.append((f'About electronic signatures with {esc(entity["short"])}', 'Sign documents electronically in a few minutes, from any computer, '
-                         'tablet or phone. It is secure and legally binding: every step is recorded, and the completed documents come with a Certificate '
-                         'of Completion.'))
-    elif contact:
-        sections.append(('Questions?', f'Reply to this email or contact {contact}.'))
-    footer = ''.join(f'<p style="margin:0 0 14px 0;"><strong style="color:#30476B;">{title}</strong><br>{text}</p>' for title, text in sections)
-    return f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>{esc(headline)}</title></head>
-<body style="margin:0;padding:0;background:#EAEDF1;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EAEDF1;"><tr><td align="center" style="padding:26px 10px;">
-<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#FFFFFF;border-radius:6px;{font}color:#1D2B4F;">
-<tr><td style="padding:22px 30px 18px 30px;"><img src="cid:logo.{key}@tfsc" alt="{esc(entity["name"])}" height="52" style="display:block;height:52px;width:auto;max-width:260px;border:0;"></td></tr>
-<tr><td style="padding:0 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td align="center" bgcolor="{color}" style="background:{color};border-radius:6px;padding:34px 28px 32px 28px;">
+        rows = [('Your private link', f'This email contains a secure link to documents from {company.rstrip(".")}. It is unique to you: please do not forward this email or share the link or any access code.'),
+                ('Protected end to end', 'The link opens an encrypted (HTTPS) page. Every view and signature is recorded in a tamper-evident audit trail, and the completed documents come with a Certificate of Completion.')]
+        items = ''.join(f'<tr><td valign="top" width="26" style="padding:0 10px 12px 0;"><div style="width:22px;height:22px;border-radius:11px;background:{color};color:#FFFFFF;'
+                        f'{font}font-size:12px;line-height:22px;text-align:center;font-weight:700;">&#10003;</div></td>'
+                        f'<td style="padding:0 0 12px 0;{font}font-size:13px;line-height:20px;color:#3D4B63;"><strong style="color:#0F1B2D;">{t}</strong><br>{x}</td></tr>' for t, x in rows)
+        panel = (f'<tr><td style="padding:4px 32px 8px 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+                 f'style="background:#F4F7FB;border:1px solid #E2E8F1;border-radius:10px;"><tr><td style="padding:18px 18px 6px 18px;">'
+                 f'<div style="{font}font-size:11px;letter-spacing:1.2px;font-weight:700;color:{color};text-transform:uppercase;margin:0 0 12px 0;">Secure document</div>'
+                 f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{items}</table></td></tr></table></td></tr>')
+    extras = []
+    if security_note and link_text and button:
+        extras.append(('Button not working?', f'Copy this address into your browser:<br><span style="word-break:break-all;color:#30476B;">{esc(button[1])}</span>'))
+    if contact:
+        extras.append(('Questions about the documents?', f'Reply to this email or write to <a href="mailto:{contact}" style="color:{color};text-decoration:none;">{contact}</a>.'))
+    extra_html = ''.join(f'<p style="margin:0 0 14px 0;"><strong style="color:#0F1B2D;">{t}</strong><br>{x}</p>' for t, x in extras)
+    trust = esc(ws.get('trust_line') or '')
+    year = time.gmtime().tm_year
+    return f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>{esc(headline)}</title></head>
+<body style="margin:0;padding:0;background:#EEF1F5;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">{esc(headline)} Secure document from {company.rstrip(".")}.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EEF1F5;"><tr><td align="center" style="padding:28px 10px;">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#FFFFFF;border-radius:14px;overflow:hidden;{font}color:#0F1B2D;box-shadow:0 10px 30px rgba(15,27,45,.08);">
+<tr><td height="5" style="height:5px;line-height:5px;font-size:0;background:{color};background-image:linear-gradient(90deg,{color},{accent});">&nbsp;</td></tr>
+<tr><td style="padding:20px 32px 18px 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="middle"><img src="cid:logo.{key}@tfsc" alt="{company}" height="46" style="display:block;height:46px;width:auto;max-width:250px;border:0;"></td>
+<td valign="middle" align="right"><span style="display:inline-block;padding:6px 12px;border-radius:14px;background:#EAF7EF;color:#137A43;{font}font-size:11px;font-weight:700;letter-spacing:.6px;">&#128274;&nbsp;SECURE DOCUMENT</span></td>
+</tr></table></td></tr>
+<tr><td style="padding:0 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td align="center" bgcolor="{color}" style="background:{color};background-image:linear-gradient(135deg,{dark} 0%,{color} 70%);border-radius:12px;padding:36px 30px 34px 30px;">
 <img src="cid:doc.{key}@tfsc" alt="" width="60" height="64" style="display:block;margin:0 auto 18px auto;border:0;">
-<div style="{font}font-size:19px;line-height:27px;color:#FFFFFF;">{esc(headline)}</div>{button_html}</td></tr></table></td></tr>
-<tr><td style="padding:26px 30px 18px 30px;font-size:14px;line-height:22px;">{body_html}</td></tr>
-<tr><td style="padding:0 30px 24px 30px;"><div style="border-top:1px solid #E3E7ED;"></div></td></tr>
-<tr><td style="padding:0 30px 10px 30px;font-size:12px;line-height:18px;color:#5B6475;">{footer}</td></tr>
+<div style="{font}font-size:21px;line-height:29px;font-weight:600;color:#FFFFFF;">{esc(headline)}</div>{button_html}</td></tr></table></td></tr>
+<tr><td style="padding:28px 32px 14px 32px;font-size:14px;line-height:22px;color:#1F2A3D;">{body_html}</td></tr>
+{panel}
+<tr><td style="padding:14px 32px 10px 32px;font-size:12.5px;line-height:19px;color:#5B6475;">{extra_html}</td></tr>
+<tr><td style="padding:16px 32px 20px 32px;border-top:1px solid #E8ECF2;background:#FAFBFD;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="{font}font-size:12px;line-height:18px;color:#5B6475;"><strong style="color:#0F1B2D;">{company}</strong><br>{esc(entity.get("address", ""))}</td>
+<td align="right" valign="top" style="{font}font-size:11px;line-height:17px;color:#137A43;">&#128274; {trust}</td></tr></table></td></tr>
 </table>
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;{font}">
-<tr><td align="center" style="padding:16px 20px 4px 20px;font-size:11px;line-height:17px;color:#6B7485;">{esc(entity["name"])} · {esc(entity.get("address", ""))}</td></tr>
-<tr><td align="center" style="padding:0 20px 6px 20px;font-size:11px;line-height:17px;color:#8A93A3;">Sent with TFSC Agreements electronic signature</td></tr>
+<tr><td align="center" style="padding:16px 20px 4px 20px;font-size:11px;line-height:17px;color:#6B7485;">&copy; {year} {company.rstrip(".")}. All rights reserved.</td></tr>
+<tr><td align="center" style="padding:0 20px 6px 20px;font-size:11px;line-height:17px;color:#8A93A3;">Sent from the {company} secure document portal, powered by TFSC Agreements.</td></tr>
 </table></td></tr></table></body></html>'''
 
 
 def text_footer(entity: dict, box: dict | None, security_note: bool) -> str:
     lines = []
     if security_note:
-        lines.append('Do not share this email. It contains a secure link to your documents. Please do not share this email, the link or any access code with others.')
+        lines.append('This email contains a secure link that is unique to you. Please do not forward it or share the link or any access code. '
+                     'The link opens an encrypted page; every view and signature is recorded in a tamper-evident audit trail.')
     if box and box.get('address'):
         lines.append(f"Questions about these documents? Reply to this email or contact {box['address']}.")
-    lines.append(f"{entity['name']} · {entity.get('address', '')}")
-    lines.append('Sent with TFSC Agreements electronic signature.')
+    company = entity.get('display') or entity['name']
+    lines.append(f"{company} · {entity.get('address', '')}")
+    lines.append(f"© {time.gmtime().tm_year} {company.rstrip('.')}. All rights reserved. Sent from the {company} secure document portal.")
     return '\n\n' + '\n'.join(lines)
+
+
+def _doc_rows(entity: dict, docs: list) -> str:
+    rows = ''.join(f'<tr><td width="34" style="padding:9px 0 9px 12px;"><div style="width:24px;height:30px;border:1px solid #CBD5E1;border-radius:3px;background:#FFFFFF;'
+                   f'font-family:Arial,sans-serif;font-size:8px;line-height:30px;text-align:center;font-weight:700;color:{entity["color"]};">PDF</div></td>'
+                   f'<td style="padding:9px 12px;font-size:13.5px;line-height:19px;color:#0F1B2D;">{esc(d)}</td></tr>' for d in docs)
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E8F1;border-radius:10px;margin:4px 0 14px 0;">'
+            f'{rows}</table>')
 
 
 def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
@@ -577,7 +609,6 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
     sender = ctx.get('sender_name', entity['short'])
     lines, body, button, headline, security = [], '', None, '', False
     docs = ctx.get('documents', [])
-    doc_list = ''.join(f'<li>{esc(d)}</li>' for d in docs)
     if kind in ('invite', 'reminder', 'corrected', 'expiring', 'copy'):
         security = True
         action = {'signer': 'review and sign', 'viewer': 'review', 'cc': 'view'}.get(ctx['role'], 'review and sign')
@@ -591,14 +622,18 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         elif kind == 'corrected':
             subject = 'Corrected: ' + subject
         button = ({'signer': 'REVIEW DOCUMENT', 'viewer': 'REVIEW DOCUMENT', 'cc': 'VIEW DOCUMENTS', 'in_person': 'START IN-PERSON SIGNING'}.get(ctx['role'], 'REVIEW DOCUMENT'), ctx['url'])
-        body = (f'<p style="margin:0 0 16px 0;"><strong style="font-size:15px;">{esc(sender)}</strong><br>'
-                f'<a href="mailto:{esc(ctx.get("sender_email", ""))}" style="color:#30476B;text-decoration:none;">{esc(ctx.get("sender_email", ""))}</a></p>')
+        initials = ''.join(w[0] for w in str(sender).split()[:2]).upper() or '·'
+        body = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;"><tr>'
+                f'<td width="44" valign="middle"><div style="width:38px;height:38px;border-radius:19px;background:{entity["color"]};color:#FFFFFF;font-family:Arial,sans-serif;'
+                f'font-size:14px;line-height:38px;text-align:center;font-weight:700;">{esc(initials)}</div></td>'
+                f'<td valign="middle" style="padding-left:10px;"><strong style="font-size:15px;color:#0F1B2D;">{esc(sender)}</strong><br>'
+                f'<a href="mailto:{esc(ctx.get("sender_email", ""))}" style="color:#5B6475;text-decoration:none;font-size:13px;">{esc(ctx.get("sender_email", ""))}</a></td></tr></table>')
         if ctx.get('message'):
             body += _paragraphs(ctx['message'])
         if ctx.get('note'):
             body += f'<p style="margin:0 0 12px 0;padding:10px 12px;background:#F2F6FC;border-left:3px solid {entity["color"]};"><strong>Note for you:</strong><br>{esc(ctx["note"]).replace(chr(10), "<br>")}</p>'
         if docs:
-            body += f'<p style="margin:0 0 6px 0;">Documents:</p><ul style="margin:0 0 12px 18px;padding:0;">{doc_list}</ul>'
+            body += _doc_rows(entity, docs)
         if ctx.get('access_code'):
             body += '<p style="margin:0 0 12px 0;">You will need the <strong>access code</strong> the sender gave you to open these documents.</p>'
         if ctx.get('expires') and kind != 'expiring':
@@ -619,7 +654,7 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         button = ('VIEW COMPLETED DOCUMENTS', ctx['url']) if ctx.get('url') else None
         attached = 'Your copy of the completed documents and the Certificate of Completion is attached.' if ctx.get('attached') else \
             'The completed documents are too large to attach. Use the button to download them.'
-        body = f'<p style="margin:0 0 12px 0;"><strong>{esc(ctx["recipient_name"])}</strong>,</p><p style="margin:0 0 12px 0;">{esc(attached)}</p><ul style="margin:0 0 12px 18px;padding:0;">{doc_list}</ul>'
+        body = f'<p style="margin:0 0 12px 0;">Hello <strong>{esc(ctx["recipient_name"])}</strong>,</p><p style="margin:0 0 14px 0;">{esc(attached)}</p>' + _doc_rows(entity, docs)
         lines = [headline, '', f"{ctx['recipient_name']},", '', attached] + [f'- {d}' for d in docs] + ([f"\nDownload: {ctx['url']}"] if ctx.get('url') else [])
         security = bool(ctx.get('url'))
     elif kind == 'host':
