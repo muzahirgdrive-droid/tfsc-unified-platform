@@ -337,6 +337,13 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   signature saved there before the update was kept and now prints at 60 % instead of full size, all other data
   identical. Fresh install: the 58 original checks passed and every screen opened without a browser error.
   Reloading any screen in the browser now always shows it (a reload could leave a screen empty before).
+- **Screenshot tour of every feature** (on a server installed from this ZIP, with fictional data: four people, six
+  clinics, envelopes in every state, templates and a bulk send) found and fixed: a second copy of a client created
+  when an Admin or the Super Admin worked on a team member's client (bulk send, New client, agreements saved by
+  name); the Templates list squeezed into a narrow column; the Home Start menu and the recipient role and Customize
+  menus cut off; "Opened a client profile" logged on every tab switch (now once per visit). After the fixes, every
+  screen, menu and dialog opened without a browser error, the client signed on a computer and on a phone, and a fresh
+  install passed the 58 original checks.
 - Memory after these runs: about 1.4 GB (the virus scanner 0.95 GB).
 
 **Not tested:** the Gmail verified tick and logo (they need your DNS records and a Verified Mark Certificate; the Email

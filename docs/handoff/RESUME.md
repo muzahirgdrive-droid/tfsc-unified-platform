@@ -181,7 +181,9 @@ Work through these in order; each: implement, test, commit + push, tick here, no
        original compliance ZIP, extracted only to the scratchpad and deleted after) uploaded in Company settings printed
        correctly, and the size limit was raised to 0.96 in after that check. The owner then approved sizes on previews
        of all nine signature pages: Naeem Abbas 60 %, Danish Ather 85 % of that box, now the defaults (migration 0005,
-       adjustable per company in Company settings). ZIP: handoff-out/TFSC-Agreements-Deploy-2026-10-24-<sha>.zip.
+       adjustable per company in Company settings). A screenshot tour of every feature (scratchpad tourkit/, fictional
+       demo data on a server from the ZIP) then found and fixed duplicate clients for Admins, the Templates layout,
+       clipped menus (Home Start, recipient role, Customize) and noisy profile-view logging. ZIP: handoff-out/TFSC-Agreements-Deploy-2026-10-24-<sha>.zip.
        Owner to do: save each company's signature in Admin > Company settings (or keep the installed images); confirm
        the 24-7 Consultancy signatory (the request listed Naeem Abbas as COO; Danish Ather kept); counsel review of
        LEGAL_REVIEW.md "Version 5"; DMARC enforcement + VMC + BIMI for the Gmail verified tick.
