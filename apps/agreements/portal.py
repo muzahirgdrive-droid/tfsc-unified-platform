@@ -439,9 +439,9 @@ import clients
 clients.install(app)
 import esign_bulk
 esign_bulk.install(app)
-companies.install(app)
 import company_admin
-company_admin.install(app)
+company_admin.install(app)   # before companies.install so its literal routes beat /api/admin/companies/{key}
+companies.install(app)
 import insights
 insights.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','login.js','sign.js','sign.css','verify.js'}

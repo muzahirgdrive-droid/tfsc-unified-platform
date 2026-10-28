@@ -78,8 +78,9 @@
     window.portalMark?.("#/admin/companies");
     const d = await api("/api/admin/companies");
     const view = $("admin-view"); view.replaceChildren();
-    view.append(head("Admin", "Company settings", "Who signs for each company, and the signature that prints on every agreement it issues. Changes apply to agreements generated from now on."));
-    view.append(el("div", "notice notice-info", "Defaults: Naeem Abbas, Chief Executive Officer, for Scribe Align LLC and Extended Health Services Inc.; Danish Ather, Chief Operating Officer, for 24-7 Consultancy LLC. Change any of them below."));
+    const h = head("Admin", "Company settings", "Add a contracting company — its letterhead, address, governing law, signatory and services — or change who signs for an existing one. Changes apply to agreements generated from now on.");
+    h.append(button("+ Add a company", () => companyForm(null), "button button-primary"));
+    view.append(h);
     const cards = el("div", "company-cards"); cards.style.marginTop = "18px";
     d.companies.forEach(c => cards.append(companyCard(c)));
     view.append(cards);
@@ -93,6 +94,12 @@
     about.append(el("p", "muted small", c.mailbox ? `Mailbox: ${c.mailbox}` : "No mailbox connected yet"));
     const name = input(c.signatory, "text", {maxLength: 150}), title = input(c.title, "text", {maxLength: 150});
     about.append(field("Authorized signatory", name), field("Title", title, `Prints under the signature as “Title: …”. Default: ${c.default_signatory}, ${c.default_title}.`));
+    if (c.custom) {
+      const row = el("div", "sig-tools"); row.style.marginTop = "6px";
+      row.append(button("Edit company details", async () => companyForm((await api(`/api/admin/companies/custom/${encodeURIComponent(c.key)}`)).company), "button button-quiet button-sm"),
+                 button("Remove", async () => { if (!confirm(`Hide ${c.short}? Its past agreements are kept; it will no longer be selectable for new ones.`)) return; await api(`/api/admin/companies/custom/${encodeURIComponent(c.key)}/active`, {active: false}); toast(`${c.short} removed.`); await companies(); }, "button button-ghost button-sm"));
+      about.append(row);
+    }
     const signing = el("div", "signing");
     signing.append(el("h3", "", "Signature on agreements"));
     const state = {image: null, kind: null, remove: false, scale: c.signature_scale};
@@ -129,6 +136,112 @@
     signing.append(save);
     card.append(about, signing);
     return card;
+  }
+
+  // ---- Add / edit a contracting company -------------------------------------------------
+  const readFile = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error("The file could not be read.")); r.readAsDataURL(f); });
+  function textarea(value, rows = 2) { const t = el("textarea"); t.rows = rows; t.value = value || ""; return t; }
+
+  function companyForm(existing) {
+    const editing = !!existing;
+    const view = $("admin-view"); view.replaceChildren();
+    const st = {letterhead: null, logo: null, signature: null};
+    const h = head("Admin · Company settings", editing ? `Edit ${existing.short}` : "Add a contracting company",
+      "New companies become selectable on Create agreement and Send. Agreements generate on this company's letterhead, address, governing law and signature. Existing companies and agreements are untouched.");
+    h.append(button("← Back to companies", () => companies().catch(fail), "button button-quiet"));
+    view.append(h);
+    const err = el("div", "alert alert-error"); err.hidden = true; view.append(err);
+    const showError = m => { err.textContent = m; err.hidden = false; err.scrollIntoView({behavior: "smooth", block: "center"}); };
+
+    const name = input(existing?.name || "", "text", {maxLength: 200}), short = input(existing?.short || "", "text", {maxLength: 120});
+    const display = input(existing?.display || "", "text", {maxLength: 200}), email = input(existing?.email || "", "email", {maxLength: 200});
+    const address = textarea(existing?.address), state = input(existing?.governing_state || "", "text", {maxLength: 60});
+    const tz = input(existing?.timezone || "America/New_York", "text", {maxLength: 60});
+    const signatory = input(existing?.signatory || "", "text", {maxLength: 150}), title = input(existing?.title || "", "text", {maxLength: 150});
+    const color = input(existing?.color || "#1D4277", "text", {maxLength: 9}), accent = input(existing?.accent || "#189BD2", "text", {maxLength: 9});
+    const docCB = {}; ["baa", "services", "nda"].forEach(t => { docCB[t] = input("", "checkbox"); docCB[t].checked = existing ? (existing.doc_types || []).includes(t) : true; });
+    const marginInputs = {}; ["top", "bottom", "left", "right"].forEach(k => { marginInputs[k] = input(existing?.margins?.[k] ?? "", "number", {step: "0.05", min: "0"}); });
+
+    // Letterhead
+    const lhNote = el("p", "field-note", editing ? "Leave empty to keep the current letterhead, or upload a new .docx to replace it." : "Upload the company letterhead (.docx). Keep the logo/artwork in the Word header or footer.");
+    const lhInput = el("input"); lhInput.type = "file"; lhInput.accept = ".docx";
+    lhInput.addEventListener("change", async () => { const f = lhInput.files[0]; if (!f) return;
+      try { st.letterhead = await readFile(f); const d = await api("/api/admin/companies/parse-letterhead", {letterhead: st.letterhead});
+        ["top", "bottom", "left", "right"].forEach(k => { marginInputs[k].value = d.margins[k]; });
+        lhNote.textContent = `Letterhead read: ${d.page_width}in x ${d.page_height}in page, ${d.headers} header(s), ${d.footers} footer(s). Margins pre-filled — Preview a sample and raise the top margin if the text overlaps the logo.`;
+      } catch (e) { showError(e.message); } });
+    const logoInput = el("input"); logoInput.type = "file"; logoInput.accept = "image/png,image/jpeg";
+    logoInput.addEventListener("change", async () => { const f = logoInput.files[0]; if (f) st.logo = await readFile(f); });
+    const sigInput = el("input"); sigInput.type = "file"; sigInput.accept = "image/png,image/jpeg";
+    const sigPreview = el("span", "small muted", existing?.has_signature ? "A signature is saved for this company." : "Optional. You can also add it later from the company card.");
+    sigInput.addEventListener("change", async () => { const f = sigInput.files[0]; if (f) { st.signature = await readFile(f); sigPreview.textContent = "New signature ready to save."; } });
+
+    // Services editor
+    const servicesBox = el("div");
+    function addService(s) {
+      const row = el("div", "svc-row"); const header = el("div", "svc-head"); const strong = el("strong", "", s?.name || "New service");
+      header.append(strong, button("Remove", () => row.remove(), "button button-ghost button-sm")); row.append(header);
+      const nm = input(s?.name || "", "text", {maxLength: 160}); nm.addEventListener("input", () => { strong.textContent = nm.value || "New service"; });
+      const cat = el("select"); [["recurring", "Recurring"], ["on_demand", "On demand"]].forEach(([v, t]) => cat.append(new Option(t, v))); cat.value = s?.category || "on_demand";
+      const g1 = el("div", "field-grid"); g1.append(field("Service name", nm), field("Billing type", cat)); row.append(g1);
+      const scope = textarea(s?.scope), resp = textarea(s?.responsibilities), excl = textarea(s?.exclusions);
+      row.append(field("Scope / description of the service", scope));
+      const g2 = el("div", "field-grid"); g2.append(field("Applicable responsibilities", resp), field("Exclusions / limits", excl)); row.append(g2);
+      row._get = () => ({name: nm.value, category: cat.value, scope: scope.value, responsibilities: resp.value, exclusions: excl.value});
+      servicesBox.append(row);
+    }
+    (existing?.services || []).forEach(addService); if (!existing) addService();
+
+    function panel(step, eyebrow, titleText, ...body) {
+      const p = el("section", "panel"); const heading = el("div", "panel-heading"); heading.append(el("div", "step", step));
+      const t = el("div"); t.append(el("p", "eyebrow", eyebrow), el("h2", "", titleText)); heading.append(t); p.append(heading);
+      const b = el("div", "panel-body"); body.forEach(x => b.append(x)); p.append(b); return p;
+    }
+    const grid2 = (...f) => { const g = el("div", "field-grid"); f.forEach(x => g.append(x)); return g; };
+
+    const column = el("div", "form-column"); column.style.display = "grid"; column.style.gap = "18px";
+    column.append(
+      panel("1", "IDENTITY", "Company name", grid2(field("Legal name *", name), field("Short name *", short)), grid2(field("Display name (as printed)", display), field("Notice / reply-to email", email))),
+      panel("2", "BRAND & LETTERHEAD", "Letterhead and logo", (() => { const w = el("div"); w.append(el("label", "", "Letterhead (.docx)"), lhInput, lhNote); return w; })(),
+            grid2((() => { const w = el("div", "field"); w.append(el("label", "", "Company logo (optional)"), logoInput, el("p", "field-note", "PNG or JPEG. A wordmark is generated if you skip it.")); return w; })(),
+                  grid2(field("Brand colour", color), field("Accent colour", accent)))),
+      panel("3", "LEGAL & SIGNATORY", "Address, governing law and signature", field("Registered / notice address *", address),
+            grid2(field("Governing law (US state) *", state, "Full state name, e.g. Delaware."), field("Time zone", tz, "e.g. America/New_York.")),
+            grid2(field("Authorized signatory *", signatory), field("Title *", title)),
+            (() => { const w = el("div", "field"); w.append(el("label", "", "Signature image (optional)"), sigInput, sigPreview); return w; })()),
+      (() => { const p = panel("4", "SERVICES THIS COMPANY OFFERS", "Services, scope & responsibilities", el("p", "section-description", "Each service contributes its own scope, responsibilities and exclusions to the Services Agreement."), servicesBox);
+               p.querySelector(".panel-body").append(button("+ Add a service", () => addService(), "button button-quiet add-custom")); return p; })(),
+      panel("5", "DOCUMENTS", "Agreement types this company can produce", (() => { const w = el("div", "permission-options");
+            [["baa", "Business Associate Agreement (BAA)"], ["services", "Services Agreement"], ["nda", "Mutual NDA"]].forEach(([k, label]) => { const l = el("label", "check-inline"); l.append(docCB[k], document.createTextNode(" " + label)); w.append(l); }); return w; })()),
+      (() => { const details = el("details", "settings-details"); details.append(el("summary", "", "Advanced: page margins (inches)"));
+               const dc = el("div", "details-content"); dc.append(el("p", "field-note", "Raise the top or bottom margin if the agreement text overlaps the letterhead's logo or footer. Preview a sample to check."),
+                 grid2(field("Top", marginInputs.top), field("Bottom", marginInputs.bottom)), grid2(field("Left", marginInputs.left), field("Right", marginInputs.right))); details.append(dc); return details; })(),
+    );
+
+    function collect() {
+      const margins = {}; ["top", "bottom", "left", "right"].forEach(k => { if (marginInputs[k].value !== "") margins[k] = Number(marginInputs[k].value); });
+      const payload = {name: name.value, short: short.value, display: display.value, email: email.value, address: address.value,
+        governing_state: state.value, timezone: tz.value, signatory: signatory.value, title: title.value, color: color.value, accent: accent.value,
+        services: [...servicesBox.children].map(r => r._get()).filter(s => s.name.trim()), doc_types: ["baa", "services", "nda"].filter(t => docCB[t].checked), margins};
+      if (st.letterhead) payload.letterhead = st.letterhead;
+      if (st.logo) payload.logo = st.logo;
+      if (st.signature) { payload.signature = st.signature; payload.signature_kind = "uploaded"; }
+      return payload;
+    }
+    const actions = el("div", "step-actions");
+    actions.append(button("← Back", () => companies().catch(fail), "button button-quiet"),
+      button("Preview a sample", async () => { try { if (!st.letterhead) { showError("Upload a letterhead first, then Preview a sample."); return; }
+        const d = await api("/api/admin/companies/preview", collect());
+        const bin = atob(d.pdf.split(",")[1]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], {type: "application/pdf"})); window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+        catch (e) { showError(e.message); } }, "button button-quiet"),
+      button(editing ? "Save changes" : "Create company", async () => { try {
+        if (!editing && !st.letterhead) { showError("Upload the company letterhead (.docx)."); return; }
+        await api(editing ? `/api/admin/companies/custom/${encodeURIComponent(existing.key)}` : "/api/admin/companies/new", collect());
+        toast(editing ? "Company saved." : "Company created."); await companies();
+      } catch (e) { showError(e.message); } }, "button button-primary"));
+
+    const wrap = el("div"); wrap.append(column, actions); view.append(wrap);
   }
   function uploadDialog(set) {
     let cleaned = null;

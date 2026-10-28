@@ -9,3 +9,9 @@
 @media (max-width:640px){.review-header{padding:12px 16px}.review-header .button{min-height:36px;padding:7px 10px;font-size:11px}.review-brand span{display:none}.review-main{padding:20px 16px 40px}.review-intro h1{font-size:22px}.review-buttons .button{flex:1 1 100%}}
 .login-sso{display:flex;width:100%;margin-top:12px;text-decoration:none}
 .nda-options{margin-top:17px}
+.perm-group{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b;margin:12px 0 2px}
+.perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.perm-grid label{display:flex;align-items:center;gap:8px;font-size:11px}
+.perm-helper{display:flex;gap:8px;margin:6px 0}
+#service-permissions{max-height:280px;overflow:auto;border:1px solid #e4eaf3;border-radius:8px;padding:8px 12px}
+#service-permissions-wrap{margin-bottom:18px}

@@ -52,6 +52,7 @@
     $('signature-status').textContent=entry.signature_available ? `${entry.signatory}'s signature is saved and signs the company side automatically.` : `No signature is saved for ${entry.signatory} yet. A Super Admin adds it in Admin › Company settings; until then the company signing line is left blank.`;
     $('signature-status').classList.toggle('field-warning',!entry.signature_available);
     if(resetAddress){ $('provider_address').value=entry.address; $('provider_email').value=entry.email; $('governing_state').value=entry.governing_state||''; $('governing_state').dispatchEvent(new Event('input',{bubbles:true})); }
+    window.setCompanyCatalog?.();   // show this company's own services (custom companies) or the standard catalogue
   };
   $('entity').addEventListener('change',()=>window.updateCompanyEntity(true));
   fetch('/api/config').then(r=>r.json()).then(c=>{entities=c.entities||[];if($('catalog-total')) $('catalog-total').textContent=String((c.catalog||[]).length);window.updateCompanyEntity(false);}).catch(()=>{});

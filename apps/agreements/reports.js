@@ -221,7 +221,7 @@
     grid.append(rangeControls(builder, () => {}));
     grid.lastChild.querySelector("label").textContent = `Date range · ${spec().date.toLowerCase()}`;
     if (catalog.companies.length > 1) { const c = select([["", "All companies"], ...catalog.companies.map(x => [x.name, x.short])], builder.entity); c.addEventListener("change", () => { builder.entity = c.value; }); grid.append(field("Company", c)); }
-    if (["envelopes", "recipients"].includes(builder.dataset)) { const st = select([["", "Any status"], ...catalog.statuses.map(x => [x.key, x.label])], builder.status); st.addEventListener("change", () => { builder.status = st.value; }); grid.append(field("Status", st)); }
+    if (["envelopes", "recipients", "agreement_log"].includes(builder.dataset)) { const st = select([["", "Any status"], ...catalog.statuses.map(x => [x.key, x.label])], builder.status); st.addEventListener("change", () => { builder.status = st.value; }); grid.append(field("Status", st)); }
     if (catalog.users.length > 1 && builder.dataset !== "clients") { const u = select([["", "Everyone"], ...catalog.users.map(x => [x.id, x.name])], builder.owner); u.addEventListener("change", () => { builder.owner = u.value; }); grid.append(field(builder.dataset === "activity" ? "User" : builder.dataset === "users" ? "User" : "Sender", u)); }
     if (builder.dataset !== "users") { const cl = input(builder.client, "search", {placeholder: "Name contains"}); cl.addEventListener("input", () => { builder.client = cl.value; }); grid.append(field("Client", cl)); }
     filt.append(grid);

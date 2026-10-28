@@ -307,6 +307,15 @@
     return `${moneyCents(priceCents(item.rate, item.quantity))} total`;
   }
   function entityState() { return (state.config?.entities || []).find(e => e.name === $("entity").value)?.governing_state || ""; }
+  // A custom company offers its own services; built-in companies use the standard catalogue.
+  window.setCompanyCatalog = function() {
+    const entry = (state.config?.entities || []).find(e => e.name === $("entity").value);
+    const next = (entry && Array.isArray(entry.services)) ? entry.services : (state.config?.catalog || []);
+    state.catalog = next;
+    for (const id of [...state.selected.keys()]) if (!next.some(s => s.id === id)) state.selected.delete(id);
+    if ($("catalog-total")) $("catalog-total").textContent = String(next.length);
+    renderCatalog(); renderSelected(); updateSummary();
+  };
   function chosenDocuments() { return [["generate-baa", "baa", "BAA"], ["generate-services", "services", "Services"], ["generate-nda", "nda", "NDA"]].filter(([id]) => $(id).checked); }
   function updateSummary() {
     const useBaa = $("generate-baa").checked, useServices = $("generate-services").checked;
@@ -626,10 +635,12 @@
     }
     try {
       const config = await api("/api/config");
-      if (!Array.isArray(config.catalog) || !config.catalog.length) throw new Error("The service catalog could not be loaded.");
-      state.config = config; state.catalog = config.catalog;
+      const anyServices = (Array.isArray(config.catalog) && config.catalog.length) || (config.entities || []).some(e => Array.isArray(e.services) && e.services.length);
+      if (!anyServices) throw new Error("The service catalog could not be loaded.");
+      state.config = config; state.catalog = config.catalog || [];
       const companySelect=$("entity");companySelect.replaceChildren();
       config.entities.forEach(entity=>{const option=el("option","",entity.name);option.value=entity.name;companySelect.append(option);});
+      window.setCompanyCatalog?.();
       await scriptsLoaded;
       window.portalReady?.(config);
       Object.entries(config.defaults || {}).forEach(([key, value]) => { if ($(key)) $(key).value = value; });

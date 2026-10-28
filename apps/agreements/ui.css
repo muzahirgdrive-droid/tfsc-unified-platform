@@ -671,3 +671,8 @@ body.tagging .app-footer{display:none}
 .login-help{text-align:center;font-size:13px;color:var(--ink-3);margin:10px 0 0}
 .login-copyright{font-size:12.5px;color:var(--ink-3);margin-top:20px}
 @media (max-width:900px){.login-shell{grid-template-columns:minmax(0,1fr)}.login-brand{padding:30px 24px}.login-pitch h2{font-size:26px}.login-companies{display:none}}
+/* add-company: service rows */
+.svc-row{border:1px solid var(--line);border-radius:12px;padding:16px 16px 4px;margin-bottom:12px;background:var(--surface-2)}
+.svc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.svc-head strong{font-size:14px;color:var(--ink)}
+.company-card .sig-tools .button-sm{margin-top:0}
