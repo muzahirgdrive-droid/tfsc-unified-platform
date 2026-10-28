@@ -250,6 +250,13 @@ def insights(c, actor: dict, entity: str, months: int, tz_name: str) -> dict:
 # ------------------------------------------------------------------ reports
 # (key, label, type) — type: text | datetime | number
 DATASETS = {
+    'agreement_log': {'label': 'Agreement log', 'admin': False, 'date': 'Sent',
+                      'columns': [('source', 'Source', 'text'), ('client', 'Client / Practice', 'text'),
+                                  ('baa', 'BAA', 'bool'), ('sa', 'SA', 'bool'), ('nda', 'NDA', 'bool'), ('pa', 'PA', 'bool'),
+                                  ('electronic', 'Electronic', 'bool'), ('executed', 'Executed', 'bool'),
+                                  ('sent', 'Sent date', 'datetime'), ('sender', 'Sent by', 'text'), ('status', 'Status', 'text'),
+                                  ('completed', 'Completed', 'datetime'), ('ref', 'Reference', 'text')],
+                      'default': ['source', 'client', 'baa', 'sa', 'nda', 'pa', 'electronic', 'executed', 'sent', 'sender', 'status', 'completed']},
     'envelopes': {'label': 'Envelopes', 'admin': False, 'date': 'Sent (or created, for drafts)',
                   'columns': [('ref', 'Envelope ID', 'text'), ('subject', 'Subject', 'text'), ('company', 'Company', 'text'), ('client', 'Client', 'text'),
                               ('sender', 'Sender', 'text'), ('status', 'Status', 'text'), ('created', 'Created', 'datetime'), ('sent', 'Sent', 'datetime'),
@@ -374,6 +381,33 @@ def rows_envelopes(c, actor, f, tz):
                'expires': r['expires_at'], 'last_change': r['updated'], '_link': {'envelope': r['id']}}
 
 
+def rows_agreement_log(c, actor, f, tz):
+    """The log of every agreement sent: company, client, which documents it carried, and its progress."""
+    cond = [envelope_scope(actor, f['entity']), envelopes.c.status.notin_(('template', 'draft')),
+            *_range(func.coalesce(envelopes.c.sent_at, envelopes.c.created), f), *_client_filter(envelopes.c.client_id, f)]
+    if f['status']:
+        cond.append(envelopes.c.status.in_(REPORT_STATUSES[f['status']]))
+    if f['owner']:
+        cond.append(envelopes.c.owner_id == f['owner'])
+    rows = [dict(r) for r in c.execute(select(envelopes.c.id, envelopes.c.ref, envelopes.c.entity, envelopes.c.client_id, envelopes.c.owner_id,
+                                              envelopes.c.status, envelopes.c.sent_at, envelopes.c.completed_at).where(*cond)
+                                       .order_by(func.coalesce(envelopes.c.sent_at, envelopes.c.created).desc()).limit(EXPORT_LIMIT + 1)).mappings()]
+    ids = [r['id'] for r in rows]
+    agreements = {}
+    for chunk in range(0, len(ids), 900):
+        part = ids[chunk:chunk + 900]
+        for d in c.execute(select(esign_documents.c.envelope_id, esign_documents.c.agreement).where(esign_documents.c.envelope_id.in_(part), esign_documents.c.agreement.isnot(None))):
+            agreements.setdefault(d[0], set()).add(d[1])
+    owners, clients = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows])
+    for r in rows:
+        kinds = agreements.get(r['id'], set())
+        yield {'source': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''),
+               'baa': 'baa' in kinds, 'sa': 'services' in kinds, 'nda': 'nda' in kinds, 'pa': 'pa' in kinds,
+               'electronic': r['sent_at'] is not None, 'executed': r['status'] == 'completed',
+               'sent': r['sent_at'], 'sender': owners.get(r['owner_id'], ''), 'status': STATUS_LABELS.get(r['status'], r['status']),
+               'completed': r['completed_at'], 'ref': r['ref'], '_link': {'envelope': r['id']}}
+
+
 def rows_recipients(c, actor, f, tz):
     cond = [envelope_scope(actor, f['entity']), envelopes.c.status.notin_(('template', 'draft')), *_range(envelopes.c.sent_at, f), *_client_filter(envelopes.c.client_id, f)]
     if f['status']:
@@ -488,8 +522,8 @@ def rows_users(c, actor, f, tz):
                'last_sign_in': last.get(r['id']), 'agreements': contracts.get(r['id'], 0), 'envelopes': sent.get(r['id'], 0), 'completed': done.get(r['id'], 0)}
 
 
-BUILDERS = {'envelopes': rows_envelopes, 'recipients': rows_recipients, 'agreements': rows_agreements, 'clients': rows_clients, 'activity': rows_activity,
-            'users': rows_users}
+BUILDERS = {'agreement_log': rows_agreement_log, 'envelopes': rows_envelopes, 'recipients': rows_recipients, 'agreements': rows_agreements,
+            'clients': rows_clients, 'activity': rows_activity, 'users': rows_users}
 
 
 def run_report(c, actor: dict, payload: dict, limit: int):
@@ -513,6 +547,8 @@ def run_report(c, actor: dict, payload: dict, limit: int):
 def screen_value(value, kind, tz):
     if kind == 'datetime':
         return text_time(value, tz)
+    if kind == 'bool':
+        return '✓' if value else ''
     return '' if value is None else value
 
 
@@ -531,7 +567,8 @@ def export_report(name, spec, columns, rows, f, actor, fmt) -> tuple[bytes, str,
         writer = csv.writer(out)
         writer.writerow([label for _, label, _ in columns])
         for row in rows:
-            writer.writerow([text_time(row.get(k), tz) if kind == 'datetime' else safe_text(row.get(k, '')) if isinstance(row.get(k), str) else
+            writer.writerow([text_time(row.get(k), tz) if kind == 'datetime' else ('Yes' if row.get(k) else '') if kind == 'bool' else
+                             safe_text(row.get(k, '')) if isinstance(row.get(k), str) else
                              ('' if row.get(k) is None else row.get(k)) for k, _, kind in columns])
         return ('﻿' + out.getvalue()).encode('utf-8'), 'text/csv; charset=utf-8', filename + '.csv'
     from openpyxl import Workbook
@@ -552,6 +589,8 @@ def export_report(name, spec, columns, rows, f, actor, fmt) -> tuple[bytes, str,
             v = row.get(k)
             if kind == 'datetime':
                 v = as_time(v, tz)
+            elif kind == 'bool':
+                v = 'Yes' if v else ''
             elif isinstance(v, str):
                 v = v[:32000]
             values.append(v)

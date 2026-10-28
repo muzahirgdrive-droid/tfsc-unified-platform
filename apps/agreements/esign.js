@@ -259,7 +259,7 @@
       entities.forEach(e => {
         const label = el("label", "company-option"); const radio = input(e.name, "radio", {name: "company", checked: e.name === chosen});
         radio.addEventListener("change", () => { chosen = e.name; });
-        const img = el("img"); img.src = `/assets/brand/${e.logo || "scribe.png"}`; img.alt = "";
+        const img = el("img"); img.src = e.logo || "/assets/brand/scribe.png"; img.alt = "";
         const text = el("span"); text.append(el("strong", "", e.short || e.name), el("small", "", e.name));
         label.append(radio, img, text); grid.append(label);
       });

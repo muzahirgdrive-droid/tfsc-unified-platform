@@ -15,7 +15,7 @@ def password_hash(password):
 def verify(encoded,password):
     try:return hasher.verify(encoded,password)
     except (VerificationError,InvalidHashError):return False
-def public(user):return {k:user[k] for k in ('id','email','name','role','admin_id','companies','active','reset_required')}
+def public(user):return {k:user[k] for k in ('id','email','name','role','admin_id','companies','active','reset_required')}|{'services':user.get('services')}
 def scope(actor,column):
     if actor['role']=='super_admin':return True
     if actor['role']=='admin':return column.in_(select(db.users.c.id).where(or_(db.users.c.id==actor['id'],db.users.c.admin_id==actor['id'])))

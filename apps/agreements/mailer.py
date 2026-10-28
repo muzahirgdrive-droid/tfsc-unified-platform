@@ -32,6 +32,7 @@ import threading
 import time
 from email.message import EmailMessage
 from email.utils import format_datetime, formataddr, getaddresses, parseaddr
+from pathlib import Path
 
 from sqlalchemy import or_, select, update
 
@@ -487,7 +488,10 @@ INK = '#0B1F33'
 
 
 def logo_png(entity: dict) -> bytes:
-    return (BRAND_DIR / entity['logo']).read_bytes()
+    path = entity.get('logo_path')
+    if path and Path(path).is_file():
+        return Path(path).read_bytes()
+    return (BRAND_DIR / 'scribe.png').read_bytes()   # fallback if a custom company has no logo yet
 
 
 @functools.lru_cache(maxsize=8)

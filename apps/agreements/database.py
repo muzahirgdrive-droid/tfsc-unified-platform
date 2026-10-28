@@ -16,7 +16,8 @@ users=Table('users',meta,
     Column('name',String(150),nullable=False),Column('password',Text,nullable=False),
     Column('role',String(20),nullable=False),Column('admin_id',String(32),ForeignKey('users.id'),index=True),
     Column('companies',JSON,nullable=False),Column('active',Boolean,nullable=False,default=True),
-    Column('reset_required',Boolean,nullable=False,default=False),Column('created',Float,nullable=False))
+    Column('reset_required',Boolean,nullable=False,default=False),Column('created',Float,nullable=False),
+    Column('services',JSON,nullable=True))  # allowed service ids; NULL/empty: every service the company offers
 sessions=Table('sessions',meta,Column('token',String(64),primary_key=True),
     Column('user_id',String(32),ForeignKey('users.id'),nullable=False,index=True),
     Column('csrf',String(64),nullable=False),Column('expires',Float,nullable=False,index=True))
@@ -58,6 +59,21 @@ company_profiles=Table('company_profiles',meta,Column('entity',String(100),prima
 saved_reports=Table('saved_reports',meta,Column('id',String(32),primary_key=True),
     Column('owner_id',String(32),ForeignKey('users.id'),nullable=False,index=True),Column('name',String(120),nullable=False),
     Column('definition',JSON,nullable=False),Column('created',Float,nullable=False),Column('updated',Float,nullable=False))
+# Contracting companies a Super Admin adds from the app (letterhead, address, governing law, signatory, services).
+# The three built-in companies stay in entities.py; this table holds only the ones added later. Letterhead and logo
+# are kept in the database so backups include them. Geometry (width/top/bottom/left/right) is in twips (dxa).
+companies=Table('companies',meta,Column('key',String(40),primary_key=True),
+    Column('name',String(200),unique=True,nullable=False),Column('short',String(120),nullable=False),
+    Column('display',String(200),nullable=False),Column('address',Text,nullable=False),Column('email',String(200),nullable=False,default=''),
+    Column('governing_state',String(60),nullable=False),Column('timezone',String(60),nullable=False),
+    Column('color',String(9),nullable=False),Column('accent',String(9),nullable=False),Column('dark',String(9),nullable=False),
+    Column('signatory',String(150),nullable=False),Column('title',String(150),nullable=False),Column('signature_scale',Float,nullable=False,default=0.85),
+    Column('letterhead',LargeBinary,nullable=False),Column('letterhead_sha256',String(64),nullable=False),
+    Column('logo',LargeBinary,nullable=True),Column('logo_ext',String(8),nullable=True),
+    Column('width',Integer,nullable=False),Column('top',Integer,nullable=False),Column('bottom',Integer,nullable=False),
+    Column('left',Integer,nullable=False),Column('right',Integer,nullable=False),
+    Column('services',JSON,nullable=False),Column('doc_types',JSON,nullable=False),Column('active',Boolean,nullable=False,default=True),
+    Column('created',Float,nullable=False),Column('created_by',String(32),ForeignKey('users.id'),nullable=True),Column('updated',Float,nullable=False))
 Index('ix_client_owner_updated',clients.c.owner_id,clients.c.updated,clients.c.id)
 Index('ix_contract_client_created',contracts.c.client_id,contracts.c.created,contracts.c.id)
 Index('ix_contract_owner_created',contracts.c.owner_id,contracts.c.created)

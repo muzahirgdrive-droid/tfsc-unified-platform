@@ -170,9 +170,19 @@ def favicon():return Response(status_code=204)
 def config(request:Request):
     with db.engine.connect() as c:
         a=sec.get_actor(request,c);people=companies.signatories(c);workspace=companies.public_workspace(c)
-    # Signatory and title come from Company settings; signature_available says whether generated agreements carry a signature.
-    entities=[{k:e[k] for k in ('name','short','key','address','email','governing_state','color','accent','logo')} | {'signatory':people[e['name']]['signatory'],'title':people[e['name']]['title'],'signature_available':people[e['name']]['source'] is not None} for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
-    return dict(catalog=legacy.CATALOG,defaults=legacy.DEFAULTS,states=sorted(legacy.STATES),entities=entities,output_root=str(db.OUTPUT),version=VERSION,
+    # A user may be limited to a subset of services (Admin > Users). Empty / absent means every service is allowed.
+    allowed=a.get('services') or None
+    def permit(services):
+        return services if not allowed else [s for s in services if s.get('id') in allowed]
+    def entity_public(e):
+        out={k:e[k] for k in ('name','short','key','address','email','governing_state','color','accent')}
+        out['logo']=e['logo_url']; out['custom']=e.get('custom',False); out['doc_types']=e.get('doc_types') or ['baa','services','nda']
+        # Custom companies carry their own services; built-ins use the standard catalogue. Both are filtered to the user's allowed set.
+        out['services']=permit(e['services']) if e.get('services') else None
+        out.update(signatory=people[e['name']]['signatory'],title=people[e['name']]['title'],signature_available=people[e['name']]['source'] is not None)
+        return out
+    entities=[entity_public(e) for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
+    return dict(catalog=permit(legacy.CATALOG),defaults=legacy.DEFAULTS,states=sorted(legacy.STATES),entities=entities,output_root=str(db.OUTPUT),version=VERSION,
         user=sec.public(a),local=db.LOCAL,can_manage_signatures=a['role']=='super_admin',crm=bool(os.getenv('TFSC_CRM_URL')),workspace=workspace)
 
 def client_allowed(c,a,id):
@@ -267,6 +277,9 @@ def generate(payload:dict,request:Request):
             if c.dialect.name=='postgresql':
                 c.execute(select(db.users.c.id).where(db.users.c.id==a['id']).with_for_update()).first()
             d=legacy.validate(payload);sec.ensure_company(a,d['entity'])
+            if a.get('services'):   # a user limited to certain services cannot put others on an agreement
+                blocked=[s['name'] for s in d.get('services',[]) if s['id'] not in a['services']]
+                if blocked:raise HTTPException(403,'You are not permitted to offer: '+', '.join(blocked)+'.')
             d['output_root']=str(output_path(d['output_root'],a))
             old=c.execute(select(db.jobs).where(db.jobs.c.owner_id==a['id'],db.jobs.c.key==key)).mappings().first()
             if old:return {'job_id':old['id'],'state':old['state']}
@@ -360,7 +373,9 @@ def create_user(payload:dict,request:Request):
             if not manager or not set(companies)<=set(manager['companies']):raise HTTPException(400,'Select an active administrator with the requested company permissions.')
         if role!='user':admin_id=None
         password=secrets.token_urlsafe(15)
-        row=dict(id=db.uid(),email=valid_email(payload.get('email')),name=legacy.clean(payload.get('name'),'Name',True,150),password=sec.password_hash(password),role=role,admin_id=admin_id,companies=list(dict.fromkeys(companies)),active=True,reset_required=True,created=time.time())
+        import company_admin
+        services=company_admin.clean_user_services(payload.get('services')) if 'services' in payload else None
+        row=dict(id=db.uid(),email=valid_email(payload.get('email')),name=legacy.clean(payload.get('name'),'Name',True,150),password=sec.password_hash(password),role=role,admin_id=admin_id,companies=list(dict.fromkeys(companies)),active=True,reset_required=True,created=time.time(),services=services)
         try:c.execute(db.users.insert().values(**row))
         except IntegrityError:raise HTTPException(409,'An account with this email already exists.')
         db.log(c,a,'user.created',detail={'user_id':row['id'],'role':role,'companies':companies,'admin_id':admin_id})
@@ -385,6 +400,9 @@ def update_user(id:str,payload:dict,request:Request):
             if not payload['active'] and target['role']=='super_admin':
                 raise HTTPException(400,'Super administrator accounts cannot be disabled through this screen.')
             values['active']=payload['active']
+        if 'services' in payload:
+            import company_admin
+            values['services']=company_admin.clean_user_services(payload['services'])
         if payload.get('reset_password'):
             temporary=secrets.token_urlsafe(15);values.update(password=sec.password_hash(temporary),reset_required=True)
         if not values:raise HTTPException(400,'No changes supplied.')
@@ -422,6 +440,8 @@ clients.install(app)
 import esign_bulk
 esign_bulk.install(app)
 companies.install(app)
+import company_admin
+company_admin.install(app)
 import insights
 insights.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','login.js','sign.js','sign.css','verify.js'}

@@ -87,9 +87,10 @@ def date_value(value, label):
         raise ValueError(f'{label} must be a valid date.') from None
 
 
-def service_value(item, custom=False):
+def service_value(item, custom=False, catalog=None):
     if not isinstance(item, dict):
         raise ValueError('Each selected service must contain its pricing details.')
+    catalog = CATALOG_MAP if catalog is None else catalog
     out = {}
     if custom:
         for field in ('name', 'scope', 'responsibilities', 'exclusions'):
@@ -101,10 +102,14 @@ def service_value(item, custom=False):
         allowed = ('fte','pte','unit','fixed','consultancy') if out['category'] == 'recurring' else ('one_time','two_installments')
     else:
         service_id = item.get('id')
-        if service_id not in CATALOG_MAP:
+        if service_id not in catalog:
             raise ValueError('An unknown service was selected. Reload the application.')
-        spec = CATALOG_MAP[service_id]
+        spec = catalog[service_id]
         out.update(id=service_id, name=spec['name'], category=spec['category'])
+        # A custom company's own services carry their scope, responsibilities and exclusions into the document.
+        for extra in ('scope', 'responsibilities', 'exclusions'):
+            if spec.get(extra):
+                out[extra] = spec[extra]
         allowed = [m['id'] for m in spec['models']]
     out['model'] = item.get('model')
     if out['model'] not in allowed:
@@ -169,7 +174,9 @@ def validate(payload, draft=False):
         data['services'] = raw_services
         data['custom_services'] = raw_custom
     elif 'services' in data['document_types']:
-        data['services'] = [service_value(s) for s in raw_services]
+        # A custom company offers its own services; built-in companies use the standard catalogue.
+        effective = {s['id']: s for s in entity['services']} if entity.get('services') else CATALOG_MAP
+        data['services'] = [service_value(s, catalog=effective) for s in raw_services]
         data['custom_services'] = [service_value(s,True) for s in raw_custom]
         if not data['services'] and not data['custom_services']:
             raise ValueError('Select at least one service for a Services Agreement.')

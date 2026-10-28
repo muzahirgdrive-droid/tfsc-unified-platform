@@ -90,8 +90,8 @@ def _table(headers, rows, signature=False, width=WIDTH):
     return table+'</w:tbl>'
 
 
-def _signature(text, data, contract_id, final_clause='', source_exact=False):
-    entity=get_entity(data.get('entity'))
+def _signature(text, data, contract_id, final_clause='', source_exact=False, entity=None):
+    entity=entity or get_entity(data.get('entity'))
     client = _text(data.get('client_name'))
     date = _text(data.get('effective_date'))
     try:
@@ -134,12 +134,12 @@ def _write_package(path, parts, infos):
             temporary.unlink()
 
 
-def generate_docx(blocks, data, contract_id, path):
+def generate_docx(blocks, data, contract_id, path, entity=None):
     """Create editable DOCX without touching the retained letterhead."""
-    entity=get_entity(data.get('entity'))
-    template=APP/'assets'/entity['template']
+    entity=entity or get_entity(data.get('entity'))
+    template=Path(entity['template_path'])
     if hashlib.sha256(template.read_bytes()).hexdigest() != entity['sha256']:
-        raise RuntimeError('The retained letterhead changed. Restore assets/letterhead.docx or have the layout revalidated before generating contracts.')
+        raise RuntimeError('The retained letterhead changed. Restore the company letterhead or have the layout revalidated before generating contracts.')
     if not blocks:
         raise ValueError('The agreement has no clauses.')
     with ZipFile(template) as z:
@@ -207,7 +207,7 @@ def generate_docx(blocks, data, contract_id, path):
             final_clause = content.pop() if content else ''
             if content and re.search(r'w:val="SAHeading[23]"', content[-1]):
                 final_clause = content.pop() + final_clause
-            content.append(_signature(text,data,contract_id,final_clause,block.get('source_exact',False)))
+            content.append(_signature(text,data,contract_id,final_clause,block.get('source_exact',False),entity=entity))
         else:
             raise ValueError(f'Unsupported document block: {kind}')
     if signature_count!=1:
