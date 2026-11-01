@@ -140,18 +140,38 @@ def validate_logo(value) -> tuple[bytes, str]:
 
 
 def make_logo(short: str, color: str) -> tuple[bytes, str]:
-    """A simple wordmark PNG used when no logo image is supplied, so emails and the signing page still show a mark."""
+    """A simple wordmark PNG used when no logo image is supplied, so emails and the signing page still show a mark.
+
+    Long names wrap onto up to three balanced lines instead of being cut off."""
     from PIL import Image, ImageDraw, ImageFont
-    text = (short or 'Company').strip()[:28]
+    words = (short or 'Company').split() or ['Company']
     try:
         font = ImageFont.truetype(str(db.APP / 'assets' / 'fonts' / 'Poppins-SemiBold.ttf'), 72)
     except Exception:
         font = ImageFont.load_default()
     scratch = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
-    box = scratch.textbbox((0, 0), text, font=font)
-    w, h = box[2] - box[0] + 24, box[3] - box[1] + 24
-    image = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-    ImageDraw.Draw(image).text((12 - box[0], 12 - box[1]), text, font=font, fill=color)
+
+    def width(text):
+        return scratch.textbbox((0, 0), text, font=font)[2]
+    lines = [' '.join(words)]
+    if width(lines[0]) > 900 and len(words) > 1:
+        target = width(lines[0]) / min(3, len(words))
+        lines, line = [], ''
+        for word in words:
+            trial = (line + ' ' + word).strip()
+            if line and width(trial) > target * 1.15 and len(lines) < 2:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        lines.append(line)
+    boxes = [scratch.textbbox((0, 0), text, font=font) for text in lines]
+    line_h = max(b[3] - b[1] for b in boxes) + 14
+    w = max(b[2] - b[0] for b in boxes) + 24
+    image = Image.new('RGBA', (w, line_h * len(lines) + 10), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    for i, (text, box) in enumerate(zip(lines, boxes)):
+        draw.text(((w - (box[2] - box[0])) / 2 - box[0], 12 + i * line_h - box[1]), text, font=font, fill=color)
     out = io.BytesIO()
     image.save(out, 'PNG', optimize=True)
     return out.getvalue(), 'png'

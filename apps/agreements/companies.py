@@ -13,8 +13,10 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import re
 import time
+import xml.etree.ElementTree as ET
 
 import httpx
 from fastapi import Body, HTTPException, Request
@@ -312,6 +314,176 @@ def email_trust(domain: str, selector: str, smtp_host: str = '') -> dict:
     return {'domain': domain, 'selector': selector, 'provider': provider, 'checks': checks, 'checked': time.time()}
 
 
+# ------------------------------------------------------------------ verified sender: BIMI logo and mark certificate
+# Gmail shows a company's logo next to its emails once the domain enforces DMARC and publishes a BIMI record pointing at
+# an SVG Tiny PS logo; the blue verified tick additionally needs a Verified Mark Certificate (VMC, which requires a
+# registered trademark). A Common Mark Certificate (CMC) shows the logo without the tick. The portal stores both files
+# and serves them over HTTPS at /bimi/<company>.svg and /bimi/<company>.pem, so only one DNS record is needed.
+BIMI_SVG_LIMIT, BIMI_PEM_LIMIT = 32_768, 65_536
+BIMI_EKU = '1.3.6.1.5.5.7.3.31'              # id-kp-BrandIndicatorforMessageIdentification
+MARK_TYPE_OID = '1.3.6.1.4.1.53087.1.13'      # mark type in the certificate subject
+VMC_MARKS = ('Registered Mark', 'Government Mark')
+CMC_MARKS = ('Prior Use Mark', 'Modified Registered Mark')
+SVG_FORBIDDEN = ('script', 'foreignObject', 'image', 'animate', 'animateMotion', 'animateTransform', 'animateColor', 'set', 'iframe', 'video', 'audio')
+
+
+def _local(tag: str) -> str:
+    return str(tag).rsplit('}', 1)[-1]
+
+
+def bimi_svg_check(text) -> dict:
+    """Validate a BIMI logo against the SVG Tiny Portable/Secure rules mailbox providers enforce."""
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError('Choose the SVG logo file.')
+    raw = text.encode('utf-8')
+    if len(raw) > BIMI_SVG_LIMIT:
+        raise ValueError('The BIMI logo must be 32 KB or smaller.')
+    if re.search(r'<!\s*(DOCTYPE|ENTITY)', text, re.I):
+        raise ValueError('The logo must not contain a DOCTYPE or entities. Export it again as SVG Tiny PS.')
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        raise ValueError('That file is not a valid SVG image.') from None
+    if _local(root.tag) != 'svg':
+        raise ValueError('That file is not an SVG image.')
+    problems, warnings = [], []
+    if root.get('version') != '1.2':
+        problems.append('the <svg> element needs version="1.2"')
+    if root.get('baseProfile') != 'tiny-ps':
+        problems.append('the <svg> element needs baseProfile="tiny-ps"')
+    if root.get('x') is not None or root.get('y') is not None:
+        problems.append('the <svg> element must not have x or y attributes')
+    if not any(_local(child.tag) == 'title' for child in root):
+        problems.append('a <title> with the company name is required')
+    for node in root.iter():
+        name = _local(node.tag)
+        if name in SVG_FORBIDDEN:
+            problems.append(f'<{name}> elements are not allowed')
+        for attr, value in node.attrib.items():
+            if _local(attr).lower().startswith('on'):
+                problems.append('event handlers are not allowed')
+            if _local(attr) == 'href' and not str(value).startswith('#'):
+                problems.append('links to other files are not allowed')
+    box = (root.get('viewBox') or '').replace(',', ' ').split()
+    try:
+        if len(box) != 4 or abs(float(box[2]) - float(box[3])) > 0.5:
+            warnings.append('a square logo (equal viewBox width and height) is recommended')
+    except ValueError:
+        warnings.append('the viewBox could not be read')
+    if problems:
+        raise ValueError('The logo is not SVG Tiny PS yet: ' + '; '.join(sorted(set(problems))) + '. Ask your designer to export it as SVG Tiny PS.')
+    return {'size': len(raw), 'warnings': warnings}
+
+
+def bimi_cert_info(pem) -> dict:
+    """What kind of mark certificate this is (VMC gives the tick, CMC the logo only), who issued it and until when."""
+    if not isinstance(pem, str) or '-----BEGIN CERTIFICATE-----' not in pem:
+        raise ValueError('Choose the certificate file (.pem) your certificate authority issued.')
+    if len(pem.encode()) > BIMI_PEM_LIMIT:
+        raise ValueError('The certificate file must be 64 KB or smaller.')
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+    except ImportError:          # the details are informational; the file is still served as uploaded
+        return {'kind': 'unknown', 'note': 'Saved. The certificate details could not be read on this server.'}
+    try:
+        certs = x509.load_pem_x509_certificates(pem.encode())
+    except Exception:  # noqa: BLE001
+        raise ValueError('The certificate could not be read. Upload the PEM file with the full chain from your certificate authority.') from None
+    leaf = certs[0]
+    try:
+        eku = [o.dotted_string for o in leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value]
+    except x509.ExtensionNotFound:
+        eku = []
+    try:
+        names = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName)
+    except x509.ExtensionNotFound:
+        names = []
+    mark = next((str(a.value) for a in leaf.subject if a.oid.dotted_string == MARK_TYPE_OID), '')
+    org = next((str(a.value) for a in leaf.subject if a.oid == NameOID.ORGANIZATION_NAME), '')
+    issuer = next((str(a.value) for a in leaf.issuer if a.oid == NameOID.ORGANIZATION_NAME), '') or leaf.issuer.rfc4514_string()
+    if BIMI_EKU not in eku and not mark:
+        raise ValueError('This is not a BIMI mark certificate. Upload the Verified Mark Certificate (VMC) or Common Mark Certificate (CMC).')
+    until = leaf.not_valid_after_utc.timestamp()
+    kind = 'VMC' if mark in VMC_MARKS else 'CMC' if mark in CMC_MARKS else 'BIMI'
+    return {'kind': kind, 'mark_type': mark, 'organization': org, 'issuer': issuer, 'domains': list(names), 'valid_until': until,
+            'expired': until < time.time(), 'chain': len(certs)}
+
+
+def bimi_load(c, key: str) -> dict:
+    value = c.execute(select(db.settings.c.value).where(db.settings.c.key == f'bimi:{key}')).scalar()
+    return value if isinstance(value, dict) else {}
+
+
+def bimi_save(c, key: str, value: dict) -> None:
+    if c.execute(select(db.settings.c.key).where(db.settings.c.key == f'bimi:{key}')).first():
+        c.execute(db.settings.update().where(db.settings.c.key == f'bimi:{key}').values(value=value))
+    else:
+        c.execute(db.settings.insert().values(key=f'bimi:{key}', value=value))
+
+
+def portal_origin(request: Request | None = None) -> str:
+    origin = os.getenv('TFSC_ORIGIN', '').rstrip('/')
+    return origin or (str(request.base_url).rstrip('/') if request is not None else '')
+
+
+def bimi_status(c, entity: dict, origin: str) -> dict:
+    data = bimi_load(c, entity['key'])
+    logo_url, cert_url = f"{origin}/bimi/{entity['key']}.svg", f"{origin}/bimi/{entity['key']}.pem"
+    has_logo, has_cert = bool(data.get('svg')), bool(data.get('pem'))
+    value = f'v=BIMI1; l={logo_url}; a={cert_url}' if has_cert else f'v=BIMI1; l={logo_url};'
+    return {'company': entity['key'], 'logo_url': logo_url, 'cert_url': cert_url, 'has_logo': has_logo, 'has_cert': has_cert,
+            'logo': data.get('logo'), 'cert': data.get('cert'), 'https': origin.startswith('https://'),
+            'record': {'type': 'TXT', 'host': 'default._bimi', 'value': value}, 'updated': data.get('updated')}
+
+
+def bimi_update(c, actor: dict, entity: dict, payload: dict) -> None:
+    data = bimi_load(c, entity['key'])
+    changed = []
+    if payload.get('remove_logo') is True:
+        data.pop('svg', None); data.pop('logo', None); changed.append('logo removed')
+    elif payload.get('svg') is not None:
+        data['logo'] = bimi_svg_check(payload['svg']); data['svg'] = payload['svg']; changed.append('logo')
+    if payload.get('remove_cert') is True:
+        data.pop('pem', None); data.pop('cert', None); changed.append('certificate removed')
+    elif payload.get('pem') is not None:
+        data['cert'] = bimi_cert_info(payload['pem']); data['pem'] = payload['pem']; changed.append('certificate')
+    if not changed:
+        raise ValueError('Choose a logo or a certificate to upload.')
+    data['updated'] = time.time()
+    bimi_save(c, entity['key'], data)
+    db.log(c, actor, 'email_trust.bimi_updated', detail={'entity': entity['name'], 'changed': changed})
+
+
+def verified_tick(checks: list, status: dict) -> dict:
+    """What still stands between this company's emails and Gmail's logo + blue verified tick."""
+    state = {x['key']: x for x in checks}
+    blockers = []
+    if state.get('spf', {}).get('state') != 'ok':
+        blockers.append('Publish a single SPF record.')
+    if state.get('dkim', {}).get('state') != 'ok':
+        blockers.append('Turn on DKIM signing at the mail provider.')
+    if state.get('dmarc', {}).get('state') != 'ok':
+        blockers.append('Move DMARC to p=quarantine or p=reject at 100 %.')
+    if not status['https']:
+        blockers.append('The portal must be reached over HTTPS so Gmail can fetch the logo and certificate.')
+    if not status['has_logo']:
+        blockers.append('Upload the logo as SVG Tiny PS.')
+    cert = status.get('cert') or {}
+    if not status['has_cert']:
+        blockers.append('Upload the Verified Mark Certificate (VMC). It needs a registered trademark of the logo.')
+    elif cert.get('expired'):
+        blockers.append('The mark certificate has expired. Renew it and upload the new file.')
+    elif cert.get('kind') == 'CMC':
+        blockers.append('This is a Common Mark Certificate: Gmail shows the logo but not the blue tick. The tick needs a VMC.')
+    published = state.get('bimi', {}).get('found', '')
+    if not published:
+        blockers.append('Publish the BIMI record shown below at default._bimi.')
+    elif status['logo_url'] not in published or (status['has_cert'] and status['cert_url'] not in published):
+        blockers.append('The published BIMI record points elsewhere. Replace it with the record shown below.')
+    return {'ready': not blockers, 'blockers': blockers}
+
+
 # ------------------------------------------------------------------ routes
 def install(app) -> None:  # noqa: C901  (route table)
     def super_admin(request, c):
@@ -366,6 +538,35 @@ def install(app) -> None:  # noqa: C901  (route table)
             a = super_admin(request, c)
             return {'workspace': save_workspace(c, a, payload)}
 
+    @app.get('/api/admin/bimi/{key}')
+    def api_bimi(key: str, request: Request):
+        with db.engine.connect() as c:
+            super_admin(request, c)
+            return bimi_status(c, entity_by_key(key), portal_origin(request))
+
+    @app.post('/api/admin/bimi/{key}')
+    def api_bimi_update(key: str, request: Request, payload: dict = Body(...)):
+        with db.engine.begin() as c:
+            a = super_admin(request, c)
+            entity = entity_by_key(key)
+            bimi_update(c, a, entity, payload)
+            return bimi_status(c, entity, portal_origin(request))
+
+    @app.get('/bimi/{name}')
+    def bimi_file(name: str):
+        """Public on purpose: mailbox providers fetch the logo and certificate from here."""
+        key, _, ext = name.rpartition('.')
+        if ext not in ('svg', 'pem') or not re.fullmatch(r'[a-z0-9_-]{1,40}', key):
+            raise HTTPException(404, 'Not found.')
+        with db.engine.connect() as c:
+            data = bimi_load(c, key)
+        body = data.get('svg' if ext == 'svg' else 'pem')
+        if not body:
+            raise HTTPException(404, 'Not found.')
+        kind = 'image/svg+xml' if ext == 'svg' else 'application/pem-certificate-chain'
+        return Response(body, media_type=kind, headers={'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff',
+                                                        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'"})
+
     @app.post('/api/admin/email-trust')
     def api_email_trust(request: Request, payload: dict = Body(...)):
         import mailer
@@ -376,4 +577,7 @@ def install(app) -> None:  # noqa: C901  (route table)
             domain = payload.get('domain') or (box['address'].split('@')[-1] if box['address'] else '')
             db.log(c, a, 'email_trust.checked', detail={'entity': entity['name'], 'domain': domain})
         result = email_trust(str(domain), str(payload.get('selector') or ''), box.get('smtp_host', ''))
-        return result | {'company': entity['key'], 'mailbox': box['address'], 'display_name': box['display_name']}
+        with db.engine.connect() as c:
+            status = bimi_status(c, entity, portal_origin(request))
+        return result | {'company': entity['key'], 'mailbox': box['address'], 'display_name': box['display_name'], 'bimi': status,
+                         'verified_tick': verified_tick(result['checks'], status)}

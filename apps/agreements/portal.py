@@ -175,7 +175,7 @@ def config(request:Request):
     def permit(services):
         return services if not allowed else [s for s in services if s.get('id') in allowed]
     def entity_public(e):
-        out={k:e[k] for k in ('name','short','key','address','email','governing_state','color','accent')}
+        out={k:e[k] for k in ('name','short','key','address','email','governing_state','color','accent','dark')}
         out['logo']=e['logo_url']; out['custom']=e.get('custom',False); out['doc_types']=e.get('doc_types') or ['baa','services','nda']
         # Custom companies carry their own services; built-ins use the standard catalogue. Both are filtered to the user's allowed set.
         out['services']=permit(e['services']) if e.get('services') else None

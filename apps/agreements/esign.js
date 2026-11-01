@@ -252,20 +252,8 @@
       await go(() => openEditor(env.id, env));
     };
     if (entity || entities.length === 1) return create(entity || entities[0].name, clientId);
-    let chosen = entities[0].name, client = clientId;
-    dialog("Send an envelope", body => {
-      body.append(el("p", "portal-note", "Choose the company the documents come from. Its logo, colours and mailbox are used for every email the recipients receive."));
-      const grid = el("div", "company-pick");
-      entities.forEach(e => {
-        const label = el("label", "company-option"); const radio = input(e.name, "radio", {name: "company", checked: e.name === chosen});
-        radio.addEventListener("change", () => { chosen = e.name; });
-        const img = el("img"); img.src = e.logo || "/assets/brand/scribe.png"; img.alt = "";
-        const text = el("span"); text.append(el("strong", "", e.short || e.name), el("small", "", e.name));
-        label.append(radio, img, text); grid.append(label);
-      });
-      body.append(grid);
-      body.append(field("Client (optional)", clientPicker(c => { client = c?.id || null; })), el("p", "field-note", "With a client, their generated agreements and files are offered as documents to send."));
-    }, "Continue", () => create(chosen, client));
+    // The same full-page company picker as Create agreement; the client is chosen in the envelope itself.
+    window.openCompanyPicker({purpose: "send", onPick: name => create(name, clientId).catch(fail), onCancel: () => window.portalRoute("#/agreements")});
   }
   window.esignStart = () => startEnvelope().catch(fail);
 

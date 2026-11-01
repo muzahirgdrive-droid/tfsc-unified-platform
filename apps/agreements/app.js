@@ -314,8 +314,121 @@
     state.catalog = next;
     for (const id of [...state.selected.keys()]) if (!next.some(s => s.id === id)) state.selected.delete(id);
     if ($("catalog-total")) $("catalog-total").textContent = String(next.length);
+    renderLock(entry); applyTheme(entry);
     renderCatalog(); renderSelected(); updateSummary();
   };
+
+  // ------------------------------------------------------------------ company picker, locked company and company colours
+  let picked = "";           // the company chosen for the agreement on this page
+  let bypassPicker = false;  // a saved client opened from the Clients page brings its own company
+  const entities = () => state.config?.entities || [];
+  const currentEntity = () => entities().find(e => e.name === $("entity").value);
+  function hexRgb(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim()); const n = m ? parseInt(m[1], 16) : 0x1D4277; return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function rgbHex(rgb) { return "#" + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join(""); }
+  function mix(a, b, t) { const x = hexRgb(a), y = hexRgb(b); return rgbHex(x.map((v, i) => v + (y[i] - v) * t)); }
+  function luminance(hex) { const [r, g, b] = hexRgb(hex).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; }
+  function deepen(hex, max) { let c = hex; for (let i = 0; i < 14 && luminance(c) > max; i++) c = mix(c, "#000000", .14); return c; }
+  // Any company's brand colours, adjusted so white text on them stays readable (works for companies added later too).
+  function themeOf(e) {
+    const c = deepen(e?.color || "#1D4277", .16), a = e?.accent || "#189BD2";
+    const [ar, ag, ab] = hexRgb(a);
+    return {c, a, d: deepen(e?.dark || mix(c, "#000000", .55), .035), e: deepen(mix(c, a, .35), .2),
+      l: luminance(a) > .45 ? a : mix(a, "#ffffff", .55), g: `rgba(${ar},${ag},${ab},.30)`, soft: mix(c, "#ffffff", .9), line: mix(c, "#ffffff", .75)};
+  }
+  window.companyTheme = themeOf;
+  function applyTheme(e) {
+    const t = themeOf(e), view = $("builder-view"), card = document.querySelector(".summary-card");
+    const vars = {"--primary": t.c, "--primary-2": mix(t.c, "#000000", .18), "--primary-soft": t.soft, "--primary-line": t.line,
+      "--co-c": t.c, "--co-a": t.a, "--co-d": t.d, "--co-e": t.e, "--co-l": t.l, "--co-g": t.g};
+    Object.entries(vars).forEach(([k, v]) => view.style.setProperty(k, v));
+    card.classList.add("themed");
+    $("sc-plate").hidden = !e?.logo;
+    if (e?.logo) $("sc-logo").src = e.logo;
+  }
+  function renderLock(e) {
+    $("company-lock").hidden = !e; $("entity").hidden = !!e; $("entity-signatory").hidden = !!e;
+    if (!e) return;
+    $("lock-logo").src = e.logo || ""; $("lock-logo").alt = e.short || e.name;
+    $("lock-name").textContent = e.name;
+    $("lock-meta").textContent = `Authorized signatory: ${e.signatory}, ${e.title} · ${e.governing_state} law${e.address ? ` · ${e.address}` : ""}`;
+    $("change-company").hidden = entities().length < 2;
+  }
+  function monogram(e) { return el("span", "cp-mono", (e.short || e.name).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()); }
+  function tile(e, current) {
+    const t = themeOf(e), b = el("button", "cp-tile"); b.type = "button"; b.setAttribute("role", "listitem");
+    [["--c", t.c], ["--a", t.a], ["--glow", t.g]].forEach(([k, v]) => b.style.setProperty(k, v));
+    if (e.name === current) b.classList.add("is-current");
+    const card = el("span", "cp-card");
+    if (e.logo) { const img = el("img"); img.alt = ""; img.src = e.logo; img.addEventListener("error", () => img.replaceWith(monogram(e))); card.append(img); }
+    else card.append(monogram(e));
+    card.append(el("span", "cp-band"));
+    const label = e.short || e.name, name = el("span", "cp-name", label); name.title = e.name;
+    if (label.length > 20) name.classList.add("long");
+    const meta = el("span", "cp-meta", `${e.governing_state} law · ${e.signatory}`); meta.title = meta.textContent;
+    b.append(card, name, meta);
+    b.setAttribute("aria-label", `${e.name}: ${e.governing_state} law, signed by ${e.signatory}`);
+    return b;
+  }
+  // The full-page "which company?" screen. Tiles size themselves to the number of companies and to the screen.
+  window.openCompanyPicker = function({purpose = "create", current = "", onPick, onCancel} = {}) {
+    const list = entities(), box = $("picker-tiles"), picker = $("company-picker");
+    box.replaceChildren();
+    box.style.setProperty("--tile", list.length <= 4 ? "196px" : list.length <= 6 ? "172px" : list.length <= 8 ? "152px" : "136px");
+    const send = purpose === "send";
+    $("picker-eyebrow").textContent = send ? "SEND AN ENVELOPE" : "CREATE AGREEMENT";
+    $("picker-title").textContent = send ? "Which company is sending this envelope?" : "Which company is this agreement for?";
+    $("picker-sub").textContent = send ? "Choose the company the documents come from. Its logo, colours and mailbox are used for every email the recipients receive."
+      : "Choose the company the agreement is issued under. Its letterhead, signatory, address, governing law and services are applied automatically.";
+    const close = () => { picker.hidden = true; document.body.classList.remove("picking"); document.removeEventListener("keydown", keys); };
+    function keys(event) {
+      if (event.key === "Escape") { event.preventDefault(); close(); onCancel?.(); return; }
+      if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key)) return;
+      const tiles = [...box.querySelectorAll(".cp-tile")], at = tiles.indexOf(document.activeElement);
+      const step = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
+      tiles[(at + step + tiles.length) % tiles.length]?.focus(); event.preventDefault();
+    }
+    list.forEach(e => { const t = tile(e, current); t.addEventListener("click", () => { close(); onPick?.(e.name); }); box.append(t); });
+    $("picker-back").onclick = () => { close(); window.portalRoute("#/home"); };
+    picker.hidden = false; picker.scrollTop = 0; document.body.classList.add("picking"); document.addEventListener("keydown", keys);
+    // Only the company already in use is highlighted; otherwise nothing looks pre-selected (arrow keys still work).
+    const cur = box.querySelector(".is-current"); if (cur) cur.focus({preventScroll: true}); else { picker.tabIndex = -1; picker.focus({preventScroll: true}); }
+  };
+  function useCompany(name) {
+    const before = [...state.selected.values()].map(x => state.catalog.find(s => s.id === x.id)?.name || x.id);
+    const changed = $("entity").value !== name;
+    picked = name;
+    if (!changed) return;
+    $("entity").value = name; window.updateCompanyEntity?.(true); markDirty();
+    const after = new Set([...state.selected.values()].map(x => state.catalog.find(s => s.id === x.id)?.name || x.id));
+    const removed = before.filter(n => !after.has(n));
+    announce(`This agreement is now for ${name}.${removed.length ? ` Removed services it does not offer: ${removed.join(", ")}.` : ""}`);
+  }
+  // Called by the router each time Create agreement opens; `from` is the screen it came from.
+  window.createEnter = function(from) {
+    const list = entities();
+    if (!list.length) return;
+    if (bypassPicker) { bypassPicker = false; picked = $("entity").value; return; }
+    if (list.length === 1) { useCompany(list[0].name); return; }
+    if (from === "builder" && picked) return;
+    window.openCompanyPicker({purpose: "create", current: picked, onPick: useCompany, onCancel: () => { if (!picked) window.portalRoute("#/home"); }});
+  };
+  $("change-company").addEventListener("click", () => {
+    const e = currentEntity(); $("change-company-name").textContent = e?.name || "";
+    $("change-company-keep").textContent = `No, keep ${e?.short || "this company"}`;
+    $("change-company-dialog").showModal();
+  });
+  $("change-company-keep").addEventListener("click", () => $("change-company-dialog").close());
+  $("change-company-yes").addEventListener("click", () => {
+    $("change-company-dialog").close();
+    window.openCompanyPicker({purpose: "create", current: $("entity").value, onPick: useCompany});
+  });
+  function testChanged() {
+    const on = $("test-agreement").checked;
+    document.querySelector(".summary-card").classList.toggle("is-test", on);
+    $("test-note").textContent = on ? "Watermarked TEST. Kept out of reports, the Agreement log, Home and client counts." : "Turn on for practice runs. Marked TEST and kept out of reports.";
+    updateSummary();
+  }
+  $("test-agreement").addEventListener("change", () => { markDirty(); testChanged(); });
   function chosenDocuments() { return [["generate-baa", "baa", "BAA"], ["generate-services", "services", "Services"], ["generate-nda", "nda", "NDA"]].filter(([id]) => $(id).checked); }
   function updateSummary() {
     const useBaa = $("generate-baa").checked, useServices = $("generate-services").checked;
@@ -329,7 +442,7 @@
     $("summary-documents").textContent = !chosen.length ? "None selected" : chosen.length === 1 ? `${chosen[0][2]} only` : chosen.map(x => x[2]).join(" + ");
     $("summary-count").textContent = String(selected.length);
     $("selected-count").textContent = `${state.selected.size + state.custom.length} selected`;
-    $("generate-label").textContent = chosen.length > 1 ? "Generate agreements" : "Generate agreement";
+    $("generate-label").textContent = `Generate ${$("test-agreement").checked ? "test " : ""}${chosen.length > 1 ? "agreements" : "agreement"}`;
     $("folder-baa").hidden = !useBaa;
     $("folder-services").hidden = !useServices;
     $("folder-nda").hidden = !$("generate-nda").checked;
@@ -375,6 +488,7 @@
     data.services = [...state.selected.values()].map(item => ({...item}));
     data.include_signature = $("include-signature").checked;
     data.custom_services = state.custom.map(({_key, ...item}) => item);
+    data.test = $("test-agreement").checked;
     return data;
   }
   function validate(draft = false) {
@@ -425,9 +539,10 @@
     dropdown.value = selectId || state.clientId || "";
   }
 
-  function applyClient(data, resetServices = false) {
+  // keepEntity: the company chosen for this agreement stays, even if the saved client was drafted for another one.
+  function applyClient(data, resetServices = false, keepEntity = false) {
     const allowed = state.config.entities || [];
-    $("entity").value = allowed.some(e => e.name === data.entity) ? data.entity : allowed[0]?.name || "";
+    if (!keepEntity || !allowed.some(e => e.name === $("entity").value)) $("entity").value = allowed.some(e => e.name === data.entity) ? data.entity : allowed[0]?.name || "";
     $("include-signature").checked = data.include_signature !== false;
     window.updateCompanyEntity?.(false);
     plainFields.forEach(key => { if (data[key] !== undefined) $(key).value = data[key]; });
@@ -444,6 +559,7 @@
     $("generate-services").checked = types.includes("services");
     $("generate-nda").checked = types.includes("nda");
     if (resetServices) { $("effective_date").value = today(); $("baa_effective_date").value = today(); $("special_terms").value = ""; }
+    $("test-agreement").checked = !!data.test && !resetServices; testChanged();
     $("separate-baa-date").checked = !!data.baa_effective_date && data.baa_effective_date !== data.effective_date && !resetServices;
     form.classList.remove("was-validated");
     $("generation-results").hidden = true;
@@ -453,9 +569,9 @@
 
   function resetClient() {
     const defaults = state.config.defaults || {};
-    const output = $("output_root").value || state.config.output_root;
+    const output = $("output_root").value || state.config.output_root, entity = $("entity").value;
     form.reset();
-    const data = {...defaults, client_name: "", address: "", client_signatory: "", client_title: "", client_email: "", effective_date: today(), baa_effective_date: today(), special_terms: "", governing_state: entityState(), output_root: output, document_types: ["baa", "services"]};
+    const data = {...defaults, entity, client_name: "", address: "", client_signatory: "", client_title: "", client_email: "", effective_date: today(), baa_effective_date: today(), special_terms: "", governing_state: (state.config.entities || []).find(e => e.name === entity)?.governing_state || "", output_root: output, document_types: ["baa", "services"]};
     applyClient(data);
     $("saved-client").value = "";
     clearMessages();
@@ -596,7 +712,7 @@
     if (state.dirty && !window.confirm("Open this saved client and replace the unsaved changes in this form?")) { $("saved-client").value = state.clientId; return; }
     const reset = $("clear-services-on-load").checked;
     clearMessages(); busy(true, "Opening draft…");
-    try { const data = await api(`/api/clients/${encodeURIComponent(id)}`); applyClient(data, reset); announce(reset ? "Client details loaded. Choose the services for this new standalone agreement." : "Saved client and agreement details loaded. Review the effective date before generating."); }
+    try { const data = await api(`/api/clients/${encodeURIComponent(id)}`); applyClient(data, reset, !!picked); announce(reset ? "Client details loaded. Choose the services for this new standalone agreement." : "Saved client and agreement details loaded. Review the effective date before generating."); }
     catch (error) { announce(error.message, true); }
     finally { busy(false); }
   });
@@ -657,6 +773,6 @@
     } catch (error) { announce(error.message, true); }
     finally { $("loading").hidden = true; }
   }
-  window.openClientDraft=async id=>{if(state.dirty&&!confirm("Open this client and replace unsaved changes?"))return;const d=await api(`/api/clients/${encodeURIComponent(id)}`);applyClient(d);window.showBuilder?.();};
+  window.openClientDraft=async id=>{if(state.dirty&&!confirm("Open this client and replace unsaved changes?"))return;const d=await api(`/api/clients/${encodeURIComponent(id)}`);applyClient(d);bypassPicker=(state.config.entities||[]).some(e=>e.name===d.entity);if(bypassPicker)picked=d.entity;window.showBuilder?.();};
   initialize();
 })();

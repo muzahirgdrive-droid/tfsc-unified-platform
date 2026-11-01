@@ -140,6 +140,36 @@
 
   // ---- Add / edit a contracting company -------------------------------------------------
   const readFile = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error("The file could not be read.")); r.readAsDataURL(f); });
+  function logoColours(dataUrl) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        const k = Math.min(1, 160 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+        const g = c.getContext("2d"); g.drawImage(img, 0, 0, c.width, c.height);
+        const d = g.getImageData(0, 0, c.width, c.height).data, buckets = new Map();
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i], gr = d[i + 1], b = d[i + 2];
+          if (d[i + 3] < 200) continue;
+          const hi = Math.max(r, gr, b), lo = Math.min(r, gr, b);
+          if (hi - lo < 38 || hi < 28) continue;                       // greys, white and black are not brand colours
+          const key = (r >> 4) << 8 | (gr >> 4) << 4 | (b >> 4), e = buckets.get(key) || {n: 0, r: 0, g: 0, b: 0};
+          e.n++; e.r += r; e.g += gr; e.b += b; buckets.set(key, e);
+        }
+        const tops = [...buckets.values()].sort((x, y) => y.n - x.n).map(e => [e.r / e.n, e.g / e.n, e.b / e.n]);
+        if (!tops.length) { resolve(null); return; }
+        const hue = ([r, gr, b]) => { const hi = Math.max(r, gr, b), lo = Math.min(r, gr, b), dd = hi - lo || 1;
+          const h = hi === r ? ((gr - b) / dd) % 6 : hi === gr ? (b - r) / dd + 2 : (r - gr) / dd + 4; return (h * 60 + 360) % 360; };
+        const lum = ([r, gr, b]) => .2126 * r + .7152 * gr + .0722 * b;
+        const first = tops[0], second = tops.find(t => Math.min(Math.abs(hue(t) - hue(first)), 360 - Math.abs(hue(t) - hue(first))) > 24) || tops[1] || first;
+        const [dark, light] = lum(first) <= lum(second) ? [first, second] : [second, first];
+        const hex = v => "#" + v.map(x => Math.round(x).toString(16).padStart(2, "0")).join("").toUpperCase();
+        resolve([hex(dark), hex(light)]);
+      };
+      img.src = dataUrl;
+    });
+  }
   function textarea(value, rows = 2) { const t = el("textarea"); t.rows = rows; t.value = value || ""; return t; }
 
   function companyForm(existing) {
@@ -171,7 +201,17 @@
         lhNote.textContent = `Letterhead read: ${d.page_width}in x ${d.page_height}in page, ${d.headers} header(s), ${d.footers} footer(s). Margins pre-filled — Preview a sample and raise the top margin if the text overlaps the logo.`;
       } catch (e) { showError(e.message); } });
     const logoInput = el("input"); logoInput.type = "file"; logoInput.accept = "image/png,image/jpeg";
-    logoInput.addEventListener("change", async () => { const f = logoInput.files[0]; if (f) st.logo = await readFile(f); });
+    // Brand colours follow the logo: the two most common strong colours are suggested until the admin types their own.
+    let coloursTouched = !!existing;
+    [color, accent].forEach(i => i.addEventListener("input", () => { coloursTouched = true; }));
+    const colourNote = el("p", "field-note", existing ? "" : "Upload a logo and the colours are suggested from it.");
+    logoInput.addEventListener("change", async () => {
+      const f = logoInput.files[0]; if (!f) return;
+      st.logo = await readFile(f);
+      if (coloursTouched) return;
+      const found = await logoColours(st.logo);
+      if (found) { color.value = found[0]; accent.value = found[1]; colourNote.textContent = "Suggested from the logo. Change them if you prefer."; }
+    });
     const sigInput = el("input"); sigInput.type = "file"; sigInput.accept = "image/png,image/jpeg";
     const sigPreview = el("span", "small muted", existing?.has_signature ? "A signature is saved for this company." : "Optional. You can also add it later from the company card.");
     sigInput.addEventListener("change", async () => { const f = sigInput.files[0]; if (f) { st.signature = await readFile(f); sigPreview.textContent = "New signature ready to save."; } });
@@ -204,7 +244,7 @@
       panel("1", "IDENTITY", "Company name", grid2(field("Legal name *", name), field("Short name *", short)), grid2(field("Display name (as printed)", display), field("Notice / reply-to email", email))),
       panel("2", "BRAND & LETTERHEAD", "Letterhead and logo", (() => { const w = el("div"); w.append(el("label", "", "Letterhead (.docx)"), lhInput, lhNote); return w; })(),
             grid2((() => { const w = el("div", "field"); w.append(el("label", "", "Company logo (optional)"), logoInput, el("p", "field-note", "PNG or JPEG. A wordmark is generated if you skip it.")); return w; })(),
-                  grid2(field("Brand colour", color), field("Accent colour", accent)))),
+                  (() => { const w = el("div"); w.append(grid2(field("Brand colour", color), field("Accent colour", accent)), colourNote); return w; })())),
       panel("3", "LEGAL & SIGNATORY", "Address, governing law and signature", field("Registered / notice address *", address),
             grid2(field("Governing law (US state) *", state, "Full state name, e.g. Delaware."), field("Time zone", tz, "e.g. America/New_York.")),
             grid2(field("Authorized signatory *", signatory), field("Title *", title)),
@@ -310,8 +350,8 @@
      ["Profile photo (quick win).", " Sign in to each compliance mailbox and set its profile photo to the company logo. Gmail shows it to many recipients right away."],
      ["SPF and DKIM.", " Publish SPF and turn on DKIM signing at your mail provider. Use the checks below to confirm both."],
      ["DMARC at enforcement.", " Publish DMARC, watch the reports for two to four weeks, then move to p=quarantine (or p=reject) at 100 %."],
-     ["Logo and certificate.", " Prepare the logo as SVG Tiny PS and buy a Verified Mark Certificate (VMC) from DigiCert, Entrust or GlobalSign (it needs a registered trademark), or a Common Mark Certificate (shows the logo, without the tick)."],
-     ["BIMI record.", " Publish default._bimi with the logo and certificate addresses. Gmail starts showing the logo and tick within a few days."]].forEach(([b, t]) => { const li = el("li"); li.append(el("strong", "", b), document.createTextNode(t)); ol.append(li); });
+     ["Logo and certificate.", " Prepare the logo as SVG Tiny PS and buy a Verified Mark Certificate (VMC) from a certificate authority such as DigiCert, Sectigo or GlobalSign (it needs a registered trademark), or a Common Mark Certificate (shows the logo, without the tick)."],
+     ["Upload and publish.", " Upload the logo and the certificate below. The portal hosts both; publish the one BIMI record shown. Gmail starts showing the logo and tick within a few days."]].forEach(([b, t]) => { const li = el("li"); li.append(el("strong", "", b), document.createTextNode(t)); ol.append(li); });
     steps.append(ol);
     view.append(steps);
     const grid = el("div", "company-cards"); grid.style.marginTop = "18px";
@@ -328,6 +368,13 @@
         out.replaceChildren(el("p", "muted", "Checking DNS…"));
         const r = await api("/api/admin/email-trust", {company: c.key, domain: domain.value.trim(), selector: selector.value.trim()});
         out.replaceChildren();
+        if (r.verified_tick) {
+          const t = r.verified_tick, box = el("div", `tick-ready ${t.ready ? "ok" : "todo"}`);
+          box.append(el("strong", "", t.ready ? "Ready for the Gmail verified tick" : "Gmail verified tick: still to do"));
+          if (t.ready) box.append(el("p", "small", "Everything is in place. Gmail usually starts showing the logo and the blue tick within a few days."));
+          else { const ul = el("ul"); t.blockers.forEach(x => ul.append(el("li", "", x))); box.append(ul); }
+          out.append(box);
+        }
         r.checks.forEach(x => {
           const item = el("div", "trust-row");
           item.append(el("span", `trust-icon ${x.state}`, x.state === "ok" ? "✓" : x.state === "warning" ? "!" : "×"));
@@ -342,10 +389,51 @@
           out.append(item);
         });
       }, "button button-primary");
-      card.append(check, out);
+      card.append(check, out, bimiPanel(c, out));
       grid.append(card);
     });
     view.append(grid);
+  }
+
+  // Verified sender: the SVG Tiny PS logo and the mark certificate, hosted by the portal for Gmail, Yahoo and Apple Mail.
+  function bimiPanel(c, results) {
+    const box = el("div", "bimi-panel");
+    box.append(el("h3", "", "Gmail logo and verified tick"));
+    const body = el("div"); box.append(body);
+    const readText = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error("The file could not be read.")); r.readAsText(file); });
+    const picker = (accept, label, field) => { const i = el("input"); i.type = "file"; i.accept = accept; i.hidden = true;
+      i.addEventListener("change", async () => { const f = i.files[0]; i.value = ""; if (!f) return;
+        try { render(await api(`/api/admin/bimi/${encodeURIComponent(c.key)}`, {[field]: await readText(f)})); toast(`${label} saved.`); } catch (e) { fail(e); } });
+      const b = button(label, () => i.click(), "button button-quiet button-sm"); return [i, b]; };
+    function row(ok, title, detail, actions) {
+      const r = el("div", "trust-row");
+      r.append(el("span", `trust-icon ${ok === true ? "ok" : ok === "warn" ? "warning" : "missing"}`, ok === true ? "✓" : ok === "warn" ? "!" : "×"));
+      const t = el("div"); t.append(el("strong", "", title), el("p", "small muted", detail)); if (actions) t.append(actions);
+      r.append(t); return r;
+    }
+    function render(st) {
+      body.replaceChildren();
+      const [logoIn, logoBtn] = picker(".svg,image/svg+xml", st.has_logo ? "Replace logo" : "Upload SVG logo", "svg");
+      const [certIn, certBtn] = picker(".pem,.crt,.cer", st.has_cert ? "Replace certificate" : "Upload certificate", "pem");
+      const logoActions = el("div", "sig-tools"); logoActions.append(logoIn, logoBtn);
+      const certActions = el("div", "sig-tools"); certActions.append(certIn, certBtn);
+      body.append(row(st.has_logo, "Logo in SVG Tiny PS", st.has_logo ? `Uploaded and valid (${Math.round((st.logo?.size || 0) / 1024 * 10) / 10} KB)${st.logo?.warnings?.length ? ". Note: " + st.logo.warnings.join("; ") : ""}.` : "The square company logo, exported by your designer as SVG Tiny PS (BIMI profile).", logoActions));
+      const cert = st.cert || {};
+      const until = cert.valid_until ? new Date(cert.valid_until * 1000).toLocaleDateString() : "";
+      const certText = !st.has_cert ? "A Verified Mark Certificate (VMC) gives the blue tick; it needs a registered trademark of the logo. A Common Mark Certificate (CMC) shows the logo only."
+        : cert.kind === "VMC" ? `Verified Mark Certificate from ${cert.issuer} for ${cert.organization || "your organization"}, valid until ${until}${cert.expired ? " (EXPIRED)" : ""}.`
+        : cert.kind === "CMC" ? `Common Mark Certificate from ${cert.issuer}, valid until ${until}. Gmail shows the logo but not the blue tick.`
+        : cert.note || `Mark certificate from ${cert.issuer || "your certificate authority"}${until ? `, valid until ${until}` : ""}.`;
+      body.append(row(st.has_cert ? (cert.kind === "VMC" && !cert.expired ? true : "warn") : false, "Mark certificate", certText, certActions));
+      const rec = el("div", "bimi-record");
+      rec.append(el("small", "muted", "Publish this TXT record at “default._bimi” on the mail domain:"), el("code", "", st.record.value),
+        button("Copy record", async () => { await navigator.clipboard.writeText(st.record.value); toast("Record copied."); }, "button button-quiet button-sm"));
+      if (!st.https) rec.append(el("p", "small field-warning", "The portal is not on HTTPS here. Gmail only fetches the logo and certificate over HTTPS, which your VPS address provides."));
+      body.append(rec);
+    }
+    api(`/api/admin/bimi/${encodeURIComponent(c.key)}`).then(render).catch(e => body.append(el("p", "small muted", e.message)));
+    void results;
+    return box;
   }
 
   window.adminShow = page => (page === "email-trust" ? trust() : companies()).catch(fail);
