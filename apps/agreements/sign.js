@@ -4,7 +4,8 @@
   const $ = id => document.getElementById(id);
   const app = $("sign-app");
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
-  const S = {state: null, values: {}, pending: null, tab: "type", style: 0, initialsStyle: -1, ink: {"draw-signature": false, "draw-initials": false}, upload: "", uploadInitials: "", attempted: false, zoom: 1};
+  const S = {state: null, values: {}, copied: {}, active: null, pending: null, tab: "type", style: 0, initialsStyle: -1,
+    ink: {"draw-signature": false, "draw-initials": false}, upload: "", uploadInitials: "", attempted: false, zoom: 1};
   // Signature styles: OFL script fonts served by the portal, loaded when the Adopt dialog opens.
   const STYLES = [["Herr Von Muellerhoff", "herrvonmuellerhoff"], ["Mrs Saint Delafield", "mrssaintdelafield"], ["Monsieur La Doulaise", "monsieurladoulaise"], ["Great Vibes", "greatvibes"],
     ["Allura", "allura"], ["Alex Brush", "alexbrush"], ["Pinyon Script", "pinyonscript"], ["Parisienne", "parisienne"], ["Sacramento", "sacramento"], ["Dancing Script", "dancingscript"],
@@ -21,11 +22,21 @@
     company: "Company", title: "Title", text: "Text", number: "Number", date: "MM/DD/YYYY", checkbox: "", radio: "", dropdown: "Select", attachment: "Attach a file", note: ""};
   const AUTO = ["date_signed", "name", "first_name", "last_name", "email"];
   const TEXT = ["company", "title", "text", "number", "date"];
+  const COPY = ["title", "company"];          // entered once, copied into the other documents of the envelope
   const RULES = {letters: [/^[A-Za-z][A-Za-z .,'-]*$/, "letters only"], number: [/^-?\d{1,15}(\.\d{1,6})?$/, "a number"], email: [/^[^\s@<>]+@[^\s@<>]+\.[A-Za-z]{2,}$/, "an email address"],
     phone: [/^\+?1?[ .-]?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}$/, "a 10-digit phone number"], zip: [/^\d{5}(-\d{4})?$/, "a ZIP code (12345 or 12345-6789)"],
     date: [/^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(19|20)\d{2}$/, "a date as MM/DD/YYYY"]};
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; }
+  function svg(paths, cls = "pen") {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2.2");
+    s.setAttribute("aria-hidden", "true"); s.setAttribute("class", cls);
+    paths.forEach(d => { const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", d); s.append(p); });
+    return s;
+  }
+  const PEN = ["M4 20h4L19 9l-4-4L4 16v4z", "m13.5 6.5 4 4"];
+  const CLIP = ["M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"];
   function show(id, on) { $(id).hidden = !on; }
   function error(message) { const box = $("error"); box.textContent = message; box.hidden = !message; if (message) box.scrollIntoView({behavior: "smooth", block: "center"}); }
 
@@ -41,12 +52,14 @@
     return data;
   }
 
+  function railVisible(on) { $("rail").hidden = !on; document.body.classList.toggle("has-rail", on); if (!on) pages(false); }
   function message(title, body, links = []) {
     $("message-title").textContent = title; $("message-body").textContent = body;
     $("message-links").replaceChildren(...links);
     show("message-card", true);
-    ["loading", "code-gate", "consent-banner", "intro-banner", "sender-message", "done-card", "top-actions", "guide", "error", "host-banner", "thumbs"].forEach(id => show(id, false));
-    $("documents").replaceChildren();
+    ["loading", "code-gate", "consent-banner", "intro-banner", "sender-message", "done-card", "top-actions", "guide", "error", "host-banner"].forEach(id => show(id, false));
+    railVisible(false);
+    $("documents").replaceChildren(); $("thumbs").replaceChildren();
   }
 
   function dateToday() {
@@ -58,16 +71,31 @@
     const [first, last] = nameParts();
     return {date_signed: f.value || dateToday(), name: S.state.recipient.name, first_name: first, last_name: last, email: S.state.recipient.email}[f.kind] || "";
   }
+  const shortRef = () => (S.state?.signature_ref ? `${S.state.signature_ref}…` : "");
+  const initialsOf = name => String(name || "").split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 3);
+  // "Services Agreement - Lakeview Pediatrics.pdf" -> "Services Agreement"
+  const shortDoc = name => String(name || "document").replace(/\.pdf$/i, "").split(/\s+[-–]\s+/)[0];
+  const docOf = id => (S.state?.documents || []).find(d => d.id === id);
+  const fieldOf = id => (S.state?.fields || []).find(f => f.id === id);
+  const nodeOf = id => document.querySelector(`[data-field="${CSS.escape(id)}"]`);
 
   // ------------------------------------------------------------------ branding
   function brand(state) {
-    const b = state.brand || {};
-    if (b.color) document.documentElement.style.setProperty("--brand", b.color);
-    if (b.accent) document.documentElement.style.setProperty("--accent", b.accent);
-    if (b.logo) { const logo = $("company-logo"); logo.src = b.logo; logo.alt = state.company; logo.hidden = false; }
+    const b = state.brand || {}, root = document.documentElement.style;
+    if (b.color) root.setProperty("--brand", b.color);
+    if (b.accent) root.setProperty("--accent", b.accent);
+    if (b.dark) root.setProperty("--brand-dark", b.dark);
+    else if (b.color) root.setProperty("--brand-dark", `color-mix(in srgb, ${b.color} 55%, #000)`);
+    const company = state.company_display || state.company || "";
+    if (b.logo) {
+      $("company-logo").src = b.logo; $("company-logo").alt = company; show("logo-plate", true);
+      $("consent-logo").src = b.logo; $("consent-logo").alt = company; show("consent-plate", true);
+    }
     const portal = state.portal || {};
     if (portal.trust_line) $("trust-line").textContent = portal.trust_line;
-    $("footer-copyright").textContent = `© ${portal.year || new Date().getFullYear()} ${(state.company_display || state.company).replace(/\.$/, "")}. All rights reserved.`;
+    const test = !!state.test;
+    show("test-strip", test); show("trust-strip", !test);
+    $("footer-copyright").textContent = `© ${portal.year || new Date().getFullYear()} ${company.replace(/\.$/, "")}. All rights reserved.`;
     if (portal.help_email) { $("help-email").textContent = portal.help_email; $("help-email").href = `mailto:${portal.help_email}`; }
     $("help-sender").textContent = `Contact ${state.sender} at ${state.sender_email}, or reply to the email you received.`;
   }
@@ -76,18 +104,20 @@
   // ------------------------------------------------------------------ rendering
   function render(state) {
     S.state = state;
-    show("loading", false); error("");
+    show("loading", false); show("message-card", false); error("");
     brand(state);
     $("company").textContent = state.company_short || state.company;
     $("envelope-ref").textContent = state.ref ? `Envelope ${state.ref}` : "";
-    document.title = `${state.subject} · ${state.company_short}`;
+    $("subject-line").textContent = state.subject || "";
+    $("page-title").textContent = state.test ? "Review and sign · TEST" : "Review and sign";
+    document.title = `${state.test ? "[TEST] " : ""}${state.subject} · ${state.company_short}`;
     const r = state.recipient;
     if (!state.verified) {
-      show("code-gate", true); ["consent-banner", "intro-banner", "done-card", "top-actions", "guide", "thumbs"].forEach(id => show(id, false));
-      $("documents").replaceChildren(); $("code").focus(); return;
+      $("page-title").textContent = "Access code required";
+      show("code-gate", true); ["consent-banner", "intro-banner", "done-card", "top-actions", "guide", "sender-message"].forEach(id => show(id, false));
+      railVisible(false); $("documents").replaceChildren(); $("code").focus(); return;
     }
     show("code-gate", false);
-    senderMessage(state);
     hostBanner(state);
     if (r.status === "reassigned") { message("You assigned these documents to someone else", `${state.reassigned_to || "The person you chose"} received their own email. No further action is needed from you.`); return; }
     const closed = {declined: "This envelope was declined", voided: "This envelope was voided", expired: "This envelope has expired"}[state.envelope_status];
@@ -97,28 +127,28 @@
     }
     if (r.status === "declined") { message("You declined to sign", `${state.sender} has been notified.`); return; }
     const needsConsent = state.can_act && !state.consent;
-    show("consent-banner", needsConsent);
     const signing = state.can_act && ["signer", "in_person"].includes(r.role) && state.consent;
     show("top-actions", signing);
     $("reassign-open").hidden = !state.allow_reassign;
-    $("consent-continue").disabled = !$("consent-check").checked;
-    if (needsConsent) { show("intro-banner", false); show("done-card", false); show("guide", false); show("thumbs", false); $("documents").replaceChildren(); return; }
-    if (state.completed) done("All parties have completed these documents.", "Download your copy below. It includes the Certificate of Completion.", true);
+    if (needsConsent) {
+      consentCard(state);
+      ["intro-banner", "done-card", "guide", "sender-message"].forEach(id => show(id, false));
+      railVisible(false); $("documents").replaceChildren(); $("thumbs").replaceChildren(); return;
+    }
+    show("consent-banner", false);
+    senderCard(state, signing);
+    if (state.completed) done("Completed by everyone", "All parties have signed. Download your copy below; it includes the Certificate of Completion.", true);
     else if (!state.can_act && r.role !== "cc") {
-      if (state.in_person) done(`Thank you, ${r.name}.`, `You have finished. Please hand the device back to ${state.host}.`, false, true);
-      else done("You have finished.", state.envelope_status === "completing" ? "The completed documents are being prepared. You will receive them by email shortly." : "When everyone has finished, you will receive an email with the completed documents.", false);
+      if (state.in_person) done(`Thank you, ${nameParts()[0] || r.name}.`, `You have finished. Please hand the device back to ${state.host}.`, false, true);
+      else done(`You're all set, ${nameParts()[0] || r.name}`, state.envelope_status === "completing"
+        ? "The completed documents are being prepared. You will receive them by email shortly."
+        : `You have finished. ${state.company_display || state.company} has been notified. When everyone has signed, you will receive the completed documents and the Certificate of Completion by email.`, false);
     }
     else show("done-card", false);
-    const intro = $("intro-banner");
-    if (signing) {
-      const saved = Object.keys(state.progress || {}).length;
-      $("intro-title").textContent = saved ? "Welcome back. Your earlier entries were kept." : "Please review the documents below.";
-      $("intro-body").textContent = " Select Start to go to each field marked for you, then select Finish."; show("viewer-complete", false); show("intro-banner", true);
-    }
-    else if (state.can_act && r.role === "viewer") { $("intro-title").textContent = "Please review the documents."; $("intro-body").textContent = " When you have read them, select Complete."; show("viewer-complete", true); show("intro-banner", true); }
+    if (state.can_act && r.role === "viewer") { $("intro-title").textContent = "Please review the documents."; $("intro-body").textContent = " When you have read them, select Complete."; show("viewer-complete", true); show("intro-banner", true); }
     else if (r.role === "cc" && !state.completed) { $("intro-title").textContent = "You received a copy of these documents."; $("intro-body").textContent = " No action is needed. You will receive the completed documents by email."; show("viewer-complete", false); show("intro-banner", true); }
-    else intro.hidden = true;
-    S.values = {};
+    else show("intro-banner", false);
+    S.values = {}; S.copied = {}; S.active = null;
     (state.fields || []).forEach(f => {
       const o = f.options || {};
       if (o.readonly) S.values[f.id] = o.prefill;
@@ -126,8 +156,24 @@
       else if (f.kind === "attachment" && f.value) S.values[f.id] = f.value;
       else if (o.prefill && TEXT.includes(f.kind)) S.values[f.id] = o.prefill;
     });
+    if (state.can_act) COPY.forEach(kind => { const source = order((state.fields || []).filter(f => f.kind === kind && String(S.values[f.id] || "").trim()))[0]; if (source) propagate(source, false); });
     documents(state);
+    railVisible((state.documents || []).length > 0);
+    $("guide").dataset.started = Object.keys(state.progress || {}).length ? "1" : "";
     refresh();
+  }
+
+  function consentCard(state) {
+    $("consent-title").textContent = state.subject || "Documents to review";
+    $("consent-from").textContent = `From ${state.sender} · ${state.company_display || state.company}`;
+    const list = $("consent-docs"); list.replaceChildren();
+    (state.documents || []).forEach(d => {
+      const li = el("li"); const text = el("div"); text.append(el("span", "", shortDoc(d.name)), el("small", "", `${d.pages} page${d.pages === 1 ? "" : "s"}`));
+      li.append(el("span", "pdf-ic", "PDF"), text); list.append(li);
+    });
+    list.hidden = !(state.documents || []).length;
+    $("consent-continue").disabled = !$("consent-check").checked;
+    show("consent-banner", true);
   }
 
   function hostBanner(state) {
@@ -137,21 +183,39 @@
     box.hidden = false;
   }
 
-  function senderMessage(state) {
-    const box = $("sender-message");
-    $("sender-line").textContent = `${state.sender} (${state.company_display || state.company}) sent you: ${state.subject}`;
-    $("sender-text").textContent = state.message || "";
+  function actionable(state) {
+    return (state.fields || []).filter(f => f.required && !AUTO.includes(f.kind) && f.kind !== "note" && !(f.options || {}).readonly);
+  }
+  function senderCard(state, signing) {
+    $("sender-avatar").textContent = initialsOf(state.sender) || "·";
+    const line = $("sender-line"); line.replaceChildren(document.createTextNode(state.sender), el("span", "", ` · ${state.company_display || state.company}`));
+    $("sender-text").textContent = state.message || `${state.subject}`;
     $("sender-note").textContent = state.recipient.note ? `Note for you: ${state.recipient.note}` : "";
     $("sender-note").hidden = !state.recipient.note;
-    box.hidden = false;
+    const meta = $("sender-meta"); meta.replaceChildren();
+    const docs = (state.documents || []).length, todo = actionable(state).length;
+    if (signing) {
+      meta.append(el("b", "", `${todo} field${todo === 1 ? "" : "s"} for you`), document.createTextNode(`${docs} document${docs === 1 ? "" : "s"} · about ${Math.max(1, Math.round(todo * 10 / 60))} minute${todo > 9 ? "s" : ""}`));
+      if (Object.keys(state.progress || {}).length) { meta.append(el("br")); meta.append(el("span", "welcome", "Welcome back · your entries were kept")); }
+    } else meta.append(el("b", "", `${docs} document${docs === 1 ? "" : "s"}`),
+      document.createTextNode(state.completed ? "Completed" : !state.can_act && state.recipient.role !== "cc" ? "You have finished" : state.role_label || ""));
+    show("sender-message", true);
   }
 
   function done(title, body, completed, handBack = false) {
     $("done-title").textContent = title; $("done-body").textContent = body;
+    $("page-title").textContent = completed ? "Documents completed" : "Signing complete";
+    const rows = $("done-docs"); rows.replaceChildren();
+    if (!handBack) (S.state.documents || []).forEach(d => {
+      const a = el("a", "done-row"); a.href = `document/${encodeURIComponent(d.id)}`; a.setAttribute("download", "");
+      const text = el("div"); text.append(el("b", "", shortDoc(d.name)), el("small", "", `${d.pages} page${d.pages === 1 ? "" : "s"}${completed ? " · completed" : ""}`));
+      a.append(el("span", "pdf-ic", "PDF"), text, el("span", "go", "Download")); rows.append(a);
+    });
     const links = $("done-links"); links.replaceChildren();
     if (completed) links.append(link("completed", "Download completed documents", "btn btn-primary"));
-    if (!handBack) (S.state.documents || []).forEach(d => links.append(link(`document/${encodeURIComponent(d.id)}`, d.name, "btn btn-ghost")));
-    else { const back = el("a", "btn btn-primary", "Host: back to TFSC Agreements"); back.href = "/"; links.append(back); }
+    if (handBack) { const back = el("a", "btn btn-primary", "Host: back to TFSC Agreements"); back.href = "/"; links.append(back); }
+    else { const print = el("button", "btn btn-ghost", "Print"); print.type = "button"; print.addEventListener("click", () => window.print()); links.prepend(print); }
+    $("done-note").textContent = S.state.ref ? `Envelope ${S.state.ref} · A tamper-evident record of every step is kept with the documents.` : "";
     show("done-card", true); show("guide", false); show("top-actions", false);
   }
   function link(href, text, cls) { const a = el("a", cls, text); a.href = href; a.setAttribute("download", ""); return a; }
@@ -159,16 +223,20 @@
   function documents(state) {
     const container = $("documents"); container.replaceChildren();
     const thumbs = $("thumbs"); thumbs.replaceChildren();
-    const mine = state.fields || [], others = state.others || [];
-    (state.documents || []).forEach(doc => {
+    const mine = state.fields || [], others = state.others || [], list = state.documents || [];
+    list.forEach((doc, docIndex) => {
       const section = el("section", "document");
-      section.append(el("h2", "document-name", doc.name));
-      thumbs.append(el("p", "thumbs-doc", doc.name));
+      const head = el("div", "doc-head"), title = el("div");
+      const here = mine.filter(f => f.document_id === doc.id && f.required && !AUTO.includes(f.kind) && f.kind !== "note" && !(f.options || {}).readonly).length;
+      title.append(el("small", "", list.length > 1 ? `Document ${docIndex + 1} of ${list.length}` : "Document"), el("h3", "", shortDoc(doc.name)));
+      head.append(title, el("span", "chip", `${doc.pages} page${doc.pages === 1 ? "" : "s"}${state.can_act && here ? ` · ${here} field${here === 1 ? "" : "s"} for you` : ""}`));
+      section.append(head);
+      thumbs.append(el("p", "thumbs-doc", shortDoc(doc.name)));
       doc.page_sizes.forEach((size, index) => {
         const number = index + 1;
         const page = el("div", "page"); page.id = `page-${doc.id}-${number}`;
         page.style.aspectRatio = `${size[0]} / ${size[1]}`;
-        page.dataset.width = size[0];
+        page.dataset.width = size[0]; page.dataset.height = size[1];
         const image = el("img"); image.loading = number <= 2 ? "eager" : "lazy"; image.alt = `${doc.name}, page ${number} of ${doc.pages}`;
         image.src = `page/${encodeURIComponent(doc.id)}/${number}.png`;
         page.append(image);
@@ -178,21 +246,22 @@
           page.append(node);
         };
         others.filter(o => o.document_id === doc.id && o.page === number).forEach(o => {
-          const box = el("div", `field other${o.done ? " other-done" : ""}`, o.done ? (o.kind === "signature" ? `Signed by ${o.name}` : "") : o.name);
+          const box = el("div", `field other${o.done ? " other-done" : ""}`, o.done ? "" : o.name);
           box.setAttribute("aria-hidden", "true"); place(box, o);
         });
-        const here = mine.filter(f => f.document_id === doc.id && f.page === number);
-        here.forEach(f => place(field(f, state), f));
+        const onPage = mine.filter(f => f.document_id === doc.id && f.page === number);
+        onPage.forEach(f => place(field(f, state), f));
         section.append(page);
-        const thumb = el("button", `thumb${here.some(f => f.required) ? " thumb-fields" : ""}`); thumb.type = "button";
+        const meta = el("div", "pmeta"); meta.append(el("span", "", doc.name), el("span", "", `Page ${number} of ${doc.pages}`)); section.append(meta);
+        const thumb = el("button", `thumb${onPage.some(f => f.required) ? " thumb-fields" : ""}`); thumb.type = "button";
         const t = el("img"); t.loading = "lazy"; t.alt = ""; t.src = image.src; thumb.append(t, el("span", "", `Page ${number}`));
-        thumb.setAttribute("aria-label", `${doc.name}, page ${number}${here.length ? ", has fields for you" : ""}`);
-        thumb.addEventListener("click", () => page.scrollIntoView({behavior: "smooth", block: "start"}));
+        thumb.setAttribute("aria-label", `${doc.name}, page ${number}${onPage.length ? ", has fields for you" : ""}`);
+        thumb.addEventListener("click", () => { page.scrollIntoView({behavior: "smooth", block: "start"}); if (window.innerWidth < 900) pages(false); });
         thumbs.append(thumb);
       });
       container.append(section);
     });
-    thumbs.hidden = !(state.documents || []).length;
+    Object.keys(S.copied).forEach(id => { const f = fieldOf(id); if (f) paintCopied(f); });
     applyVisibility();
     scale();
   }
@@ -202,8 +271,9 @@
     const o = f.options || {};
     const label = f.label || o.tooltip || LABELS[f.kind];
     let node;
+    const focus = () => { if (state.can_act && missing().some(x => x.id === f.id)) { $("guide").dataset.started = "1"; setActive(f.id); } };
     if (f.kind === "signature" || f.kind === "initials") {
-      node = el("button", `field sig${f.kind === "initials" ? " initials" : ""}${f.required ? " required" : ""}`);
+      node = el("button", `field sig kind-${f.kind}${f.kind === "initials" ? " initials" : ""}${f.required ? " required" : ""}`);
       node.type = "button";
       node.disabled = !state.can_act;
       node.addEventListener("click", () => toggleSignature(f));
@@ -218,6 +288,7 @@
       const box = el("input"); box.type = "checkbox"; box.disabled = !editable; box.checked = f.value === "true" || S.values[f.id] === true || S.values[f.id] === "true";
       box.setAttribute("aria-label", label || "Checkbox");
       box.addEventListener("change", () => { S.values[f.id] = box.checked; applyVisibility(); refresh(); });
+      box.addEventListener("focus", focus);
       S.values[f.id] = box.checked; node.append(box);
     } else if (f.kind === "radio") {
       node = el("label", `field radio-field${f.required ? " required" : ""}`);
@@ -228,6 +299,7 @@
         (S.state.fields || []).filter(x => x.kind === "radio" && (x.options || {}).group === o.group).forEach(x => { S.values[x.id] = x.id === f.id; });
         applyVisibility(); refresh();
       });
+      box.addEventListener("focus", focus);
       if (box.checked) S.values[f.id] = true;
       node.append(box);
     } else if (f.kind === "dropdown") {
@@ -235,7 +307,9 @@
       node.append(new Option(f.label || "Select", ""));
       (o.choices || []).forEach(choice => node.append(new Option(choice, choice)));
       node.value = f.value || S.values[f.id] || "";
-      node.addEventListener("change", () => { S.values[f.id] = node.value; applyVisibility(); refresh(); });
+      node.classList.toggle("has-value", !!node.value);
+      node.addEventListener("change", () => { S.values[f.id] = node.value; node.classList.toggle("has-value", !!node.value); applyVisibility(); refresh(); });
+      node.addEventListener("focus", focus);
       node.setAttribute("aria-label", label || "Select");
     } else if (f.kind === "attachment") {
       node = el("button", `field attach${f.required ? " required" : ""}`); node.type = "button"; node.disabled = !editable;
@@ -247,9 +321,16 @@
       if (f.kind === "number") node.inputMode = "decimal";
       if (o.validation === "email") node.type = "email";
       if (o.validation === "phone") node.inputMode = "tel";
-      node.value = f.value || S.values[f.id] || "";
+      node.value = S.values[f.id] !== undefined && S.values[f.id] !== null ? S.values[f.id] : (f.value || "");
+      node.classList.toggle("has-value", !!node.value);
       node.setAttribute("aria-label", `${label}${f.required ? " (required)" : ""}`);
-      node.addEventListener("input", () => { S.values[f.id] = node.value; node.classList.toggle("invalid", !!invalid(f)); refresh(); });
+      node.addEventListener("input", () => {
+        S.values[f.id] = node.value; node.classList.toggle("has-value", !!node.value); node.classList.toggle("invalid", !!invalid(f));
+        if (S.copied[f.id]) { delete S.copied[f.id]; paintCopied(f); }        // the signer changed a copied value: it is theirs now
+        propagate(f, true);
+        refresh();
+      });
+      node.addEventListener("focus", focus);
     }
     if (o.tooltip) node.title = o.tooltip;
     node.dataset.field = f.id;
@@ -261,13 +342,20 @@
     const image = f.kind === "signature" ? S.state.adopted.signature : S.state.adopted.initials;
     node.replaceChildren();
     node.classList.toggle("signed", !!signed);
-    if (signed && image) { const img = el("img"); img.src = image; img.alt = f.kind === "signature" ? "Your signature" : "Your initials"; node.append(img); node.setAttribute("aria-label", `${f.kind === "signature" ? "Signature" : "Initials"} added. Select to remove.`); }
-    else { node.append(el("span", "sig-arrow", "↓"), el("span", "", LABELS[f.kind])); node.setAttribute("aria-label", `${f.kind === "signature" ? "Signature" : "Initials"}${f.required ? " required" : ""}. Select to ${LABELS[f.kind].toLowerCase()}.`); }
+    if (signed && image) {
+      const img = el("img"); img.src = image; img.alt = f.kind === "signature" ? "Your signature" : "Your initials";
+      if (f.kind === "signature") {
+        const stamp = el("span", "sig-stamp"); stamp.append(el("small", "", "Signed by:"), img, el("code", "", shortRef()));
+        node.append(stamp);
+      } else node.append(img);
+      node.setAttribute("aria-label", `${f.kind === "signature" ? "Signature" : "Initials"} added. Select to remove.`);
+    }
+    else { node.append(svg(PEN), el("span", "", LABELS[f.kind])); node.setAttribute("aria-label", `${f.kind === "signature" ? "Signature" : "Initials"}${f.required ? " required" : ""}. Select to ${LABELS[f.kind].toLowerCase()}.`); }
   }
 
   function paintAttachment(node, f) {
     const has = S.values[f.id];
-    node.replaceChildren(el("span", "", has ? "Attached ✓" : `📎 ${f.label || "Attach a file"}`));
+    node.replaceChildren(svg(CLIP), el("span", "", has ? "Attached ✓" : (f.label || "Attach a file")));
     node.title = has ? `${f.attachment_name || "File"} (select to replace)` : (f.options || {}).tooltip || "";
     node.classList.toggle("signed", !!has);
     node.setAttribute("aria-label", has ? `Attached ${f.attachment_name || "file"}. Select to replace.` : `${f.label || "Attachment"}${f.required ? " required" : ""}. Select to attach a file.`);
@@ -278,37 +366,73 @@
     picker.addEventListener("change", async () => {
       const file = picker.files[0]; if (!file) return;
       if (file.size > 10000000) { error("Attach a file smaller than 10 MB."); return; }
-      const node = document.querySelector(`[data-field="${f.id}"]`); node.classList.add("busy");
+      const node = nodeOf(f.id); node?.classList.add("busy");
       try {
         const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(",")[1]); r.onerror = reject; r.readAsDataURL(file); });
-        const values = {...S.values};
+        const values = {...S.values}, copied = {...S.copied}, started = $("guide").dataset.started;
         render(await call("api/attachment", {field_id: f.id, name: file.name, data}));
         Object.entries(values).forEach(([k, v]) => { if (k !== f.id && S.values[k] === undefined) S.values[k] = v; });
-        documents(S.state); refresh();
+        S.copied = copied; $("guide").dataset.started = started;
+        documents(S.state); refresh(); next(false);
       } catch (e) { if (e.message) error(e.message); }
-      finally { node?.classList.remove("busy"); }
+      finally { nodeOf(f.id)?.classList.remove("busy"); }
     });
     picker.click();
   }
 
   function toggleSignature(f) {
     const adopted = f.kind === "signature" ? S.state.adopted.signature : S.state.adopted.initials;
-    if (!adopted) { S.pending = f; openAdopt(); return; }
+    $("guide").dataset.started = "1";
+    if (!adopted) { S.pending = f; setActive(f.id); openAdopt(); return; }
     S.values[f.id] = !S.values[f.id];
-    paintSignature(document.querySelector(`[data-field="${f.id}"]`), f);
+    paintSignature(nodeOf(f.id), f);
     refresh();
-    if (S.values[f.id]) next(false);
+    if (S.values[f.id]) next(false); else setActive(f.id);
+  }
+
+  // ------------------------------------------------------------------ title and company: entered once, copied to the other documents
+  function propagate(f, live) {
+    if (!COPY.includes(f.kind) || !S.state?.can_act) return;
+    const value = String(S.values[f.id] || "");
+    (S.state.fields || []).forEach(g => {
+      if (g.id === f.id || g.kind !== f.kind || g.document_id === f.document_id || (g.options || {}).readonly) return;
+      const current = String(S.values[g.id] || "");
+      if (current && S.copied[g.id] !== f.id) return;                 // the signer typed their own value there
+      if (value.trim()) { S.values[g.id] = value; S.copied[g.id] = f.id; }
+      else if (S.copied[g.id] === f.id) { S.values[g.id] = ""; delete S.copied[g.id]; }
+      else return;
+      if (live) {
+        const node = nodeOf(g.id);
+        if (node) { node.value = S.values[g.id] || ""; node.classList.toggle("has-value", !!node.value); node.classList.toggle("invalid", !!invalid(g)); }
+        paintCopied(g);
+      }
+    });
+  }
+  function paintCopied(g) {
+    const old = document.querySelector(`.copied[data-for="${CSS.escape(g.id)}"]`); if (old) old.remove();
+    const source = S.copied[g.id] && fieldOf(S.copied[g.id]), node = nodeOf(g.id);
+    if (!source || !node || !node.parentElement) return;
+    const page = node.parentElement, h = Number(page.dataset.height) || 792, w = Number(page.dataset.width) || 612;
+    const chip = el("span", "copied"); chip.dataset.for = g.id;
+    chip.append(document.createTextNode(`✓ Copied from your ${shortDoc((docOf(source.document_id) || {}).name)}`));
+    const edit = el("button", "", "Edit"); edit.type = "button";
+    edit.addEventListener("click", () => { node.focus(); node.select?.(); });
+    chip.append(edit);
+    chip.style.left = `${g.x / w * 100}%`; chip.style.top = `calc(${(g.y + g.h) / h * 100}% + 3px)`;
+    page.append(chip);
   }
 
   function scale() {
     document.querySelectorAll(".page").forEach(page => page.style.setProperty("--pt", `${page.clientWidth / Number(page.dataset.width)}px`));
+    placeGuide();
   }
-  window.addEventListener("resize", scale);
+  window.addEventListener("resize", () => { scale(); if (S.active) setActive(S.active); });
   function setZoom(value) {
     S.zoom = Math.min(2, Math.max(0.6, Math.round(value * 10) / 10));
     document.documentElement.style.setProperty("--zoom", String(S.zoom));
+    document.body.classList.toggle("zoomed-in", S.zoom > 1);
     $("zoom-level").textContent = `${Math.round(S.zoom * 100)}%`;
-    requestAnimationFrame(scale);
+    requestAnimationFrame(() => { scale(); if (S.active) setActive(S.active); });
   }
   $("zoom-in").addEventListener("click", () => setZoom(S.zoom + 0.1));
   $("zoom-out").addEventListener("click", () => setZoom(S.zoom - 0.1));
@@ -336,11 +460,18 @@
   }
   function applyVisibility() {
     const map = visibleMap();
-    map.forEach((on, id) => { const node = document.querySelector(`[data-field="${id}"]`); if (node) node.hidden = !on; });
+    map.forEach((on, id) => { const node = nodeOf(id); if (node) node.hidden = !on; const chip = document.querySelector(`.copied[data-for="${CSS.escape(id)}"]`); if (chip) chip.hidden = !on; });
     return map;
   }
 
   // ------------------------------------------------------------------ guided signing
+  // Document by document; in each, the initials page by page first, then the signature, the title and the other fields by position.
+  function order(list) {
+    const at = new Map((S.state?.documents || []).map((d, i) => [d.id, i]));
+    const rank = f => (at.has(f.document_id) ? at.get(f.document_id) : 999);
+    return [...list].sort((a, b) => rank(a) - rank(b) || (a.kind === "initials" ? 0 : 1) - (b.kind === "initials" ? 0 : 1)
+      || a.page - b.page || a.y - b.y || a.x - b.x);
+  }
   function invalid(f) {
     const o = f.options || {}, value = String(S.values[f.id] || "").trim();
     if (!value || !TEXT.includes(f.kind)) return "";
@@ -360,31 +491,84 @@
       if (f.kind === "checkbox") { if (f.required && value !== true) out.push(f); return; }
       if (f.required && !(typeof value === "string" ? value.trim() : value)) out.push(f);
     });
-    Object.values(groups).forEach(g => { if (g.required && !g.chosen) out.push(g.fields[0]); });
-    return out;
+    Object.values(groups).forEach(g => { if (g.required && !g.chosen) out.push(order(g.fields)[0]); });
+    return order(out);
   }
+  const ACTION = f => f.kind === "initials" ? "Initial" : f.kind === "signature" ? "Sign" : f.kind === "attachment" ? "Attach"
+    : ["checkbox", "radio", "dropdown"].includes(f.kind) ? "Select" : "Fill in";
+  function tipFor(f) {
+    const o = f.options || {}, doc = docOf(f.document_id) || {};
+    const main = {initials: "Initial here", signature: "Sign here", title: "Your title or position", company: "Your company name", number: "Enter a number",
+      date: "Enter a date", checkbox: "Check the box", radio: "Choose an option", dropdown: "Choose from the list", attachment: "Attach a file"}[f.kind] || f.label || "Fill in this field";
+    const sub = o.tooltip || (f.kind === "title" ? "For example: Managing Member, Practice Manager"
+      : f.kind === "signature" && !S.state.adopted.signature ? "Select to choose how your signature looks"
+      : f.kind === "signature" ? "Select to place your signature" : `Page ${f.page} of ${doc.pages || "?"} · ${shortDoc(doc.name)}`);
+    return [f.required ? "Required" : "Optional", (f.label && !["initials", "signature", "title"].includes(f.kind)) ? f.label : main, sub];
+  }
+  function setActive(id) {
+    document.querySelectorAll(".field.active").forEach(n => n.classList.remove("active"));
+    document.querySelectorAll(".tip").forEach(n => n.remove());
+    S.active = id || null;
+    const f = id && fieldOf(id), node = id && nodeOf(id);
+    if (f && node && !node.hidden && node.parentElement) {
+      node.classList.add("active");
+      const [need, main, sub] = tipFor(f);
+      const tip = el("div", "tip"), head = el("span"), small = el("small", "", sub);
+      head.append(el("span", need === "Required" ? "req" : "opt", need), document.createTextNode(` · ${main}`));
+      tip.append(head, small);
+      const page = node.parentElement; page.append(tip);
+      const below = TEXT.includes(f.kind) || f.kind === "dropdown" || node.offsetTop < tip.offsetHeight + 16;
+      tip.classList.toggle("below", below);
+      let left = node.offsetLeft - 4;
+      left = Math.max(4, Math.min(left, page.clientWidth - tip.offsetWidth - 4));
+      tip.style.left = `${left}px`;
+      tip.style.top = `${below ? node.offsetTop + node.offsetHeight + 12 : node.offsetTop - tip.offsetHeight - 12}px`;
+      if (S.copied[f.id]) { const chip = document.querySelector(`.copied[data-for="${CSS.escape(f.id)}"]`); if (chip && below) tip.style.top = `${node.offsetTop + node.offsetHeight + 34}px`; }
+    }
+    placeGuide();
+  }
+  function placeGuide() {
+    const guide = $("guide"), ws = $("workspace"), docs = $("documents");
+    if (guide.hidden || !docs.firstChild) return;
+    const box = ws.getBoundingClientRect();
+    const target = guide.dataset.started && S.active && nodeOf(S.active);
+    let y;
+    if (target && !target.hidden) { const r = target.getBoundingClientRect(); y = r.top - box.top + r.height / 2 - (guide.offsetHeight || 46) / 2; }
+    else { const first = docs.querySelector(".page"); if (!first) return; y = first.getBoundingClientRect().top - box.top + 34; }
+    ws.style.setProperty("--gy", `${Math.round(y)}px`);
+    ws.style.setProperty("--gx", `${Math.round(docs.getBoundingClientRect().left - box.left)}px`);
+  }
+  if (window.ResizeObserver) new ResizeObserver(() => placeGuide()).observe($("workspace"));
   function refresh() {
     if (!S.state || !S.state.can_act || !["signer", "in_person"].includes(S.state.recipient.role)) { show("guide", false); return; }
     const left = missing();
     $("finish").disabled = left.length > 0;
     const map = visibleMap();
     const total = (S.state.fields || []).filter(f => map.get(f.id) && f.required && !AUTO.includes(f.kind) && f.kind !== "note" && !(f.options || {}).readonly).length;
-    const pill = $("progress");
-    pill.textContent = left.length ? `${Math.max(0, total - left.length)} of ${total} required fields done` : "All required fields done";
-    pill.classList.toggle("done", !left.length);
+    const doneCount = Math.max(0, total - left.length);
+    $("progress").textContent = left.length ? `${doneCount} of ${total}` : "All done ✓";
+    $("progress-bar").style.width = `${total ? doneCount / total * 100 : 100}%`;
     document.querySelectorAll(".field.required, .field.input").forEach(node => node.classList.toggle("missing", S.attempted && left.some(f => f.id === node.dataset.field)));
     const guide = $("guide");
     guide.hidden = false;
-    guide.textContent = left.length ? (guide.dataset.started ? "Next" : "Start") : "Finish";
-    guide.classList.toggle("guide-finish", !left.length);
+    const current = S.active && left.find(f => f.id === S.active);
+    guide.textContent = !left.length ? "Finish" : !guide.dataset.started ? "Start" : current ? ACTION(current) : "Next";
+    placeGuide();
   }
-  function next(scroll = true) {
+  function next(fromGuide = true) {
     const left = missing();
     const guide = $("guide");
     guide.dataset.started = "1";
-    if (!left.length) { refresh(); if (scroll) finish(); return; }
-    const node = document.querySelector(`[data-field="${left[0].id}"]`);
-    if (node) { node.scrollIntoView({behavior: "smooth", block: "center"}); node.classList.add("pulse"); setTimeout(() => node.classList.remove("pulse"), 1200); if (scroll) setTimeout(() => node.focus({preventScroll: true}), 350); }
+    if (!left.length) { setActive(null); refresh(); if (fromGuide) finish(); return; }
+    const current = fromGuide && S.active && left.find(f => f.id === S.active);
+    const target = current || left[0];
+    setActive(target.id);
+    const node = nodeOf(target.id);
+    if (node) {
+      node.scrollIntoView({behavior: "smooth", block: "center"});
+      node.classList.add("pulse"); setTimeout(() => node.classList.remove("pulse"), 1100);
+      if (fromGuide && (node.matches("input, select") || node.querySelector("input"))) setTimeout(() => (node.matches("input, select") ? node : node.querySelector("input")).focus({preventScroll: true}), 380);
+    }
     refresh();
   }
   $("guide").addEventListener("click", () => next(true));
@@ -407,7 +591,7 @@
     $("finish").disabled = true; $("guide").disabled = true;
     try {
       render(await call("api/finish", {values: currentValues()}));
-      window.scrollTo({top: 0, behavior: "smooth"});
+      window.scrollTo({top: 0});
     } catch (e) { if (e.message) error(e.message); refresh(); }
     finally { $("guide").disabled = false; }
   }
@@ -420,12 +604,13 @@
   });
   $("consent-check").addEventListener("change", () => { $("consent-continue").disabled = !$("consent-check").checked; });
   $("consent-continue").addEventListener("click", async () => {
-    try { render(await call("api/consent", {})); } catch (e) { if (e.message) error(e.message); }
+    try { render(await call("api/consent", {})); window.scrollTo({top: 0}); } catch (e) { if (e.message) error(e.message); }
   });
   const openDisclosure = () => { $("disclosure-text").replaceChildren(...(S.state?.ersd || "").split("\n\n").map(p => el("p", "", p))); $("disclosure-dialog").showModal(); };
   $("consent-read").addEventListener("click", openDisclosure);
   $("show-disclosure").addEventListener("click", () => { closeMenu(); openDisclosure(); });
   $("help-open").addEventListener("click", () => { closeMenu(); $("help-dialog").showModal(); });
+  $("rail-help").addEventListener("click", () => $("help-dialog").showModal());
   $("viewer-complete").addEventListener("click", async () => {
     try { render(await call("api/acknowledge", {})); } catch (e) { if (e.message) error(e.message); }
   });
@@ -433,6 +618,15 @@
   function closeMenu() { $("more-menu").hidden = true; $("more").setAttribute("aria-expanded", "false"); }
   $("more").addEventListener("click", event => { event.stopPropagation(); const open = $("more-menu").hidden; $("more-menu").hidden = !open; $("more").setAttribute("aria-expanded", String(open)); });
   document.addEventListener("click", closeMenu);
+  document.addEventListener("keydown", event => { if (event.key === "Escape") { closeMenu(); pages(false); } });
+  function pages(open) {
+    const on = open === undefined ? !document.body.classList.contains("pages-open") : open;
+    document.body.classList.toggle("pages-open", on && !$("thumbs").hidden && $("thumbs").children.length > 0);
+    $("rail-pages").setAttribute("aria-pressed", String(document.body.classList.contains("pages-open")));
+  }
+  $("thumbs").hidden = false;
+  $("rail-pages").addEventListener("click", () => pages());
+  $("pages-menu").addEventListener("click", () => { closeMenu(); pages(true); });
   $("finish-later").addEventListener("click", async () => {
     closeMenu();
     try {
@@ -442,14 +636,19 @@
     } catch (e) { if (e.message) error(e.message); }
   });
   $("print").addEventListener("click", () => { closeMenu(); window.print(); });
-  $("download-original").addEventListener("click", () => {
+  $("rail-print").addEventListener("click", () => window.print());
+  function downloads() {
     closeMenu();
     const dialog = el("dialog", "dialog"); const form = el("form"); form.method = "dialog";
-    form.append(el("h2", "", "Download documents"));
-    (S.state.documents || []).forEach(d => form.append(link(`document/${encodeURIComponent(d.id)}`, d.name, "download-row")));
-    const actions = el("div", "dialog-actions"); const close = el("button", "btn btn-primary", "Close"); actions.append(close); form.append(actions);
-    dialog.append(form); document.body.append(dialog); dialog.addEventListener("close", () => dialog.remove()); dialog.showModal();
-  });
+    const head = el("header", "dialog-head"), title = el("div"); title.append(el("h2", "", "Download documents"), el("p", "", "The documents as sent to you, as PDF files."));
+    const x = el("button", "x", "×"); x.setAttribute("aria-label", "Close"); head.append(title, x);
+    const body = el("div", "dialog-body");
+    (S.state.documents || []).forEach(d => { const a = link(`document/${encodeURIComponent(d.id)}`, "", "download-row"); a.append(el("span", "pdf-ic", "PDF"), el("span", "", d.name)); body.append(a); });
+    const actions = el("div", "dialog-actions"); const close = el("button", "btn btn-ds", "Close"); actions.append(close);
+    form.append(head, body, actions); dialog.append(form); document.body.append(dialog); dialog.addEventListener("close", () => dialog.remove()); dialog.showModal();
+  }
+  $("download-original").addEventListener("click", downloads);
+  $("rail-download").addEventListener("click", downloads);
   $("decline-open").addEventListener("click", () => { closeMenu(); $("decline-error").hidden = true; $("decline-dialog").showModal(); $("decline-reason").focus(); });
   $("decline-confirm").addEventListener("click", async () => {
     const reason = $("decline-reason").value.trim();
@@ -467,7 +666,6 @@
   });
 
   // ------------------------------------------------------------------ adopt signature and initials
-  function initialsOf(name) { return name.split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase()).join("").slice(0, 3); }
   // Crop a canvas to its ink, with a little room around it, so stamps size the mark itself.
   function trimmed(canvas) {
     const ctx = canvas.getContext("2d"), {width, height} = canvas, data = ctx.getImageData(0, 0, width, height).data;
@@ -512,9 +710,15 @@
     $("adopt-name").value = S.state.recipient.name || "";
     $("adopt-initials").value = initialsOf($("adopt-name").value);
     $("adopt-error").hidden = true;
+    $("preview-id").textContent = shortRef();
     const pick = $("initials-style");
     if (!pick.options.length) { pick.append(new Option("Same as the signature", "-1")); STYLES.forEach(([title], i) => pick.append(new Option(title, String(i)))); }
     styles(); $("adopt-dialog").showModal(); preview();
+  }
+  // Shrink a script name until it fits its card, so no style is cut off.
+  function fit(node) {
+    let size = 30; node.style.fontSize = `${size}px`;
+    while (node.scrollWidth > node.clientWidth + 1 && size > 14) { size -= 1; node.style.fontSize = `${size}px`; }
   }
   function styles() {
     const box = $("styles"); box.replaceChildren();
@@ -524,7 +728,7 @@
       radio.addEventListener("change", () => { S.style = index; preview(); });
       const name = el("span", "style-name", $("adopt-name").value || "Your name");
       const initials = el("span", "style-initials", $("adopt-initials").value || "YN");
-      loadFont(index).then(() => { name.style.fontFamily = initials.style.fontFamily = `"${family(index)}"`; }).catch(() => {});
+      loadFont(index).then(() => { name.style.fontFamily = initials.style.fontFamily = `"${family(index)}"`; requestAnimationFrame(() => fit(name)); }).catch(() => {});
       option.title = title;
       option.append(radio, name, initials); box.append(option);
     });
@@ -598,15 +802,16 @@
       const [signature, initialsImage, kind] = await chosen();
       if (!signature) { fail(S.tab === "draw" ? "Draw your signature." : S.tab === "upload" ? "Choose an image of your signature." : "Enter your name."); return; }
       if (!initialsImage) { fail(S.tab === "draw" ? "Draw your initials." : "Enter your initials."); return; }
-      const kept = {...S.values};
+      const kept = {...S.values}, copied = {...S.copied};
       const state = await call("api/adopt", {kind, signature, initials: initialsImage});
       $("adopt-dialog").close();
       const pending = S.pending; S.pending = null;
       render(state);
       Object.entries(kept).forEach(([k, v]) => { S.values[k] = v; });
+      S.copied = copied; $("guide").dataset.started = "1";
       documents(S.state);
-      if (pending) { S.values[pending.id] = true; paintSignature(document.querySelector(`[data-field="${pending.id}"]`), pending); }
-      refresh(); if (pending) next(false);
+      if (pending) { S.values[pending.id] = true; paintSignature(nodeOf(pending.id), pending); }
+      refresh(); next(false);
     } catch (e) { if (e.message) fail(e.message); }
   });
 

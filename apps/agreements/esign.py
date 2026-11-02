@@ -1029,6 +1029,22 @@ def _actor_info(request: Request) -> tuple[str, str]:
     return (request.client.host if request.client else ''), request.headers.get('user-agent', '')[:300]
 
 
+def _brand_logo(entity: dict) -> str:
+    """The logo a signer can load. Built-in logos are public assets; a company added from the app keeps its logo behind
+    the sign-in, so it is embedded as a data URL (signers have no account)."""
+    if not entity.get('custom'):
+        return entity.get('logo_url') or ''
+    from pathlib import Path
+    try:
+        path = Path(entity['logo_path']) if entity.get('logo_path') else None
+        if path and path.is_file() and path.stat().st_size <= 600_000:
+            kind = 'jpeg' if path.suffix.lower() in ('.jpg', '.jpeg') else 'png'
+            return f'data:image/{kind};base64,' + base64.b64encode(path.read_bytes()).decode()
+    except Exception:  # noqa: BLE001  (a missing or unreadable logo never blocks signing)
+        pass
+    return ''
+
+
 def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) -> dict:
     entity = get_entity(envelope['entity'])
     box = mailer.load(c, envelope['entity'])
@@ -1040,7 +1056,8 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
     can_act = status == 'sent' and r['status'] in OPEN_STATUSES and r['role'] != 'cc' and (r['role'] != 'in_person' or in_person)
     out = dict(subject=envelope['subject'], message=envelope['message'], ref=envelope['ref'], envelope_status=status, sender=owner['name'],
                sender_email=box['address'] or owner['email'], company=entity['name'], company_short=entity['short'],
-               brand=dict(logo=entity['logo_url'], color=entity['color'], accent=entity['accent']),
+               brand=dict(logo=_brand_logo(entity), color=entity['color'], accent=entity['accent'], dark=entity.get('dark') or entity['color']),
+               signature_ref=hashlib.sha256(f"{envelope['id']}:{r['id']}".encode()).hexdigest()[:16].upper(),
                recipient=dict(name=r['name'], email=r['email'], role=r['role'], status=r['status'], note=r['note']),
                verified=bool(session['verified']), consent=bool(r['consent_at']), ersd=ersd(entity, box['address']), can_act=can_act,
                adopted=dict(signature=_data_url(r['signature_png']), initials=_data_url(r['initials_png'])), csrf=session['csrf'],
