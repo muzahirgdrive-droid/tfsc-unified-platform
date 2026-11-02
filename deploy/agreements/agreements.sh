@@ -209,7 +209,7 @@ db_revision() { db_psql -c 'SELECT version_num FROM alembic_version' 2>/dev/null
 pre_update_copy() {   # a restorable copy of the database, taken while the current version keeps running
   local name; name="pre-update-$(date -u +%Y%m%dT%H%M%SZ).dump"
   say "Saving a copy of the database before the update"
-  dc exec -T -u postgres postgres pg_dump -U "${DB_SUPERUSER:-crm}" -d tfsc -Fc -f "/backups/$name" \
+  dc exec -T -u postgres postgres sh -c "umask 077 && pg_dump -U '${DB_SUPERUSER:-crm}' -d tfsc -Fc -f '/backups/$name'" \
     || die "The database copy could not be saved, so nothing was changed: the current version is still running."
   dc exec -T -u postgres postgres sh -c 'ls -1t /backups/pre-update-*.dump 2>/dev/null | tail -n +6 | xargs -r rm -f' || true
   echo "Saved in the backups volume as $name (the 5 most recent copies are kept)."
