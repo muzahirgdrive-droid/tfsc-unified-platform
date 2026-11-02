@@ -234,10 +234,29 @@ sudo ./agreements.sh backup && sudo ./agreements.sh update
 ```
 
 Data lives in Docker volumes and is kept: users, clients, agreements, envelopes, signatures, mailboxes and backups.
-Database changes are applied automatically during the update.
+Database changes are applied automatically during the update; they only ever add tables and columns.
 
-The update rebuilds the application (about 6 minutes in testing when its libraries change, under a minute
-otherwise) and keeps the site running until the new version starts. Updating to version 5 also:
+What `update` does, in order, so nothing is lost and the site is never left down:
+1. builds the new version while the current one keeps serving (about 6 minutes in testing when its libraries change,
+   under a minute otherwise);
+2. saves a copy of the database in the backups volume (`pre-update-<date>.dump`, the 5 most recent are kept);
+   if that copy cannot be saved, it stops and changes nothing;
+3. restarts on the new version (a few seconds; a signer who clicks during those seconds is reconnected automatically
+   and loses nothing);
+4. if the new version is not healthy within 5 minutes, it puts the previous version back on the same data and tells you.
+
+Agreements already sent for signature keep working through the update: the links in those emails, the answers a signer
+saved to finish later, and the signed copies already issued stay exactly as they were.
+
+To restore the pre-update copy by hand (only if support asks you to):
+```
+cd /opt/tfsc-agreements/deploy/agreements && docker compose --env-file .env stop agreements agreements-worker
+docker compose --env-file .env exec -u postgres postgres ls /backups          # pick the pre-update-....dump
+docker compose --env-file .env exec -u postgres postgres pg_restore -U crm -d tfsc --clean --if-exists /backups/pre-update-YYYYMMDDTHHMMSSZ.dump
+docker compose --env-file .env start agreements agreements-worker
+```
+
+Updating to version 5 also:
 - removes the 30-day expiry that earlier releases gave every envelope by default (an expiry someone chose is kept);
 - prints company signatures at the approved sizes (Naeem Abbas 60 %, Danish Ather 85 %; adjustable per company);
 - completes envelopes that were waiting only for someone who needed to view them;

@@ -12,12 +12,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pypdf import PdfReader
-
 import esign
 import esign_pdf
-from esign_support import agreement_pdf, signature_png
 import test_esign
+from esign_support import agreement_pdf, signature_png
+from pypdf import PdfReader
 
 APP = Path(__file__).resolve().parents[1]
 

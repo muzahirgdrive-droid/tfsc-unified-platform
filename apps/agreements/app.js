@@ -351,6 +351,7 @@
     $("lock-logo").src = e.logo || ""; $("lock-logo").alt = e.short || e.name;
     $("lock-name").textContent = e.name;
     $("lock-meta").textContent = `Authorized signatory: ${e.signatory}, ${e.title} · ${e.governing_state} law${e.address ? ` · ${e.address}` : ""}`;
+    $("lock-meta").title = $("lock-meta").textContent; $("lock-name").title = e.name;
     $("change-company").hidden = entities().length < 2;
   }
   function monogram(e) { return el("span", "cp-mono", (e.short || e.name).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase()); }
