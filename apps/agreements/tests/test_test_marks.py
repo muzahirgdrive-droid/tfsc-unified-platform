@@ -13,15 +13,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from alembic import command
-from alembic.autogenerate import compare_metadata
-from alembic.migration import MigrationContext
-from alembic.script import ScriptDirectory
-from fastapi.testclient import TestClient
-from PIL import Image
-from pypdf import PdfReader
-from sqlalchemy import create_engine, inspect, select, text
-
 import database as db
 import document_engine
 import esign_db as t
@@ -31,7 +22,15 @@ import migrate
 import portal
 import server
 import worker
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from esign_support import agreement_pdf
+from fastapi.testclient import TestClient
+from PIL import Image
+from pypdf import PdfReader
+from sqlalchemy import create_engine, inspect, select, text
 from test_contract_studio import data
 from test_esign import SCRIBE, Base
 

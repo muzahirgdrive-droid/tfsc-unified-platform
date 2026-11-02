@@ -22,7 +22,7 @@ def mark_certificate(mark: str, days: int = 365) -> str:
     name = x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, 'Scribe Align LLC'),
                       x509.NameAttribute(x509.ObjectIdentifier(companies.MARK_TYPE_OID), mark)])
     issuer = x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, 'Example Mark CA')])
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(issuer).public_key(key.public_key())
             .serial_number(x509.random_serial_number()).not_valid_before(now - dt.timedelta(days=max(1, 10 - days))).not_valid_after(now + dt.timedelta(days=days))
             .add_extension(x509.ExtendedKeyUsage([x509.ObjectIdentifier(companies.BIMI_EKU)]), critical=False)

@@ -12,13 +12,12 @@ from __future__ import annotations
 
 import io
 
-from fastapi import HTTPException
-from sqlalchemy import and_, select, update
-
 import database as db
 import security as sec
 from document_engine import TEST_WATERMARK
 from esign_db import envelopes
+from fastapi import HTTPException
+from sqlalchemy import and_, select, update
 
 MAX_BULK = 200
 
