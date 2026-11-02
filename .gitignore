@@ -177,3 +177,7 @@ apps/crm-web/test-results/
 apps/crm-web/playwright-report/
 .coverage
 infra/helm/smoke/.state/
+
+# Local tooling: agent worktrees and delivery folders (ZIPs and screenshots are build outputs)
+.claude/worktrees/
+deliver-*/
