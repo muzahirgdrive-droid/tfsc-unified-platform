@@ -6,15 +6,14 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import database as db
+import migrate
+import portal  # noqa: F401  (registers every table)
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
-
-import database as db
-import migrate
-import portal  # noqa: F401  (registers every table)
 
 
 class MigrationTests(unittest.TestCase):
@@ -46,6 +45,16 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(migrate.upgrade_to_head(c, db.meta), 'current')
             self.assertEqual(c.execute(text("SELECT count(*) FROM settings WHERE key = 'keep_me'")).scalar_one(), 1)
             self.assertEqual(compare_metadata(MigrationContext.configure(c), db.meta), [])
+
+    def test_rollback_to_this_release_on_a_newer_database_still_starts(self):
+        with self.engine.begin() as c:
+            migrate.upgrade_to_head(c, db.meta)
+            c.execute(db.settings.insert().values(key='keep_me', value={'ok': True}))
+            c.execute(text("UPDATE alembic_version SET version_num = '9999_from_a_later_release'"))
+        with self.engine.begin() as c:
+            self.assertEqual(migrate.upgrade_to_head(c, db.meta), 'newer')
+            self.assertEqual(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one(), '9999_from_a_later_release')
+            self.assertEqual(c.execute(text("SELECT count(*) FROM settings WHERE key = 'keep_me'")).scalar_one(), 1)
 
     def test_upgrade_with_signed_envelopes_in_place(self):
         # Rows that reference esign_recipients would block a table rebuild on SQLite; the upgrade must keep all of them.

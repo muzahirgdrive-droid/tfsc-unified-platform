@@ -119,8 +119,9 @@ build_images() {
 
 wait_ready() {
   say "Waiting for TFSC Agreements to start"
-  local port; port=$(env_get TFSC_PORT); port=${port:-8765}
-  for _ in $(seq 1 120); do
+  local port tries=120; port=$(env_get TFSC_PORT); port=${port:-8765}
+  if [ "${1-}" = soft ]; then tries=60; fi   # an update steps back after 5 minutes instead of waiting 10
+  for _ in $(seq 1 "$tries"); do
     if curl -fsS -o /dev/null -H "Host: $(env_get TFSC_DOMAIN)" "http://127.0.0.1:$port/api/health" 2>/dev/null \
        && [ "$(dc ps agreements-worker --format '{{.State}}' 2>/dev/null)" = running ]; then
       echo "TFSC Agreements is up."
@@ -129,6 +130,7 @@ wait_ready() {
     sleep 5
   done
   dc ps
+  if [ "${1-}" = soft ]; then return 1; fi
   die "TFSC Agreements did not start within 10 minutes. See: ./agreements.sh logs"
 }
 
@@ -201,16 +203,53 @@ cmd_signatures() {
   echo "Installed. Delete $dir after checking one generated agreement."
 }
 
+db_psql() { dc exec -T -u postgres postgres psql -U "${DB_SUPERUSER:-crm}" -d tfsc -v ON_ERROR_STOP=1 -Atq "$@"; }
+db_revision() { db_psql -c 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]'; }
+
+pre_update_copy() {   # a restorable copy of the database, taken while the current version keeps running
+  local name; name="pre-update-$(date -u +%Y%m%dT%H%M%SZ).dump"
+  say "Saving a copy of the database before the update"
+  dc exec -T -u postgres postgres pg_dump -U "${DB_SUPERUSER:-crm}" -d tfsc -Fc -f "/backups/$name" \
+    || die "The database copy could not be saved, so nothing was changed: the current version is still running."
+  dc exec -T -u postgres postgres sh -c 'ls -1t /backups/pre-update-*.dump 2>/dev/null | tail -n +6 | xargs -r rm -f' || true
+  echo "Saved in the backups volume as $name (the 5 most recent copies are kept)."
+}
+
+rollback() {   # back to the image that ran before this update; later database changes only add columns it ignores
+  local revision=$1
+  warn "The new version did not start. Going back to the version that was running before."
+  docker image inspect tfsc-agreements:rollback >/dev/null 2>&1 || die "There is no previous version to go back to. See: ./agreements.sh logs agreements"
+  dc stop agreements agreements-worker || true
+  if [ -n "$revision" ]; then
+    db_psql -c "UPDATE alembic_version SET version_num = '$revision'" || warn "Could not set the database revision back to $revision."
+  fi
+  docker tag tfsc-agreements:rollback tfsc-agreements:4
+  dc up -d
+  if wait_ready soft; then
+    die "Back on the previous version: it is running and no data was lost. Send the output of './agreements.sh logs agreements' to support."
+  fi
+  die "The previous version did not start either. See 'When something is wrong' in README.md (restore the pre-update copy)."
+}
+
 cmd_update() {
   [ "$(id -u)" = 0 ] || die "Run as root: sudo $0 update"
   [ -f "$ENV_FILE" ] || die "No settings in $ENV_FILE. Copy deploy/agreements/.env (and backup-offsite.env, if you use it) from the previous release folder first."
   ensure_env_keys
-  build_images
-  say "Restarting with the new version (database changes are applied automatically)"
+  # Keep the running version's image so the update can step back to it.
+  if docker image inspect tfsc-agreements:4 >/dev/null 2>&1; then docker tag tfsc-agreements:4 tfsc-agreements:rollback; fi
+  build_images   # the site keeps running on the current version while this builds
+  local revision=''
+  if dc up -d --wait postgres >/dev/null 2>&1 || [ "$(dc ps postgres --format '{{.State}}' 2>/dev/null)" = running ]; then
+    revision=$(db_revision)
+    pre_update_copy
+  else
+    die "The database is not running, so nothing was changed. Start it with: sudo $0 start"
+  fi
+  say "Restarting with the new version (database changes are applied automatically; signing links keep working)"
   dc up -d
-  wait_ready
+  if ! wait_ready soft; then rollback "$revision"; fi
   docker image prune -f >/dev/null
-  echo "Updated."
+  echo "Updated (database ${revision:-new} -> $(db_revision))."
 }
 
 cmd_help() {
