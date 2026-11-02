@@ -67,7 +67,7 @@ def process(job):
             owns=c.execute(select(db.jobs.c.state).where(db.jobs.c.id==job['id'],db.jobs.c.lease==job['lease']).with_for_update()).scalar()
             if owns!='running':raise ValueError('Generation lease expired; output was not published.')
             crm_bridge.check_worker(c,job)
-            c.execute(db.contracts.insert().values(id=cid,client_id=job['client_id'],owner_id=job['owner_id'],entity=payload['entity'],created=time.time(),payload=payload,folder=str(folder),version='4.0.0',legacy=False))
+            c.execute(db.contracts.insert().values(id=cid,client_id=job['client_id'],owner_id=job['owner_id'],entity=payload['entity'],created=time.time(),payload=payload,folder=str(folder),version='4.0.0',legacy=False,test=payload.get('test') is True))
             for f in files:
                 c.execute(db.documents.insert().values(**{k:v for k,v in f.items() if k!='source'}))
                 dest=Path(f['path']);dest.parent.mkdir(parents=True,exist_ok=True)

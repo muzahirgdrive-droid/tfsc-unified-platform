@@ -12,6 +12,7 @@ import security as sec
 import server as legacy
 import crm_bridge
 import companies
+import marks
 from entities import ENTITIES
 
 VERSION='5.0.0'
@@ -189,7 +190,8 @@ def client_allowed(c,a,id):
     row=c.execute(select(db.clients).where(db.clients.c.id==id,sec.scope(a,db.clients.c.owner_id))).mappings().first()
     if not row:raise HTTPException(404,'Client not found.')
     return row
-def save_draft(c,a,data):
+def save_draft(c,a,data,generating=False):
+    # Test agreements: a client first saved by a test run is a test client; a real generation makes it a real client.
     if data.get('id'):
         row=client_allowed(c,a,data['id']);id=row['id'];owner=row['owner_id']
     else:
@@ -200,8 +202,9 @@ def save_draft(c,a,data):
     data=dict(data,id=id)
     values=dict(name=data['client_name'],name_key=sec.digest(data['client_name'].strip().casefold()),address=data['address'],draft=data,updated=time.time())
     if row:c.execute(db.clients.update().where(db.clients.c.id==id).values(**values))
-    else:c.execute(db.clients.insert().values(id=id,owner_id=owner,**values))
-    db.log(c,a,'client.updated' if row else 'client.created',id,{'entity':data['entity']})
+    else:c.execute(db.clients.insert().values(id=id,owner_id=owner,test=data.get('test') is True,**values))
+    db.log(c,a,'client.updated' if row else 'client.created',id,{'entity':data['entity']}|({'test':True} if not row and data.get('test') is True else {}))
+    if row and generating and data.get('test') is not True:marks.real_activity(c,a,id,'a real agreement was generated')
     return id
 
 @app.get('/api/clients')
@@ -210,8 +213,8 @@ def list_clients(request:Request,q:str='',page:int=0):
     with db.engine.connect() as c:
         a=sec.get_actor(request,c);condition=sec.scope(a,db.clients.c.owner_id)
         if q:condition=and_(condition,func.lower(db.clients.c.name).contains(q[:200].lower(),autoescape=True))
-        rows=c.execute(select(db.clients.c.id,db.clients.c.name,db.clients.c.address,db.clients.c.updated,db.users.c.name.label('owner')).join(db.users,db.users.c.id==db.clients.c.owner_id).where(condition).order_by(db.clients.c.updated.desc(),db.clients.c.id).limit(51).offset(page*50)).mappings().all()
-        return {'clients':[dict(id=r['id'],client_name=r['name'],address=r['address'],updated_at=r['updated'],owner=r['owner']) for r in rows[:50]],'has_more':len(rows)>50,'page':page}
+        rows=c.execute(select(db.clients.c.id,db.clients.c.name,db.clients.c.address,db.clients.c.updated,db.clients.c.test,db.users.c.name.label('owner')).join(db.users,db.users.c.id==db.clients.c.owner_id).where(condition).order_by(db.clients.c.updated.desc(),db.clients.c.id).limit(51).offset(page*50)).mappings().all()
+        return {'clients':[dict(id=r['id'],client_name=r['name'],address=r['address'],updated_at=r['updated'],owner=r['owner'],test=bool(r['test'])) for r in rows[:50]],'has_more':len(rows)>50,'page':page}
 @app.get('/api/clients/{id}')
 def get_client(id:str,request:Request):
     with db.engine.connect() as c:
@@ -232,9 +235,18 @@ def history(id:str,request:Request,page:int=0):
         for r in rows[:20]:
             docs=c.execute(select(db.documents.c.id,db.documents.c.name,db.documents.c.kind,db.documents.c.agreement,db.documents.c.sha256).where(db.documents.c.contract_id==r['id'])).mappings().all()
             from esign_db import envelopes as env_table
-            sent=c.execute(select(env_table.c.id,env_table.c.ref,env_table.c.status).where(env_table.c.contract_id==r['id'],env_table.c.status!='template').order_by(env_table.c.created)).mappings().all()
-            result.append(dict(id=r['id'],entity=r['entity'],created=r['created'],owner='Legacy record (author unavailable)' if r['legacy'] else r['owner'],files=[dict(x,url='/files/'+x['id']) for x in docs],envelopes=[dict(x) for x in sent]))
-        return {'client':dict(id=client['id'],name=client['name'],address=client['address']),'contracts':result,'has_more':len(rows)>20}
+            sent=c.execute(select(env_table.c.id,env_table.c.ref,env_table.c.status,env_table.c.test).where(env_table.c.contract_id==r['id'],env_table.c.status!='template').order_by(env_table.c.created)).mappings().all()
+            result.append(dict(id=r['id'],entity=r['entity'],created=r['created'],owner='Legacy record (author unavailable)' if r['legacy'] else r['owner'],files=[dict(x,url='/files/'+x['id']) for x in docs],envelopes=[dict(x) for x in sent],test=bool(r['test'])))
+        return {'client':dict(id=client['id'],name=client['name'],address=client['address'],test=bool(client['test'])),'contracts':result,'has_more':len(rows)>20}
+
+@app.post('/api/contracts/mark-test')
+def mark_contracts_test(payload:dict,request:Request):
+    """Mark generated agreements as test (test: true) or real (test: false): {"ids": [...], "test": bool}. Their envelopes follow."""
+    ids,flag=marks.ids_of(payload),marks.flag_of(payload)
+    with db.engine.begin() as c:
+        if c.dialect.name=='sqlite':c.execute(text('BEGIN IMMEDIATE'))
+        a=sec.get_actor(request,c)
+        return {'ok':True,'changed':marks.mark_contracts(c,a,ids,flag),'test':flag}
 
 @app.get('/files/{id}')
 def download(id:str,request:Request):
@@ -285,7 +297,7 @@ def generate(payload:dict,request:Request):
             if old:return {'job_id':old['id'],'state':old['state']}
             pending=c.execute(select(func.count()).select_from(db.jobs).where(db.jobs.c.owner_id==a['id'],db.jobs.c.state.in_(['queued','running']))).scalar()
             if pending>=5:raise HTTPException(429,'You already have five pending generations. Wait for one to finish.')
-            id=save_draft(c,a,d);d['id']=id
+            id=save_draft(c,a,d,generating=True);d['id']=id
             jobid=db.uid();now=time.time()
             c.execute(db.jobs.insert().values(id=jobid,owner_id=a['id'],client_id=id,key=key,state='queued',payload=d,created=now,updated=now,attempts=0))
             crm_bridge.bind_generation(c,a,d,jobid)
@@ -444,7 +456,7 @@ company_admin.install(app)   # before companies.install so its literal routes be
 companies.install(app)
 import insights
 insights.install(app)
-PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','login.js','sign.js','sign.css','verify.js'}
+PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js'}
 PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):

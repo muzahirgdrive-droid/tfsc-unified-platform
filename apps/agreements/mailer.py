@@ -348,6 +348,27 @@ def message_id(box_address: str, outbox_id: str) -> str:
     return f'<tfsc.{outbox_id}.{base64.b32encode(os.urandom(5)).decode().lower()}@{domain}>'
 
 
+TEST_PREFIX = '[TEST] '
+TEST_NOTICE = 'This is a practice run (a TEST envelope). It is not a real agreement and is not legally binding.'
+
+
+def mark_test(subject: str, text: str, html_body: str) -> tuple[str, str, str]:
+    """Emails about a test envelope say so: "[TEST]" first in the subject and a practice-run notice above the message."""
+    if not subject.startswith(TEST_PREFIX):
+        subject = TEST_PREFIX + subject
+    if TEST_NOTICE not in (text or ''):
+        text = TEST_NOTICE + '\n\n' + (text or '')
+    if html_body and TEST_NOTICE not in html_body:
+        banner = ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF4DB;"><tr>'
+                  '<td align="center" style="padding:10px 16px;border-bottom:2px solid #F0B441;font-family:\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;'
+                  'font-size:13px;line-height:19px;color:#7A4B00;"><strong style="letter-spacing:.8px;">TEST ENVELOPE</strong>&nbsp;&middot;&nbsp;'
+                  f'{html.escape(TEST_NOTICE)}</td></tr></table>')
+        html_body, found = re.subn(r'(<body\b[^>]*>)', lambda m: m.group(1) + banner, html_body, count=1)
+        if not found:
+            html_body = banner + html_body
+    return subject, text, html_body
+
+
 def enqueue(c, entity_name: str, kind: str, to: list[str], subject: str, text: str, html_body: str, *, envelope_id=None, recipient_id=None,
             cc=(), bcc=(), attachments=()) -> str:
     """Queue an email in the caller's transaction. Addresses are de-duplicated (To wins over Cc wins over Bcc)."""
@@ -360,6 +381,8 @@ def enqueue(c, entity_name: str, kind: str, to: list[str], subject: str, text: s
         to, bcc_list = bcc_list[:1], bcc_list[1:]
     if not to:
         return ''
+    if envelope_id and c.execute(select(envelopes.c.test).where(envelopes.c.id == envelope_id)).scalar():
+        subject, text, html_body = mark_test(subject, text, html_body)
     box = load(c, entity_name)
     oid = db.uid()
     now = time.time()

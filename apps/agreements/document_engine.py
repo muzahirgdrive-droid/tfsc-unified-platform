@@ -134,6 +134,70 @@ def _write_package(path, parts, infos):
             temporary.unlink()
 
 
+TEST_WATERMARK = 'TEST · NOT A VALID AGREEMENT'
+_VML_NS = {'v': 'urn:schemas-microsoft-com:vml', 'o': 'urn:schemas-microsoft-com:office:office', 'w10': 'urn:schemas-microsoft-com:office:word'}
+_R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+
+def _watermark_paragraph(number):
+    """A light diagonal text watermark (Word's own watermark shape), centred on the page behind the text."""
+    shape = (f'<v:shape id="PowerPlusWaterMarkObject{number}" o:spid="_x0000_s{4090 + number}" type="#_x0000_t136" '
+             'style="position:absolute;margin-left:0;margin-top:0;width:520pt;height:46pt;rotation:315;z-index:-251651072;'
+             'mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" '
+             'o:allowincell="f" fillcolor="#e9a23b" stroked="f"><v:fill opacity=".38"/>'
+             f'<v:textpath style="font-family:&quot;Arial&quot;;font-size:1pt;font-weight:bold" string="{_escape(TEST_WATERMARK)}"/>'
+             '<w10:wrap anchorx="margin" anchory="margin"/></v:shape>')
+    shapetype = ('<v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" adj="10800" path="m@7,l@8,m@5,21600l@6,21600e">'
+                 '<v:formulas><v:f eqn="sum #0 0 10800"/><v:f eqn="prod #0 2 1"/><v:f eqn="sum 21600 0 @1"/><v:f eqn="sum 0 0 @2"/>'
+                 '<v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 0"/><v:f eqn="if @0 21600 @1"/><v:f eqn="if @0 0 @2"/><v:f eqn="if @0 @4 21600"/>'
+                 '<v:f eqn="mid @5 @6"/><v:f eqn="mid @8 @5"/><v:f eqn="mid @7 @8"/><v:f eqn="mid @6 @7"/><v:f eqn="sum @6 0 @5"/></v:formulas>'
+                 '<v:path textpathok="t" o:connecttype="custom" o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800" o:connectangles="270,180,90,0"/>'
+                 '<v:textpath on="t" fitshape="t"/><v:handles><v:h position="#0,bottomRight" xrange="6629,14971"/></v:handles>'
+                 '<o:lock v:ext="edit" text="t" shapetype="t"/></v:shapetype>')
+    # An exact, hair-thin line so the header (and so the page layout) keeps its height.
+    return ('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr>'
+            f'<w:r><w:rPr><w:noProof/><w:sz w:val="2"/></w:rPr><w:pict>{shapetype}{shape}</w:pict></w:r></w:p>')
+
+
+def _with_namespaces(root_tag, names):
+    for prefix in names:
+        if f'xmlns:{prefix}=' not in root_tag:
+            uri = _VML_NS.get(prefix) or (_R_NS if prefix == 'r' else W)
+            root_tag = root_tag[:-1] + f' xmlns:{prefix}="{uri}">'
+    return root_tag
+
+
+def add_test_watermark(parts, section):
+    """Put the TEST watermark in every header the document can show, so it is on every page. Returns the new section."""
+    number = 0
+    for name in sorted(parts):
+        if re.fullmatch(r'word/header\d+\.xml', name):
+            number += 1
+            body = parts[name].decode('utf-8')
+            body = re.sub(r'<w:hdr\b[^>]*>', lambda m: _with_namespaces(m.group(0), ('v', 'o', 'w10')), body, count=1)
+            parts[name] = body.replace('</w:hdr>', _watermark_paragraph(number) + '</w:hdr>').encode('utf-8')
+    # Pages whose header type has no header part (a letterhead without headers, a first or even page without its own)
+    # get a header that holds only the watermark.
+    needed = ['default']
+    if '<w:titlePg' in section and not re.search(r'<w:titlePg\b[^>]*w:val="(0|false)"', section):
+        needed.append('first')
+    if re.search(rb'<w:evenAndOddHeaders\b(?![^>]*w:val="(0|false)")', parts.get('word/settings.xml', b'')):
+        needed.append('even')
+    missing = [kind for kind in needed if not re.search(fr'<w:headerReference\b[^>]*w:type="{kind}"', section)]
+    if missing:
+        number += 1
+        parts['word/header-sa-test.xml'] = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:hdr xmlns:w="{W}" xmlns:r="{_R_NS}" '
+                                            + ' '.join(f'xmlns:{k}="{v}"' for k, v in _VML_NS.items()) + '>'
+                                            + _watermark_paragraph(number) + '</w:hdr>').encode('utf-8')
+        rel = f'<Relationship Id="rIdSATestHeader" Type="{_R_NS}/header" Target="header-sa-test.xml"/>'
+        parts['word/_rels/document.xml.rels'] = parts['word/_rels/document.xml.rels'].replace(b'</Relationships>', rel.encode() + b'</Relationships>')
+        override = '<Override PartName="/word/header-sa-test.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'
+        parts['[Content_Types].xml'] = parts['[Content_Types].xml'].replace(b'</Types>', override.encode() + b'</Types>')
+        references = ''.join(f'<w:headerReference w:type="{kind}" r:id="rIdSATestHeader"/>' for kind in missing)
+        section = re.sub(r'(<w:sectPr\b[^>]*>)', lambda m: m.group(1) + references, section, count=1)
+    return section
+
+
 def generate_docx(blocks, data, contract_id, path, entity=None):
     """Create editable DOCX without touching the retained letterhead."""
     entity=entity or get_entity(data.get('entity'))
@@ -166,6 +230,8 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
     section=re.search(r'<w:sectPr\b[^>]*>.*?</w:sectPr>',xml,re.S).group(0)
     for margin in ('top','right','bottom','left'):
         section=re.sub(fr'w:{margin}="\d+"',f'w:{margin}="{entity[margin]}"',section)
+    if data.get('test'):
+        section=add_test_watermark(parts,section)
     if entity['key']!='scribe':
         page_height=int(re.search(r'w:pgSz[^>]*w:h="(\d+)"',section).group(1))
         page_field='<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'+_run('1',size=18)+'<w:r><w:fldChar w:fldCharType="end"/></w:r>'
@@ -239,7 +305,7 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
         for tag in ('dc:creator','cp:lastModifiedBy'):
             core=re.sub(fr'<{tag}>.*?</{tag}>',f'<{tag}>{_escape(entity["name"])}</{tag}>',core,flags=re.S)
         parts['docProps/core.xml']=core.encode()
-    for name in ('word/document.xml','word/styles.xml','word/settings.xml','word/numbering.xml'):
+    for name in ('word/document.xml','word/styles.xml','word/settings.xml','word/numbering.xml',*[n for n in parts if re.fullmatch(r'word/header[\w-]*\.xml',n)]):
         if name in parts:
             ET.fromstring(parts[name])
     destination=Path(path).resolve()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextvars, os, time, uuid
 from pathlib import Path
 from sqlalchemy import (create_engine, MetaData, Table, Column, String, Text, Integer,
-    Float, Boolean, LargeBinary, JSON, ForeignKey, Index, UniqueConstraint, event, select, text)
+    Float, Boolean, LargeBinary, JSON, ForeignKey, Index, UniqueConstraint, event, false, select, text)
 
 APP=Path(__file__).resolve().parent
 DATA=Path(os.getenv('TFSC_DATA_DIR',str(APP/'.data'))).resolve()
@@ -26,12 +26,14 @@ clients=Table('clients',meta,Column('id',String(32),primary_key=True),
     Column('name',String(200),nullable=False),Column('name_key',String(64),nullable=False),
     Column('address',Text,nullable=False),Column('draft',JSON,nullable=False),Column('updated',Float,nullable=False),
     Column('profile',JSON,nullable=True),Column('created',Float,nullable=True),  # profile: phone, email, website, notes
+    Column('test',Boolean,nullable=False,default=False,server_default=false()),  # practice client: kept out of counts and reports
     UniqueConstraint('owner_id','name_key',name='uq_client_owner_name'))
 contracts=Table('contracts',meta,Column('id',String(64),primary_key=True),
     Column('client_id',String(32),ForeignKey('clients.id'),nullable=False),
     Column('owner_id',String(32),ForeignKey('users.id'),nullable=False),Column('entity',String(100),nullable=False),
     Column('created',Float,nullable=False),Column('payload',JSON,nullable=False),Column('folder',Text,nullable=False),
-    Column('version',String(40),nullable=False),Column('legacy',Boolean,nullable=False,default=False))
+    Column('version',String(40),nullable=False),Column('legacy',Boolean,nullable=False,default=False),
+    Column('test',Boolean,nullable=False,default=False,server_default=false()))  # test agreement: watermarked, excluded from reports
 documents=Table('documents',meta,Column('id',String(32),primary_key=True),
     Column('contract_id',String(64),ForeignKey('contracts.id'),nullable=False,index=True),
     Column('name',String(200),nullable=False),Column('kind',String(20),nullable=False),

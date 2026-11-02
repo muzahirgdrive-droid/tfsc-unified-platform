@@ -191,6 +191,7 @@ def validate(payload, draft=False):
         raise ValueError('Invalid saved client identifier.')
     data['entity'] = entity['name']
     data['include_signature'] = payload.get('include_signature', True) is True
+    data['test'] = payload.get('test') is True  # practice run: watermarked documents, kept out of reports
     return data
 
 

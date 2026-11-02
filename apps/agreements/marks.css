@@ -1,0 +1,67 @@
+/* Test agreements: the amber TEST badge, the Real clients / Test / All filter, row selection with the bulk bar, the
+   Test agreements folder, the send wizard's Test envelope switch and the report builder's "Include test agreements". */
+:root{--test:#e9a23b;--test-strong:#f5a524;--test-ink:#7a4b00;--test-soft:#fff4db;--test-tint:#fffbf2;--test-line:#f0c36d}
+
+.test-badge{display:inline-block;flex:none;margin:0 8px 0 0;padding:1px 7px;border:1px solid var(--test-line);border-radius:6px;background:var(--test-soft);
+  color:var(--test-ink);font-size:11px;font-weight:700;line-height:16px;letter-spacing:.08em;text-transform:uppercase;vertical-align:1px;white-space:nowrap}
+
+/* the list */
+.env-table tr.row-test td{background:var(--test-tint)}
+.env-table tr.row-test td:first-child{box-shadow:inset 3px 0 0 var(--test)}
+.env-table tr.is-selected td{background:var(--primary-soft)}
+.env-table tr.row-test.is-selected td{background:#fff1d6}
+.env-table .select-cell{width:44px;padding-right:0;cursor:default}
+.env-table .select-cell input{width:18px;height:18px;margin:0;vertical-align:middle;accent-color:var(--primary);cursor:pointer}
+
+.test-filter{display:inline-flex;flex-wrap:wrap;gap:4px;max-width:100%;margin:0 0 14px;padding:4px;border-radius:10px;background:var(--surface-3)}
+.test-filter-option{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:0;border-radius:8px;background:transparent;color:var(--ink-2);
+  font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap}
+.test-filter-option:hover{color:var(--ink)}
+.test-filter-option b{min-width:20px;padding:1px 7px;border-radius:9px;background:rgba(15,27,45,.07);font-size:12px;font-weight:600;text-align:center}
+.test-filter-option[aria-pressed=true]{background:#fff;color:var(--ink);font-weight:600;box-shadow:var(--shadow-sm)}
+.test-filter-option[aria-pressed=true] b{background:var(--primary-soft);color:var(--primary)}
+.test-filter-option:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+
+.bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:11px 12px 11px 20px;border-radius:12px;
+  background:var(--navy);color:#fff;box-shadow:var(--shadow-lg)}
+.bulk-bar[hidden]{display:none}
+.bulk-bar strong{font-size:15px;font-weight:600}
+.bulk-actions{display:flex;flex-wrap:wrap;gap:10px}
+.bulk-bar .button{min-height:38px;padding:0 16px;border-radius:8px;font-weight:600}
+.bulk-bar .bulk-test{border:0;background:var(--test-strong);color:#1d1300}
+.bulk-bar .bulk-test:hover{background:#ffb93d}
+.bulk-bar .bulk-real,.bulk-bar .bulk-clear{border:1px solid rgba(255,255,255,.32);background:rgba(255,255,255,.06);color:#fff}
+.bulk-bar .bulk-real:hover,.bulk-bar .bulk-clear:hover{background:rgba(255,255,255,.14)}
+
+/* the Test agreements folder */
+.folder-test{justify-content:flex-start;gap:8px}
+.folder-test span:not(.badge-count){flex:1;min-width:0}
+.folder-test .badge-count{flex:none}
+.folder-test .test-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--test-strong)}
+
+/* envelope details */
+.env-actions .test-badge{margin:0;padding:4px 9px;font-size:12px;align-self:center}
+
+/* send wizard: Test envelope switch */
+.switch-row.test-switch{margin-top:14px;padding:12px 14px;border:1px solid var(--test-line);border-radius:10px;background:var(--test-tint)}
+.switch-row.test-switch.is-on{border-color:var(--test);background:var(--test-soft)}
+.switch-row.test-switch input{accent-color:var(--test);width:18px;height:18px;margin-top:1px}
+
+/* clients */
+.client-entry strong .test-badge,.clients-head h3 .test-badge{margin:0 0 0 8px;vertical-align:2px}
+.revision-card.is-test{border-left:3px solid var(--test)}
+.revision-card.is-test strong .test-badge{margin-right:8px}
+.test-notice{margin:12px 0 0}
+.test-toggle{white-space:nowrap}
+
+/* report builder */
+.include-test{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:10px 12px;border:1px dashed var(--line-2);border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer}
+.include-test input{margin-top:2px;accent-color:var(--primary)}
+.include-test small{display:block;color:var(--ink-3);font-size:12px}
+
+@media (max-width:760px){
+  .bulk-bar{padding:10px 12px}
+  .bulk-actions{width:100%}
+  .bulk-bar .button{flex:1 1 auto;padding:0 12px}
+  .test-filter-option{padding:7px 10px}
+}

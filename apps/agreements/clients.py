@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 import database as db
 import esign
 import mailer
+import marks
 import security as sec
 from esign_db import client_contacts, client_files, envelopes, inbound, inbound_files, recipients
 from esign_db import documents as esign_documents
@@ -155,7 +156,7 @@ def contact_view(row) -> dict:
 def library(c, actor: dict, client: dict) -> list[dict]:
     """Every document kept for a client, newest first."""
     items = []
-    contracts = c.execute(select(db.contracts.c.id, db.contracts.c.entity, db.contracts.c.created).where(
+    contracts = c.execute(select(db.contracts.c.id, db.contracts.c.entity, db.contracts.c.created, db.contracts.c.test).where(
         db.contracts.c.client_id == client['id'], sec.scope(actor, db.contracts.c.owner_id), sec.company_scope(actor, db.contracts.c.entity))).mappings().all()
     created = {r['id']: r for r in contracts}
     if contracts:
@@ -163,9 +164,10 @@ def library(c, actor: dict, client: dict) -> list[dict]:
                                   db.documents.c.contract_id, db.documents.c.sha256).where(db.documents.c.contract_id.in_(list(created)))).mappings():
             contract = created[d['contract_id']]
             items.append({'id': d['id'], 'name': d['name'], 'group': 'Generated agreements', 'kind': d['kind'].upper(), 'size': d['size'],
-                          'created': contract['created'], 'company': contract['entity'], 'url': f"/files/{d['id']}", 'sha256': d['sha256']})
+                          'created': contract['created'], 'company': contract['entity'], 'url': f"/files/{d['id']}", 'sha256': d['sha256'],
+                          'test': bool(contract['test'])})
     sent = c.execute(select(envelopes.c.id, envelopes.c.ref, envelopes.c.subject, envelopes.c.status, envelopes.c.entity, envelopes.c.created,
-                            envelopes.c.completed_at, envelopes.c.sent_at, envelopes.c.certificate_sha256).where(
+                            envelopes.c.completed_at, envelopes.c.sent_at, envelopes.c.certificate_sha256, envelopes.c.test).where(
         envelopes.c.client_id == client['id'], envelopes.c.status.notin_(('template', 'draft')), esign.visible(actor))).mappings().all()
     by_id = {e['id']: e for e in sent}
     if sent:
@@ -179,12 +181,13 @@ def library(c, actor: dict, client: dict) -> list[dict]:
                 group = 'Attachments from signers'
             items.append({'id': d['id'], 'name': d['name'], 'group': group, 'kind': 'PDF', 'created': e['completed_at'] if done else e['sent_at'] or e['created'],
                           'company': e['entity'], 'envelope': e['ref'], 'envelope_id': e['id'], 'status': e['status'], 'pages': d['pages'],
-                          'url': f"/api/esign/documents/{d['id']}/file" + ('?final=1' if done else ''), 'sha256': d['final_sha256'] if done else d['sha256']})
+                          'url': f"/api/esign/documents/{d['id']}/file" + ('?final=1' if done else ''), 'sha256': d['final_sha256'] if done else d['sha256'],
+                          'test': bool(e['test'])})
         for e in sent:
             if e['status'] == 'completed' and e['certificate_sha256']:
                 items.append({'id': e['id'] + '-certificate', 'name': f"Certificate of Completion {e['ref']}.pdf", 'group': 'Certificates of Completion', 'kind': 'PDF',
                               'created': e['completed_at'], 'company': e['entity'], 'envelope': e['ref'], 'envelope_id': e['id'], 'status': e['status'],
-                              'url': f"/api/esign/envelopes/{e['id']}/certificate", 'sha256': e['certificate_sha256']})
+                              'url': f"/api/esign/envelopes/{e['id']}/certificate", 'sha256': e['certificate_sha256'], 'test': bool(e['test'])})
         for f in c.execute(select(inbound_files.c.id, inbound_files.c.name, inbound_files.c.size, inbound_files.c.scan, inbound.c.envelope_id, inbound.c.received,
                                   inbound.c.from_addr).join(inbound, inbound.c.id == inbound_files.c.inbound_id)
                            .where(inbound.c.envelope_id.in_(list(by_id)))).mappings():
@@ -261,7 +264,7 @@ def install(app) -> None:  # noqa: C901  (route table)
             profile = profile_values(payload)
             draft = {'client_name': name, 'address': address, 'entity': entity, 'client_email': profile.get('email', ''), 'id': cid}
             c.execute(db.clients.insert().values(id=cid, owner_id=a['id'], name=name, name_key=name_key(name), address=address, draft=draft, updated=t,
-                                                 profile=profile, created=t))
+                                                 profile=profile, created=t, test=payload.get('test') is True))
             db.log(c, a, 'client.created', cid, {'entity': entity})
             return {'id': cid}
 
@@ -287,7 +290,7 @@ def install(app) -> None:  # noqa: C901  (route table)
             return {'client': {'id': client['id'], 'name': client['name'], 'address': client['address'], 'owner': owner, 'created': client['created'],
                                'updated': client['updated'], 'profile': client['profile'] or {}, 'entity': draft.get('entity', ''),
                                'signatory': draft.get('client_signatory', ''), 'signatory_title': draft.get('client_title', ''),
-                               'signatory_email': draft.get('client_email', '')},
+                               'signatory_email': draft.get('client_email', ''), 'test': bool(client.get('test'))},
                     'contacts': contacts, 'counts': {'contracts': contracts, 'envelopes': statuses, 'files': files},
                     'can_edit': client['owner_id'] == a['id'] or a['role'] != 'user'}
 
@@ -313,6 +316,15 @@ def install(app) -> None:  # noqa: C901  (route table)
             db.log(c, a, 'client.updated', client_id, {'fields': sorted(k for k in payload if k in ('name', 'address', 'phone', 'email', 'website', 'notes',
                                                                                                  'industry', 'npi', 'tax_id'))})
             return {'ok': True}
+
+    @app.post('/api/clients/{client_id}/test')
+    def api_client_test(client_id: str, request: Request, payload: dict = Body(...)):
+        """Mark a client as a test client (test: true; its agreements and envelopes become tests too) or as a real client (test: false)."""
+        flag = marks.flag_of(payload)
+        with esign.write_tx() as c:
+            a = actor_of(request, c)
+            client_for(c, a, client_id)    # the owner, their Admin or a Super Admin
+            return marks.mark_client(c, a, client_id, flag)
 
     @app.post('/api/clients/{client_id}/contacts')
     def api_contact_add(client_id: str, request: Request, payload: dict = Body(...)):

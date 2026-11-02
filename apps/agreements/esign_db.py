@@ -1,6 +1,6 @@
 """E-signature and company mailbox tables (envelopes, recipients, fields, audit trail, mail outbox and inbox)."""
 from sqlalchemy import (JSON, BigInteger, Boolean, Column, Float, ForeignKey, Index, Integer, LargeBinary, String, Table, Text,
-                        UniqueConstraint)
+                        UniqueConstraint, false)
 
 from database import meta
 
@@ -34,6 +34,7 @@ envelopes = Table(
     Column('certificate', LargeBinary, nullable=True),
     Column('certificate_sha256', String(64), nullable=True),
     Column('bulk_id', String(32), nullable=True, index=True),           # esign_bulk.id when sent by bulk send
+    Column('test', Boolean, nullable=False, default=False, server_default=false()),  # practice run: [TEST] emails, watermarked, out of reports
 )
 Index('ix_esign_env_owner_updated', envelopes.c.owner_id, envelopes.c.updated)
 Index('ix_esign_env_status', envelopes.c.status, envelopes.c.completion_next)
