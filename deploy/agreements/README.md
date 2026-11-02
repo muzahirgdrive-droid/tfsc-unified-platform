@@ -91,6 +91,12 @@ and warns when a company has none. The images are kept in the database, so the b
 Signature images installed earlier with `./agreements.sh signatures` keep working; saving one in Company settings
 replaces them.
 
+**Edit company details** (on every company card, including Scribe Align, Extended Health Services and 24-7
+Consultancy) changes the short name, display name, notice email, **address**, governing law, time zone, brand colours,
+logo, letterhead (.docx) and page margins. Every agreement generated afterwards prints the company's address and notice
+email from here; agreements already generated or signed keep the details they were issued with. The legal name is
+fixed, because it identifies the company on every agreement, envelope, mailbox and user permission.
+
 The same screen holds the workspace settings shown on every page and email: portal name, copyright holder (the
 "© year ... All rights reserved." line), the **Help email** (muzahir@scribealign.com) and the security line on the
 signing page.

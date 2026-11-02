@@ -5,7 +5,7 @@
   const form = $("contract-form");
   const state = {config: null, catalog: [], selected: new Map(), custom: [], clientId: "", filter: "all", busy: false, dirty: false, customCounter: 0, disabledControls: new Map()};
   const modelLabels = {percentage: "Percentage of net collections", fte: "FTE per month", pte: "PTE per month", unit: "Per completed unit", fixed: "Fixed monthly fee", consultancy: "Monthly consultancy fee", one_time: "One project invoice", two_installments: "Two project installments"};
-  const plainFields = ["client_name", "address", "client_signatory", "client_title", "client_email", "effective_date", "baa_effective_date", "provider_address", "provider_email", "governing_state", "notice_days", "payment_days", "cure_days", "special_terms", "nda_purpose", "nda_term_years", "nda_survival_years", "output_root"];
+  const plainFields = ["client_name", "address", "client_signatory", "client_title", "client_email", "effective_date", "baa_effective_date", "governing_state", "notice_days", "payment_days", "cure_days", "special_terms", "nda_purpose", "nda_term_years", "nda_survival_years", "output_root"];
   const serviceHints = {
     medical_billing: "Identify providers, payers, practice systems and dates of service. Define any excluded accounts or collections.",
     wc_collection: "Identify assigned workers’ compensation accounts, jurisdictions and retained counsel, if applicable.",
@@ -394,6 +394,8 @@
     // Only the company already in use is highlighted; otherwise nothing looks pre-selected (arrow keys still work).
     const cur = box.querySelector(".is-current"); if (cur) cur.focus({preventScroll: true}); else { picker.tabIndex = -1; picker.focus({preventScroll: true}); }
   };
+  // Only ask before replacing the form when it holds something worth keeping (choosing a company alone is not).
+  const unsavedWork = () => state.dirty && !!($("client_name").value.trim() || $("address").value.trim() || state.selected.size || $("special_terms").value.trim());
   function useCompany(name) {
     const before = [...state.selected.values()].map(x => state.catalog.find(s => s.id === x.id)?.name || x.id);
     const changed = $("entity").value !== name;
@@ -710,14 +712,14 @@
   $("saved-client").addEventListener("change", async () => {
     const id = $("saved-client").value;
     if (!id) return;
-    if (state.dirty && !window.confirm("Open this saved client and replace the unsaved changes in this form?")) { $("saved-client").value = state.clientId; return; }
+    if (unsavedWork() && !window.confirm("Open this saved client and replace the unsaved changes in this form?")) { $("saved-client").value = state.clientId; return; }
     const reset = $("clear-services-on-load").checked;
     clearMessages(); busy(true, "Opening draft…");
     try { const data = await api(`/api/clients/${encodeURIComponent(id)}`); applyClient(data, reset, !!picked); announce(reset ? "Client details loaded. Choose the services for this new standalone agreement." : "Saved client and agreement details loaded. Review the effective date before generating."); }
     catch (error) { announce(error.message, true); }
     finally { busy(false); }
   });
-  $("new-client").addEventListener("click", () => { if (!state.dirty || window.confirm("Start a new client and clear the unsaved changes in this form?")) resetClient(); });
+  $("new-client").addEventListener("click", () => { if (!unsavedWork() || window.confirm("Start a new client and clear the unsaved changes in this form?")) resetClient(); });
   $("choose-folder").addEventListener("click", () => window.chooseOutputFolder());
   $("today-button").addEventListener("click", () => { $("effective_date").value = today(); markDirty(); updateSummary(); });
   $("baa-today-button").addEventListener("click", () => { $("baa_effective_date").value = today(); markDirty(); updateSummary(); });

@@ -142,11 +142,14 @@ def validate(payload, draft=False):
     for field, label, required, limit in (
         ('client_name','Client legal name',True,200), ('address','Client legal address',not draft,500),
         ('client_signatory','Client signatory',False,150),('client_title','Client title',False,150),
-        ('client_email','Client notice email',False,200), ('provider_address','Scribe Align address',not draft,500),
-        ('provider_email','Scribe Align notice email',False,200),('governing_state','Governing state',not draft,50),
+        ('client_email','Client notice email',False,200), ('provider_address','Company address',not draft,500),
+        ('provider_email','Company notice email',False,200),('governing_state','Governing state',not draft,50),
         ('special_terms','Additional agreed terms',False,6000),('nda_purpose','NDA purpose',False,600)):
         default={'provider_address':entity['address'],'provider_email':entity['email'],'governing_state':entity['governing_state']}.get(field,DEFAULTS.get(field,''))
-        data[field] = clean(payload.get(field, default), label, required, limit)
+        # The company's own address and notice email come from Admin > Company settings, never from the form: a saved
+        # client's draft must not carry another company's details into an agreement.
+        value = default if field in ('provider_address','provider_email') else payload.get(field, default)
+        data[field] = clean(value, label, required, limit)
     data['governing_state'] = next((x for x in STATES if x.casefold()==data['governing_state'].casefold()), data['governing_state'])
     data['nda_purpose'] = data['nda_purpose'] or DEFAULTS['nda_purpose']
     for key in ('client_email','provider_email'):

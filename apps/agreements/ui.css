@@ -771,3 +771,8 @@ body.picking{overflow:hidden}
 .tick-ready.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
 .tick-ready.todo{background:#fffbeb;border-color:#fde68a;color:#78350f}
 .tick-ready ul{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.6}
+/* company details form: the current logo, and the legal name that identifies the company */
+.logo-now{display:flex;align-items:center;gap:12px;margin:2px 0 10px}
+.logo-now img{max-height:44px;max-width:180px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 8px}
+input.is-locked{background:var(--surface-2,#f3f5f8);color:var(--ink-2,#3b4658);cursor:not-allowed}
+.company-card .company-address{margin:2px 0 10px;line-height:1.45;overflow-wrap:break-word}

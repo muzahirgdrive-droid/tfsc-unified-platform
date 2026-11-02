@@ -196,7 +196,8 @@ def public_profile(p: dict, mailbox: str = '') -> dict:
             'default_signatory': entity['signatory'], 'default_title': entity['title'], 'has_signature': p['source'] is not None,
             'signature_source': p['source'], 'signature_kind': p['kind'], 'signature_scale': p['scale'], 'default_signature_scale': entity['signature_scale'],
             'updated': p['updated'], 'color': entity['color'],
-            'accent': entity['accent'], 'logo': entity['logo_url'], 'custom': entity.get('custom', False), 'mailbox': mailbox}
+            'accent': entity['accent'], 'logo': entity['logo_url'], 'custom': entity.get('custom', False), 'mailbox': mailbox,
+            'address': entity['address'], 'governing_state': entity['governing_state']}
 
 
 # ------------------------------------------------------------------ workspace settings

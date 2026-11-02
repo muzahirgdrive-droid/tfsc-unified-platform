@@ -67,6 +67,50 @@ def _build_custom(row: dict) -> dict:
                 custom=True)
 
 
+# Details a Super Admin changed for a built-in company (Admin > Company settings > Edit company details). They live in the
+# settings table: "company:<key>" holds the small fields, "company:<key>:logo" and "company:<key>:letterhead" the files.
+# The legal name never changes: it identifies the company on every agreement, envelope, mailbox and permission.
+BUILTIN_EDITABLE = ('short', 'display', 'address', 'email', 'governing_state', 'timezone', 'color', 'accent', 'dark')
+GEOMETRY = ('width', 'top', 'bottom', 'left', 'right')
+
+
+def override_key(key: str, part: str = '') -> str:
+    return f'company:{key}' + (f':{part}' if part else '')
+
+
+def _override_file(c, db, key: str, part: str, folder: Path, name: str) -> Path | None:
+    """The uploaded file for a built-in, written once to the cache folder (read from the database only when missing)."""
+    path = folder / name
+    if path.is_file():
+        return path
+    import base64
+    from sqlalchemy import select
+    value = c.execute(select(db.settings.c.value).where(db.settings.c.key == override_key(key, part))).scalar()
+    if not value or not value.get('data'):
+        return None
+    return _materialize(folder, name, base64.b64decode(value['data']))
+
+
+def _apply_override(base: dict, o: dict, c, db) -> dict:
+    e = dict(base)
+    for field in BUILTIN_EDITABLE:
+        if field in o and (o[field] or field == 'email'):
+            e[field] = o[field]
+    key = e['key']
+    if o.get('logo_sha'):
+        path = _override_file(c, db, key, 'logo', _LOGOS, f"{key}-{o['logo_sha'][:16]}.png")
+        if path:
+            e.update(logo_path=path, logo_url=f"/api/companies/{key}/logo.png?v={o['logo_sha'][:12]}", logo=path.name)
+    if o.get('letterhead_sha') and all(isinstance(o.get(g), int) for g in GEOMETRY):
+        path = _override_file(c, db, key, 'letterhead', _LETTERHEADS, f"{key}-{o['letterhead_sha'][:16]}.docx")
+        if path:
+            e.update(template_path=path, sha256=o['letterhead_sha'], **{g: o[g] for g in GEOMETRY})
+    elif all(isinstance(o.get(g), int) for g in GEOMETRY):
+        e.update({g: o[g] for g in GEOMETRY})          # new margins on the original letterhead
+    e['edited'] = True
+    return e
+
+
 def _load(force: bool = False) -> dict:
     if not force and _CACHE['ents'] is not None and time.time() - _CACHE['at'] < _TTL:
         return _CACHE['ents']
@@ -75,6 +119,15 @@ def _load(force: bool = False) -> dict:
         import database as db
         from sqlalchemy import select
         with db.engine.connect() as c:
+            by_key = {e['key']: name for name, e in _BUILTINS.items()}
+            for setting, value in c.execute(select(db.settings.c.key, db.settings.c.value).where(db.settings.c.key.like('company:%'))).all():
+                key = setting.split(':', 1)[1]
+                if ':' in key or key not in by_key or not isinstance(value, dict):
+                    continue
+                try:
+                    ents[by_key[key]] = _apply_override(_BUILTINS[by_key[key]], value, c, db)
+                except Exception:  # noqa: BLE001  (an unreadable change never hides the company: it keeps its original details)
+                    continue
             rows = c.execute(select(db.companies).where(db.companies.c.active.is_(True)).order_by(db.companies.c.created, db.companies.c.key)).mappings().all()
         for row in rows:
             try:

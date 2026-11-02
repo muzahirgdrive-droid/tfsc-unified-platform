@@ -318,14 +318,16 @@ def update_company(actor: dict, key: str, payload: dict) -> dict:
         row = c.execute(select(db.companies).where(db.companies.c.key == key)).mappings().first()
     if not row:
         raise HTTPException(404, 'Company not found.')
-    identity = _identity(payload, existing_name=row['name'])
+    if str(payload.get('name') or row['name']).strip().upper() != row['name']:
+        raise ValueError(LEGAL_NAME_FIXED)
+    identity = _identity(dict(payload, name=row['name']), existing_name=row['name'])
     values = dict(identity, updated=time.time())
     if payload.get('letterhead'):
         parsed = parse_letterhead(comp.decode_image(payload['letterhead']))
         geometry = _geometry(payload, parsed)
         values.update(letterhead=parsed['bytes'], letterhead_sha256=parsed['sha256'], **{k: geometry[k] for k in ('width', 'top', 'bottom', 'left', 'right')})
     elif payload.get('margins'):
-        parsed = {'page_w': row['left'] + row['right'] + row['width'], 'top': row['top'], 'bottom': row['bottom'], 'left': row['left'], 'right': row['right']}
+        parsed = {'page_w': row['left'] + row['right'] + row['width'], 'width': row['width'], 'top': row['top'], 'bottom': row['bottom'], 'left': row['left'], 'right': row['right']}
         values.update(**_geometry(payload, parsed))
     if payload.get('logo'):
         logo_bytes, logo_ext = validate_logo(payload['logo'])
@@ -351,6 +353,79 @@ def set_active(actor: dict, key: str, active: bool) -> dict:
         db.log(c, actor, 'company.updated', detail={'company': row['name'], 'key': key, 'active': active})
     entmod.invalidate()
     return {'key': key, 'active': active}
+
+
+LEGAL_NAME_FIXED = ("The legal name can't be changed here: it identifies the company on every agreement, envelope, mailbox and "
+                    "user permission already in the system.")
+
+
+def _settings_put(c, key: str, value: dict) -> None:
+    if c.execute(db.settings.update().where(db.settings.c.key == key).values(value=value)).rowcount == 0:
+        c.execute(db.settings.insert().values(key=key, value=value))
+
+
+def builtin_detail(key: str) -> dict:
+    """What the edit form shows for a built-in company: its current details (original values plus any saved changes)."""
+    name = next((n for n, e in entmod._BUILTINS.items() if e['key'] == key), None)
+    if not name:
+        raise HTTPException(404, 'Company not found.')
+    e = get_entity(name)
+    with db.engine.connect() as c:
+        p = comp.profile(c, name, with_image=False)
+    return {'key': key, 'name': name, 'short': e['short'], 'display': e['display'], 'address': e['address'], 'email': e['email'] or '',
+            'governing_state': e['governing_state'], 'timezone': e['timezone'], 'color': e['color'], 'accent': e['accent'], 'dark': e['dark'],
+            'signatory': p['signatory'], 'title': p['title'], 'signature_scale': p['scale'], 'has_signature': p['source'] is not None,
+            'services': None, 'doc_types': e.get('doc_types') or ['baa', 'services', 'nda'], 'active': True, 'custom': False, 'builtin': True,
+            'margins': {k: round(e[k] / 1440, 2) for k in ('top', 'bottom', 'left', 'right')}, 'width': e['width'], 'logo': e['logo_url']}
+
+
+def update_builtin(actor: dict, key: str, payload: dict) -> dict:
+    """Save a built-in company's details (everything but the legal name). Stored as changes over the original values,
+    so the company keeps working exactly as before if a value is ever unreadable."""
+    name = next((n for n, e in entmod._BUILTINS.items() if e['key'] == key), None)
+    if not name:
+        raise HTTPException(404, 'Company not found.')
+    if str(payload.get('name') or name).strip().upper() != name:
+        raise ValueError(LEGAL_NAME_FIXED)
+    current = get_entity(name)
+    identity = _identity(dict(payload, name=name, signatory=payload.get('signatory') or current['signatory'],
+                              title=payload.get('title') or current['title'], services=None, doc_types=current.get('doc_types')))
+    change = {k: identity[k] for k in entmod.BUILTIN_EDITABLE if k != 'dark'}
+    # the header colour follows the brand colour unless it is given, or the brand colour did not change
+    change['dark'] = _color(payload['dark'], 'Header colour', current['dark']) if payload.get('dark') else (current['dark'] if identity['color'] == current['color'] else identity['color'])
+    with db.engine.connect() as c:
+        saved = c.execute(select(db.settings.c.value).where(db.settings.c.key == entmod.override_key(key))).scalar() or {}
+    value = dict(saved, **change)
+    files = {}
+    if payload.get('logo') and not str(payload['logo']).startswith('/'):      # a URL is the current logo shown back, not an upload
+        logo, _ = validate_logo(payload['logo'])
+        value['logo_sha'] = hashlib.sha256(logo).hexdigest()
+        files['logo'] = logo
+    if payload.get('letterhead'):
+        parsed = parse_letterhead(comp.decode_image(payload['letterhead']))
+        value.update(letterhead_sha=parsed['sha256'], **_geometry(payload, parsed))
+        files['letterhead'] = parsed['bytes']
+    elif payload.get('margins'):
+        parsed = {'page_w': current['left'] + current['right'] + current['width'], **{k: current[k] for k in ('top', 'bottom', 'left', 'right')}, 'width': current['width']}
+        geometry = _geometry(payload, parsed)
+        if any(geometry[k] != current[k] for k in entmod.GEOMETRY):
+            value.update(geometry)
+    before = {k: current.get(k) for k in entmod.BUILTIN_EDITABLE}
+    changed = sorted([k for k in entmod.BUILTIN_EDITABLE if value.get(k, before[k]) != before[k]] + list(files))
+    with db.engine.begin() as c:
+        for part, raw in files.items():
+            _settings_put(c, entmod.override_key(key, part), {'data': base64.b64encode(raw).decode()})
+        _settings_put(c, entmod.override_key(key), value)
+        if identity['signatory'] != current['signatory'] or identity['title'] != current['title'] or payload.get('signature'):
+            comp.save_profile(c, actor, current, {'signatory': identity['signatory'], 'title': identity['title']}
+                              | {k: payload[k] for k in ('signature', 'signature_kind') if payload.get(k)})
+        db.log(c, actor, 'company.updated', detail={'company': name, 'key': key, 'changed': changed})
+    entmod.invalidate()
+    return builtin_detail(key)
+
+
+def company_detail(key: str) -> dict:
+    return builtin_detail(key) if key in BUILTIN_KEYS else _public(key)
 
 
 def _public(key: str) -> dict:
@@ -475,6 +550,18 @@ def install(app) -> None:
             super_admin(request, c)
         return {'companies': list_rows()}
 
+    @app.get('/api/admin/companies/details/{key}')
+    def api_get_details(key: str, request: Request):
+        with db.engine.connect() as c:
+            super_admin(request, c)
+        return {'company': company_detail(key)}
+
+    @app.post('/api/admin/companies/details/{key}')
+    def api_save_details(key: str, request: Request, payload: dict = Body(...)):
+        with db.engine.connect() as c:
+            a = super_admin(request, c)
+        return {'company': update_builtin(a, key, payload) if key in BUILTIN_KEYS else update_company(a, key, payload)}
+
     @app.get('/api/admin/companies/custom/{key}')
     def api_get_custom(key: str, request: Request):
         with db.engine.connect() as c:
@@ -498,6 +585,9 @@ def install(app) -> None:
         with db.engine.connect() as c:
             sec.get_actor(request, c)
             row = c.execute(select(db.companies.c.logo, db.companies.c.logo_ext).where(db.companies.c.key == key)).first()
+            if not row and key in BUILTIN_KEYS:
+                saved = c.execute(select(db.settings.c.value).where(db.settings.c.key == entmod.override_key(key, 'logo'))).scalar()
+                row = (base64.b64decode(saved['data']), 'png') if saved and saved.get('data') else None
         if not row or not row[0]:
             raise HTTPException(404, 'No logo for this company.')
         data = bytes(row[0])

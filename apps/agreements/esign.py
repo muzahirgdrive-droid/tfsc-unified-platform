@@ -1040,10 +1040,10 @@ def _actor_info(request: Request) -> tuple[str, str]:
 
 
 def _brand_logo(entity: dict) -> str:
-    """The logo a signer can load. Built-in logos are public assets; a company added from the app keeps its logo behind
-    the sign-in, so it is embedded as a data URL (signers have no account)."""
-    if not entity.get('custom'):
-        return entity.get('logo_url') or ''
+    """The logo a signer can load. Logos shipped with the application are public assets; a logo uploaded in the app (a new
+    company, or a new logo for a built-in one) stays behind the sign-in, so it is embedded as a data URL (signers have no account)."""
+    if (entity.get('logo_url') or '').startswith('/assets/'):
+        return entity['logo_url']
     from pathlib import Path
     try:
         path = Path(entity['logo_path']) if entity.get('logo_path') else None
