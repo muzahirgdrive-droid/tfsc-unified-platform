@@ -76,7 +76,7 @@ class Parity(Base):
         logo = next(p for p in msg.walk() if p.get('Content-ID') == '<logo.ehs@tfsc>').get_payload(decode=True)
         self.assertEqual(logo, (APP / 'assets' / 'brand' / 'ehs.png').read_bytes())
         _, base, state = self.signer(self.smtp.link(msg and self.smtp.to('pat@clinic.test')[0]))
-        self.assertEqual(state['brand'], {'logo': '/assets/brand/ehs.png', 'color': '#1C2A39', 'accent': '#FBCD35'})
+        self.assertEqual(state['brand'], {'logo': '/assets/brand/ehs.png', 'color': '#1C2A39', 'accent': '#FBCD35', 'dark': '#101A24'})
         self.assertEqual(self.api.get('/assets/brand/ehs.png').status_code, 200, 'logos are public so emails and the signing page can show them')
         self.assertEqual(self.api.get('/assets/brand/../../portal.py').status_code, 404)
 

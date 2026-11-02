@@ -377,7 +377,9 @@ def _draw_image(c, png: bytes, x, y, w, h, left=False):
     c.drawImage(image, x if left else x + (w - dw) / 2, y + (h - dh) / 2, dw, dh, mask='auto')
 
 
-STAMP_LINE = colors.HexColor('#5B7FB9')
+STAMP_LINE = colors.HexColor('#4C2BD1')     # the violet "Signed by:" bracket, as on the signing page
+STAMP_TEXT = colors.HexColor('#4C2BD1')
+STAMP_ID = colors.HexColor('#6B6A8A')
 SIGNATURE_INK_MAX = 24.0     # points: about a third of an inch, as in the familiar e-signature stamp
 INITIALS_INK_MAX = 15.0
 
@@ -422,18 +424,19 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
             signer = signers.get(f['recipient_id'], {})
             kind = f['kind']
             if kind == 'signature' and signer.get('signature_png'):
-                # A thin bracket, "Signed by:" and the signature ID in small grey type, the ink at a natural size.
+                # A thin violet bracket, "Signed by:" above the ink and the signature ID below it, the ink at a natural size.
                 _bracket(c, x, y, h)
-                c.setFillColor(MUTED)
+                c.setFillColor(STAMP_TEXT)
                 c.setFont(regular, 5)
                 c.drawString(x + 4.5, y + h - 6, 'Signed by:')
-                c.drawString(x + 4.5, y + 2.2, _safe_text(signer.get('signature_id', '')[:16].upper(), regular))
+                c.setFillColor(STAMP_ID)
+                c.drawString(x + 4.5, y + 2.2, _safe_text(signer.get('signature_id', '')[:16].upper() + '...', regular))
                 ink = min(h - 15, SIGNATURE_INK_MAX)
                 _draw_image(c, signer['signature_png'], x + 5, y + 7.5 + (h - 15 - ink) / 2, min(w - 9, 150), ink, left=True)
             elif kind == 'initials' and signer.get('initials_png'):
-                _bracket(c, x, y, h, 3)
-                ink = min(h - 6, INITIALS_INK_MAX)
-                _draw_image(c, signer['initials_png'], x + 4, y + (h - ink) / 2, w - 7, ink, left=True)
+                # Initials are plain ink, no bracket.
+                ink = min(h - 4, INITIALS_INK_MAX)
+                _draw_image(c, signer['initials_png'], x + 2, y + (h - ink) / 2, w - 4, ink, left=True)
             elif kind == 'note':
                 continue
             elif kind == 'radio':

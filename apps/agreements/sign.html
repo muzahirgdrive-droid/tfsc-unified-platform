@@ -11,18 +11,22 @@
   <script src="/sign.js" defer></script>
 </head>
 <body>
-  <header class="sign-bar">
-    <div class="sign-bar-inner">
-      <div class="sign-brand"><img id="company-logo" alt="" hidden><div class="sign-brand-text"><strong id="company">TFSC Agreements</strong><span id="envelope-ref"></span></div></div>
+  <header class="top" id="top">
+    <div class="top-in">
+      <div class="plate" id="logo-plate" hidden><img id="company-logo" alt=""></div>
+      <strong class="brand-name" id="company">TFSC Agreements</strong>
+      <span class="tdiv" aria-hidden="true"></span>
+      <div class="ttl"><strong id="page-title">Review and sign</strong><small id="subject-line"></small></div>
+      <div class="sp"></div>
       <div class="sign-actions" id="top-actions" hidden>
-        <span class="progress-pill" id="progress" aria-live="polite"></span>
-        <div class="zoom" id="zoom" aria-label="Zoom"><button type="button" class="zoom-btn" id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-level">100%</span><button type="button" class="zoom-btn" id="zoom-in" aria-label="Zoom in">+</button></div>
-        <button type="button" class="btn btn-finish" id="finish" disabled>Finish</button>
+        <div class="prog" aria-live="polite"><div class="prog-lab"><span>Required fields</span><b id="progress">0 of 0</b></div><div class="bar"><i id="progress-bar"></i></div></div>
+        <button type="button" class="finish" id="finish" disabled>Finish</button>
         <div class="menu">
-          <button type="button" class="btn btn-ghost" id="more" aria-haspopup="true" aria-expanded="false">Other actions<span class="chev" aria-hidden="true"></span></button>
+          <button type="button" class="glass" id="more" aria-haspopup="true" aria-expanded="false"><span class="more-text">Other actions</span><span class="chev" aria-hidden="true"></span></button>
           <div class="menu-list" id="more-menu" role="menu" hidden>
             <button type="button" role="menuitem" id="finish-later">Finish later</button>
             <button type="button" role="menuitem" id="reassign-open" hidden>Assign to someone else</button>
+            <button type="button" role="menuitem" id="pages-menu" class="only-small">Pages</button>
             <button type="button" role="menuitem" id="download-original">Download PDF</button>
             <button type="button" role="menuitem" id="print">Print</button>
             <button type="button" role="menuitem" id="show-disclosure">View electronic record disclosure</button>
@@ -32,16 +36,26 @@
         </div>
       </div>
     </div>
-    <div class="trust-strip"><span class="lock" aria-hidden="true"></span><strong>Secure document portal</strong><span id="trust-line">Encrypted connection · Tamper-evident audit trail</span></div>
   </header>
+  <div class="strip" id="trust-strip"><span class="lock" aria-hidden="true"></span><b>Secure signing</b><span class="strip-line" id="trust-line">Encrypted connection · Tamper-evident audit trail</span></div>
+  <div class="strip strip-test" id="test-strip" hidden><b>TEST ENVELOPE</b><span class="strip-line">Practice only. This is not a real agreement and is not legally binding.</span></div>
+
+  <aside class="rail" id="rail" aria-label="Document tools" hidden>
+    <button type="button" id="rail-pages" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="7" height="9" rx="1"/><rect x="13" y="3" width="7" height="9" rx="1"/><rect x="4" y="14" width="7" height="7" rx="1"/><rect x="13" y="14" width="7" height="7" rx="1"/></svg>Pages</button>
+    <button type="button" id="rail-download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Download</button>
+    <button type="button" id="rail-print"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7"/></svg>Print</button>
+    <button type="button" id="rail-help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h.01"/></svg>Help</button>
+    <div class="zoom" id="zoom" aria-label="Zoom"><button type="button" class="zoom-btn" id="zoom-in" aria-label="Zoom in">+</button><span id="zoom-level">100%</span><button type="button" class="zoom-btn" id="zoom-out" aria-label="Zoom out">−</button></div>
+  </aside>
+  <nav class="thumbs" id="thumbs" aria-label="Pages" hidden></nav>
 
   <main id="sign-app" data-message-title="__MESSAGE_TITLE__" data-message-body="__MESSAGE_BODY__">
-    <section class="notice-card" id="message-card" hidden><h1 id="message-title"></h1><p id="message-body"></p><div class="done-links" id="message-links"></div></section>
+    <section class="card notice-card" id="message-card" hidden><span class="seal seal-info" aria-hidden="true">i</span><h1 id="message-title"></h1><p id="message-body"></p><div class="done-links" id="message-links"></div></section>
     <div id="loading" class="loading"><span class="spin" aria-hidden="true"></span>Opening your secure documents…</div>
     <div class="alert" id="error" role="alert" hidden></div>
 
-    <section class="gate" id="code-gate" hidden>
-      <div class="gate-icon" aria-hidden="true"><span class="lock big"></span></div>
+    <section class="card gate" id="code-gate" hidden>
+      <span class="seal seal-lock" aria-hidden="true"><span class="lock big"></span></span>
       <h1>Enter the access code</h1>
       <p>The sender protected these documents with an access code. Use the code they gave you; it is not in the email.</p>
       <form id="code-form"><label for="code">Access code</label><input id="code" autocomplete="one-time-code" maxlength="60" required><button class="btn btn-primary" type="submit">Validate</button></form>
@@ -49,105 +63,117 @@
 
     <section class="host-banner" id="host-banner" hidden></section>
 
-    <section class="banner banner-consent" id="consent-banner" hidden>
-      <div class="banner-text"><strong>Please review and act on these documents.</strong>
-        <span>Before you continue, read the <button type="button" class="link" id="consent-read">Electronic Record and Signature Disclosure</button>.</span>
-        <label class="check"><input type="checkbox" id="consent-check"> I agree to use electronic records and signatures.</label></div>
-      <button type="button" class="btn btn-finish" id="consent-continue" disabled>Continue</button>
+    <section class="card consent" id="consent-banner" hidden>
+      <div class="consent-head"><div class="consent-plate" id="consent-plate" hidden><img id="consent-logo" alt=""></div>
+        <div><p class="eyebrow">Please review and act on these documents</p><h1 id="consent-title"></h1><p class="consent-from" id="consent-from"></p></div></div>
+      <ul class="consent-docs" id="consent-docs"></ul>
+      <div class="consent-box">
+        <p>Before you continue, read the <button type="button" class="link" id="consent-read">Electronic Record and Signature Disclosure</button>.</p>
+        <label class="check"><input type="checkbox" id="consent-check"> I agree to use electronic records and signatures.</label>
+      </div>
+      <div class="consent-actions"><span class="consent-secure"><span class="lock" aria-hidden="true"></span>Encrypted, with a tamper-evident audit trail</span><button type="button" class="btn btn-ds" id="consent-continue" disabled>Continue</button></div>
     </section>
 
-    <section class="banner banner-info" id="intro-banner" hidden>
-      <div class="banner-text"><strong id="intro-title"></strong><span id="intro-body"></span></div>
-      <button type="button" class="btn btn-finish" id="viewer-complete" hidden>Complete</button>
-    </section>
-
-    <details class="message" id="sender-message" hidden><summary><span id="sender-line"></span></summary><p id="sender-text"></p><p id="sender-note" class="note" hidden></p></details>
-
-    <section class="done-card" id="done-card" hidden>
-      <div class="done-mark" aria-hidden="true">✓</div>
+    <section class="card done-card" id="done-card" hidden>
+      <span class="seal seal-ok" aria-hidden="true"></span>
       <h1 id="done-title"></h1>
       <p id="done-body"></p>
+      <div class="done-docs" id="done-docs"></div>
       <div class="done-links" id="done-links"></div>
+      <p class="done-note" id="done-note"></p>
     </section>
 
     <div class="workspace" id="workspace">
+      <section class="sender" id="sender-message" hidden>
+        <span class="avatar" id="sender-avatar" aria-hidden="true"></span>
+        <div class="sender-main"><h2 id="sender-line"></h2><p id="sender-text"></p><p id="sender-note" class="note" hidden></p></div>
+        <div class="sender-meta" id="sender-meta"></div>
+      </section>
+      <section class="intro" id="intro-banner" hidden>
+        <div><strong id="intro-title"></strong><span id="intro-body"></span></div>
+        <button type="button" class="btn btn-ds" id="viewer-complete" hidden>Complete</button>
+      </section>
       <div class="documents" id="documents"></div>
-      <nav class="thumbs" id="thumbs" aria-label="Pages" hidden></nav>
+      <button type="button" class="guide" id="guide" hidden>Start</button>
     </div>
-    <button type="button" class="guide" id="guide" hidden>Start</button>
   </main>
-  <footer class="sign-footer"><span id="footer-copyright">© 2026. All rights reserved.</span><span class="dot">·</span><span>Powered by the TFSC Agreements secure portal</span><span class="dot">·</span><button type="button" class="link" id="footer-help">Help</button></footer>
+  <footer class="sign-footer"><span>Powered by <b>TFSC Agreements</b> secure signing</span><span class="dot">·</span><span id="footer-copyright">© 2026. All rights reserved.</span><span class="dot">·</span><span id="envelope-ref"></span><span class="dot">·</span><button type="button" class="link" id="footer-help">Help</button></footer>
 
   <dialog id="adopt-dialog" class="dialog dialog-wide" aria-labelledby="adopt-title">
     <form method="dialog" id="adopt-form">
-      <header class="dialog-head"><h2 id="adopt-title">Adopt your signature</h2><p>Confirm your name and initials, then choose how your signature and initials look.</p></header>
-      <div class="adopt-names"><label>Full name<input id="adopt-name" maxlength="150" required autocomplete="name"></label><label>Initials<input id="adopt-initials" maxlength="6" required></label></div>
-      <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="type" aria-selected="true">Choose a style</button><button type="button" role="tab" data-tab="draw" aria-selected="false">Draw</button><button type="button" role="tab" data-tab="upload" aria-selected="false">Upload</button></div>
-      <div class="tab-panel" id="tab-type">
-        <div id="styles" class="styles" role="radiogroup" aria-label="Signature style"></div>
-        <label class="inline-select">Initials style<select id="initials-style"></select></label>
-      </div>
-      <div class="tab-panel" id="tab-draw" hidden>
-        <div class="draw-grid">
-          <div class="pad-box"><span>Draw your signature</span><canvas id="draw-signature" width="900" height="270" aria-label="Draw your signature"></canvas><button type="button" class="link" data-clear="draw-signature">Clear</button></div>
-          <div class="pad-box"><span>Draw your initials</span><canvas id="draw-initials" width="360" height="270" aria-label="Draw your initials"></canvas><button type="button" class="link" data-clear="draw-initials">Clear</button></div>
+      <header class="dialog-head"><div><h2 id="adopt-title">Adopt your signature</h2><p>Confirm your name and initials, then choose how your signature looks.</p></div><button type="submit" value="cancel" class="x" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <div class="adopt-names"><label>Full name<input id="adopt-name" maxlength="150" required autocomplete="name"></label><label>Initials<input id="adopt-initials" maxlength="6" required></label></div>
+        <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="type" aria-selected="true">Choose a style</button><button type="button" role="tab" data-tab="draw" aria-selected="false">Draw</button><button type="button" role="tab" data-tab="upload" aria-selected="false">Upload</button></div>
+        <div class="tab-panel" id="tab-type">
+          <div id="styles" class="styles" role="radiogroup" aria-label="Signature style"></div>
+          <label class="inline-select">Initials style<select id="initials-style"></select></label>
         </div>
-      </div>
-      <div class="tab-panel" id="tab-upload" hidden>
-        <div class="upload-grid">
-          <label class="upload-box"><span>Signature image</span><input type="file" id="upload-signature" accept="image/png,image/jpeg"><img id="upload-preview" alt="Uploaded signature" hidden></label>
-          <label class="upload-box"><span>Initials image (optional)</span><input type="file" id="upload-initials" accept="image/png,image/jpeg"><img id="upload-initials-preview" alt="Uploaded initials" hidden></label>
+        <div class="tab-panel" id="tab-draw" hidden>
+          <div class="draw-grid">
+            <div class="pad-box"><span>Draw your signature</span><canvas id="draw-signature" width="900" height="270" aria-label="Draw your signature"></canvas><button type="button" class="link" data-clear="draw-signature">Clear</button></div>
+            <div class="pad-box"><span>Draw your initials</span><canvas id="draw-initials" width="360" height="270" aria-label="Draw your initials"></canvas><button type="button" class="link" data-clear="draw-initials">Clear</button></div>
+          </div>
         </div>
-        <p class="hint">A clear photo or scan on white paper works best; the background is removed automatically. Without an initials image, your initials use the style chosen under Choose a style.</p>
+        <div class="tab-panel" id="tab-upload" hidden>
+          <div class="upload-grid">
+            <label class="upload-box"><span>Signature image</span><input type="file" id="upload-signature" accept="image/png,image/jpeg"><img id="upload-preview" alt="Uploaded signature" hidden></label>
+            <label class="upload-box"><span>Initials image (optional)</span><input type="file" id="upload-initials" accept="image/png,image/jpeg"><img id="upload-initials-preview" alt="Uploaded initials" hidden></label>
+          </div>
+          <p class="hint">A clear photo or scan on white paper works best; the background is removed automatically. Without an initials image, your initials use the style chosen under Choose a style.</p>
+        </div>
+        <div class="adopt-preview" aria-live="polite">
+          <div><span class="preview-label">Signature</span><div class="bracket bracket-lg"><small>Signed by:</small><img id="preview-signature" alt="Signature preview"><code id="preview-id">0A1B2C3D4E5F…</code></div></div>
+          <div><span class="preview-label">Initials</span><div class="bracket bracket-lg bracket-ini"><img id="preview-initials" alt="Initials preview"></div></div>
+        </div>
+        <p class="legal">By selecting <b>Adopt and sign</b>, I agree that the signature and initials will be the electronic representation of my signature and initials for all purposes when I (or my agent) use them on documents, including legally binding contracts.</p>
+        <p class="alert" id="adopt-error" hidden></p>
       </div>
-      <div class="adopt-preview" aria-live="polite">
-        <span class="preview-label">Preview</span>
-        <div class="stamps"><div class="stamp stamp-sig"><small>Signed by:</small><img id="preview-signature" alt="Signature preview"><code id="preview-id">0A1B2C3D4E5F…</code></div><div class="stamp stamp-ini"><small>Initials</small><img id="preview-initials" alt="Initials preview"></div></div>
-      </div>
-      <p class="legal">By selecting Adopt and sign, I agree that the signature and initials will be the electronic representation of my signature and initials for all purposes when I (or my agent) use them on documents, including legally binding contracts.</p>
-      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="adopt-confirm" class="btn btn-primary">Adopt and sign</button></div>
-      <p class="alert" id="adopt-error" hidden></p>
+      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="adopt-confirm" class="btn btn-ds">Adopt and sign</button></div>
     </form>
   </dialog>
 
   <dialog id="decline-dialog" class="dialog" aria-labelledby="decline-title">
     <form method="dialog">
-      <header class="dialog-head"><h2 id="decline-title">Decline to sign</h2><p>The sender will be notified and the documents will be closed. Tell them why.</p></header>
-      <label for="decline-reason">Reason for declining</label><textarea id="decline-reason" rows="4" maxlength="1000" required></textarea>
+      <header class="dialog-head"><div><h2 id="decline-title">Decline to sign</h2><p>The sender will be notified and the documents will be closed. Tell them why.</p></div><button type="submit" value="cancel" class="x" aria-label="Close">×</button></header>
+      <div class="dialog-body"><label for="decline-reason">Reason for declining</label><textarea id="decline-reason" rows="4" maxlength="1000" required></textarea><p class="alert" id="decline-error" hidden></p></div>
       <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="decline-confirm" class="btn btn-danger">Decline to sign</button></div>
-      <p class="alert" id="decline-error" hidden></p>
     </form>
   </dialog>
 
   <dialog id="reassign-dialog" class="dialog" aria-labelledby="reassign-title">
     <form method="dialog">
-      <header class="dialog-head"><h2 id="reassign-title">Assign to someone else</h2><p>The person you choose receives their own email and takes over your part. You will not be able to act on these documents afterwards.</p></header>
-      <label>Their full name<input id="reassign-name" maxlength="150" required></label>
-      <label>Their email<input id="reassign-email" type="email" maxlength="200" required></label>
-      <label>Message to them and the sender<textarea id="reassign-reason" rows="3" maxlength="500" required></textarea></label>
-      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="reassign-confirm" class="btn btn-primary">Assign</button></div>
-      <p class="alert" id="reassign-error" hidden></p>
+      <header class="dialog-head"><div><h2 id="reassign-title">Assign to someone else</h2><p>The person you choose receives their own email and takes over your part. You will not be able to act on these documents afterwards.</p></div><button type="submit" value="cancel" class="x" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <label>Their full name<input id="reassign-name" maxlength="150" required></label>
+        <label>Their email<input id="reassign-email" type="email" maxlength="200" required></label>
+        <label>Message to them and the sender<textarea id="reassign-reason" rows="3" maxlength="500" required></textarea></label>
+        <p class="alert" id="reassign-error" hidden></p>
+      </div>
+      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="reassign-confirm" class="btn btn-ds">Assign</button></div>
     </form>
   </dialog>
 
   <dialog id="disclosure-dialog" class="dialog dialog-wide" aria-labelledby="disclosure-title">
-    <form method="dialog"><header class="dialog-head"><h2 id="disclosure-title">Electronic record and signature disclosure</h2></header><div id="disclosure-text" class="disclosure"></div><div class="dialog-actions"><button class="btn btn-primary">Close</button></div></form>
+    <form method="dialog"><header class="dialog-head"><div><h2 id="disclosure-title">Electronic record and signature disclosure</h2></div><button type="submit" class="x" aria-label="Close">×</button></header><div class="dialog-body"><div id="disclosure-text" class="disclosure"></div></div><div class="dialog-actions"><button class="btn btn-ds">Close</button></div></form>
   </dialog>
 
   <dialog id="help-dialog" class="dialog" aria-labelledby="help-title">
-    <form method="dialog"><header class="dialog-head"><h2 id="help-title">Help</h2></header>
-      <ol class="help-list">
-        <li>Select <strong>Start</strong> (then <strong>Next</strong>) to go to each field marked for you.</li>
-        <li>Select a <strong>Sign</strong> or <strong>Initial</strong> field. The first time, choose how your signature and initials look: a style, drawn with your finger or mouse, or an uploaded image.</li>
-        <li>Fill in the other fields. Today's date is filled in for you.</li>
-        <li>Select <strong>Finish</strong>. Everyone receives the completed documents and the Certificate of Completion by email.</li>
-      </ol>
-      <div class="help-contacts">
-        <p><strong>Questions about the documents?</strong> <span id="help-sender">Reply to the email you received.</span></p>
-        <p><strong>Trouble using this page?</strong> Please email <a id="help-email" href="mailto:muzahir@scribealign.com">muzahir@scribealign.com</a> with your concern.</p>
+    <form method="dialog"><header class="dialog-head"><div><h2 id="help-title">Help</h2><p>Signing takes a few minutes. Your entries are kept if you need to stop.</p></div><button type="submit" class="x" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <ol class="help-list">
+          <li>Select <strong>Start</strong>, then follow the tab on the left. It takes you to each field in order: the initials on every page, then your signature, then your title.</li>
+          <li>Select an <strong>Initial</strong> or <strong>Sign</strong> field. The first time, choose how your signature and initials look: a style, drawn with your finger or mouse, or an uploaded image.</li>
+          <li>Fill in the other fields. Your name and today's date are filled in for you, and your title is copied into the other documents.</li>
+          <li>Select <strong>Finish</strong>. Everyone receives the completed documents and the Certificate of Completion by email.</li>
+        </ol>
+        <div class="help-contacts">
+          <p><strong>Questions about the documents?</strong> <span id="help-sender">Reply to the email you received.</span></p>
+          <p><strong>Trouble using this page?</strong> Please email <a id="help-email" href="mailto:muzahir@scribealign.com">muzahir@scribealign.com</a> with your concern.</p>
+        </div>
+        <p class="hint">Need to stop? Use Other actions › Finish later; the link in your email brings you back.</p>
       </div>
-      <p class="hint">Need to stop? Use Other actions › Finish later; the link in your email brings you back.</p>
-      <div class="dialog-actions"><button class="btn btn-primary">Close</button></div></form>
+      <div class="dialog-actions"><button class="btn btn-ds">Close</button></div></form>
   </dialog>
 </body>
 </html>
