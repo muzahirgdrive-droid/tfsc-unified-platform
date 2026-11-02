@@ -117,10 +117,20 @@ compliance@24-7consultancyllc.com:
 
 **Admin > Email trust & verified sender** checks each company domain's SPF, DKIM, DMARC and BIMI records live and
 gives the exact record to publish for anything missing (**Copy record**). The blue verified tick in Gmail is granted
-by Gmail, not by this application: it needs SPF and DKIM passing, DMARC at enforcement (`p=quarantine` or `p=reject`),
-the logo as an SVG Tiny PS file, a **Verified Mark Certificate** (from DigiCert, Entrust or GlobalSign, which needs a
-registered trademark for the logo) and a BIMI record. Until then, set each compliance mailbox's Google profile photo
-to the company logo: Gmail shows it to many recipients right away.
+by Gmail, not by any sending application (DocuSign gets it the same way), and needs all of:
+1. SPF and DKIM passing for the company domain (Google Workspace signs with DKIM once it is turned on in the Google
+   Admin console: Apps > Google Workspace > Gmail > Authenticate email);
+2. DMARC at enforcement: `p=quarantine` or `p=reject`, applied to all mail (no `pct` below 100);
+3. the logo as an **SVG Tiny PS** file (square, solid background), uploaded on the same screen under
+   **Gmail logo and verified tick**: the application checks the format and serves it at `https://<your address>/bimi/...svg`;
+4. a **Verified Mark Certificate (VMC)** for that logo from DigiCert, Sectigo or GlobalSign. A VMC needs the logo to be a
+   registered trademark. Upload the certificate (.pem) on the same screen; the application checks it and serves it.
+   A Common Mark Certificate (no trademark needed) shows the logo in Gmail but **not** the blue tick;
+5. the BIMI record the screen shows (`default._bimi.<domain>`, `v=BIMI1; l=...; a=...`), published at your DNS provider.
+
+The **Gmail verified tick: still to do** box on that screen lists exactly what is still missing for each company. Gmail can take
+a few days to show the tick after everything passes. Until then, set each compliance mailbox's Google profile photo to
+the company logo: Gmail shows it to many recipients right away.
 
 If your Google Workspace administrator has turned off app passwords, use **Google Workspace service account** instead:
 create a service account and a JSON key in Google Cloud, then in the Google Admin console (Security > Access and data
@@ -147,7 +157,8 @@ and downloaded each document, and when.
 ## 8. Send documents for signature
 
 1. **Home > Start > Send an envelope** (or **Agreements > Start**, or **Send documents for signature** on a client).
-   Choose the company, and the client if there is one. **Documents**: drag files from your computer (PDF, Word: DOCX,
+   Choose the company on the company page (one tile per company, including companies added later under Admin >
+   Companies), and the client if there is one. **Documents**: drag files from your computer (PDF, Word: DOCX,
    DOC, ODT, RTF; text, PNG or JPEG; everything is converted to PDF), or pick the client's generated agreements and
    files. Or create the agreements first: **Create agreement** (company, client, BAA, Services Agreement and/or Mutual
    NDA, services and terms; the governing state starts at the company's state), **Generate**, then **Send for
@@ -163,8 +174,11 @@ and downloaded each document, and when.
 4. **Options**: the documents **never expire** unless you choose an expiry; reminders; attaching the completed
    documents to the final email; whether recipients may assign the documents to someone else. **Send**.
 5. The client receives an email in the company's colours from the company's compliance mailbox, with a **REVIEW
-   DOCUMENT** button. On the signing page they accept the electronic record disclosure, follow **Start** / **Next** to
-   each field (today's date is already filled in), and adopt a signature and initials: one of 16 styles made from their
+   DOCUMENT** button. On the signing page they accept the electronic record disclosure, then **Start** takes them to the
+   initials on page 1, then page 2, 3 and so on, then the signature, then the title (today's date is already filled in).
+   With two agreements in one envelope the title is copied into the second ("Copied from your ... · Edit") while the
+   signature is still asked for on each agreement. Signatures carry a "Signed by:" bracket with an ID that is the same
+   on the screen, on the signed PDF and on the Certificate of Completion. They adopt a signature and initials: one of 16 styles made from their
    name (initials can use a different style), drawn, or uploaded (signature and initials separately). **Finish**.
    Under **Other actions** they can **Finish later**, **Assign to someone else**, download, print or decline.
 6. **Completion**: the envelope completes when everyone who needs to sign has signed. Someone who only needs to view
@@ -177,7 +191,13 @@ and downloaded each document, and when.
    expire on their own; after completion the links in recipients' emails keep opening the completed documents until you
    choose **More > Turn off recipient links**.
 8. **Bulk send** (Home > Start) sends a template to a list of people, each in their own envelope.
-9. Anyone can check a completed PDF at `https://agreements.yourcompany.com/verify`.
+9. **Test agreements** (practice runs): **Create agreement** opens on the company page; the company you pick replaces
+   the dropdown, with **Change company** beside it (it asks first). Turn on **Test agreement** in the summary card to
+   make a practice run: its documents are watermarked TEST, its emails start with "[TEST]", signers see a TEST banner,
+   and it never counts as a real client or agreement: Home, Insights, reports, the Agreement log and client counts leave
+   it out. **Agreements > Test agreements** lists them; the **Real clients / Test / All** filter and **Mark as test** /
+   **Mark as real** work on any list. Reports can include test work when you tick **Include test agreements**.
+10. Anyone can check a completed PDF at `https://agreements.yourcompany.com/verify`.
 
 ## 9. Home, reports and the activity log
 
