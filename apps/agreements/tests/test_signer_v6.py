@@ -68,7 +68,7 @@ class SigningState(test_esign.Base):
         with patch.object(esign, 'get_entity', old_style):
             _, _, state = self.signer(token)
         self.assertEqual(state['brand']['dark'], state['brand']['color'])
-        self.assertNotIn('test', state, 'nothing new is required from older envelopes')
+        self.assertFalse(state.get('test'), 'an envelope from before this release reads as a real one')
 
     def test_full_signing_still_completes_with_the_new_state(self):
         self.sent_envelope()

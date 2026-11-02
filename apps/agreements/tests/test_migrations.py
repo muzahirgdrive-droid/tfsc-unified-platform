@@ -56,6 +56,17 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one(), '9999_from_a_later_release')
             self.assertEqual(c.execute(text("SELECT count(*) FROM settings WHERE key = 'keep_me'")).scalar_one(), 1)
 
+    def test_update_again_after_a_rollback(self):
+        # agreements.sh puts the previous revision back when a new version does not start; the next update runs again.
+        with self.engine.begin() as c:
+            migrate.upgrade_to_head(c, db.meta)
+            c.execute(text("UPDATE alembic_version SET version_num = '0006_custom_companies'"))
+        with self.engine.begin() as c:
+            self.assertEqual(migrate.upgrade_to_head(c, db.meta), 'current')
+        with self.engine.connect() as c:
+            self.assertEqual(compare_metadata(MigrationContext.configure(c), db.meta), [])
+            self.assertEqual(c.execute(text('SELECT version_num FROM alembic_version')).scalar_one(), ScriptDirectory.from_config(migrate.config()).get_current_head())
+
     def test_upgrade_with_signed_envelopes_in_place(self):
         # Rows that reference esign_recipients would block a table rebuild on SQLite; the upgrade must keep all of them.
         with self.engine.begin() as c:

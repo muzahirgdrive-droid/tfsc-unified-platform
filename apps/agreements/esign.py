@@ -30,6 +30,7 @@ import companies
 import database as db
 import esign_pdf
 import mailer
+import marks
 import security as sec
 from entities import ENTITIES, get_entity
 from esign_db import client_contacts, documents, envelopes, events, fields, inbound, inbound_files, outbox, recipients, sign_sessions, tokens
@@ -70,7 +71,7 @@ LABELS = {
     'bounced': 'Email undeliverable', 'mail_failed': 'Email could not be sent', 'replied': 'Reply received by email', 'portal_session': 'Opened from a TFSC Agreements account',
     'saved': 'Saved to finish later', 'reassigned': 'Assigned to someone else', 'host_session': 'In-person signing started by the host',
     'attachment': 'Attachment uploaded', 'removed': 'Recipient removed', 'downloaded': 'Downloaded the documents', 'links_off': 'Recipient links turned off',
-    'links_on': 'Recipient links turned back on',
+    'links_on': 'Recipient links turned back on', 'marked_test': 'Marked as a test envelope', 'marked_real': 'Marked as a real envelope',
 }
 
 
@@ -232,9 +233,11 @@ def create(c, actor: dict, payload: dict) -> dict:
             raise HTTPException(404, 'Client not found.')
     entity = get_entity(entity_name)
     t = now()
+    # A test agreement (or a test client) makes a test envelope; the send wizard can still switch it.
+    test = payload['test'] if isinstance(payload.get('test'), bool) else bool((contract or {}).get('test') or (client or {}).get('test'))
     envelope = dict(id=db.uid(), ref=new_ref(c), owner_id=actor['id'], entity=entity_name, client_id=client_id, contract_id=contract['id'] if contract else None,
                     subject='', message='', status='draft', template_name=None, settings=settings_value(None), version=1, created=t, updated=t,
-                    expiry_warned=False, completion_attempts=0)
+                    expiry_warned=False, completion_attempts=0, test=test)
     c.execute(envelopes.insert().values(**envelope))
     box = mailer.load(c, entity_name)
     titles = []
@@ -334,6 +337,10 @@ def save_draft(c, actor: dict, envelope: dict, payload: dict) -> None:
         values['settings'] = settings_value(payload['settings'], envelope['settings'])
     if envelope['status'] == 'template' and 'template_name' in payload:
         values['template_name'] = clean(payload['template_name'], 'Template name', 150, True)
+    if envelope['status'] == 'draft' and isinstance(payload.get('test'), bool) and payload['test'] != bool(envelope.get('test')):
+        values['test'] = payload['test']
+        record(c, envelope['id'], 'marked_test' if payload['test'] else 'marked_real', actor['name'])
+        db.log(c, actor, 'esign.marked_test' if payload['test'] else 'esign.marked_real', envelope['client_id'], {'envelope': envelope['ref'], 'subject': envelope['subject']})
     if 'client_id' in payload and payload['client_id'] != envelope['client_id']:
         client_id = payload['client_id'] or None
         if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).first():
@@ -676,6 +683,8 @@ def send(c, actor: dict, envelope: dict, ip: str, ua: str) -> None:
     import clients
     clients.remember_contacts(c, envelope)
     db.log(c, actor, 'esign.sent', envelope['client_id'], {'envelope': envelope['ref'], 'subject': envelope['subject']})
+    if not envelope.get('test'):
+        marks.real_activity(c, actor, envelope['client_id'], 'a real envelope was sent')
 
 
 def advance(c, envelope: dict) -> None:
@@ -915,7 +924,8 @@ def copy(c, actor: dict, source: dict, *, as_template: str | None = None, client
     target = dict(id=db.uid(), ref=new_ref(c), owner_id=actor['id'], entity=source['entity'], client_id=client_id if client_id is not None else (None if as_template else source['client_id']),
                   contract_id=None if as_template else source['contract_id'], subject=source['subject'], message=source['message'],
                   status='template' if as_template else 'draft', template_name=as_template, settings=settings_value(None, {k: source['settings'][k] for k in source['settings']}),
-                  version=1, created=t, updated=t, expiry_warned=False, completion_attempts=0)
+                  version=1, created=t, updated=t, expiry_warned=False, completion_attempts=0,
+                  test=False if as_template or source['status'] == 'template' else bool(source.get('test')))  # templates are never tests
     c.execute(envelopes.insert().values(**target))
     doc_map, rcpt_map = {}, {}
     for d in c.execute(select(documents).where(documents.c.envelope_id == source['id'], documents.c.source != 'attachment').order_by(documents.c.position)).mappings():
@@ -1065,7 +1075,7 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
                allow_reassign=can_act and envelope['settings'].get('allow_reassign', True) and r['role'] in ('signer', 'viewer') and session['via'] == 'email',
                progress=(r['progress'] or {}).get('values', {}) if can_act else {}, in_person=in_person,
                host=user_row(c, r['host_id'] or envelope['owner_id'])['name'] if r['role'] == 'in_person' else '',
-               company_display=entity['display'], company_address=entity['address'], portal=companies.public_workspace(c))
+               company_display=entity['display'], company_address=entity['address'], portal=companies.public_workspace(c), test=bool(envelope.get('test')))
     if r['status'] == 'reassigned' and r['reassigned_to']:
         other = c.execute(select(recipients.c.name, recipients.c.email).where(recipients.c.id == r['reassigned_to'])).first()
         out['reassigned_to'] = f'{other[0]} ({other[1]})' if other else ''
@@ -1455,6 +1465,14 @@ def finalize(envelope_id: str) -> None:
     finals = {}
     for d in docs:
         finals[d['id']] = esign_pdf.stamp(bytes(d['pdf']), envelope['ref'], [f for f in fs if f['document_id'] == d['id']], signers)
+    if envelope.get('test'):
+        # A test envelope's signed copies are marked like its generated documents (those from a test agreement already are).
+        with db.engine.connect() as c:
+            marked = set(c.execute(select(db.documents.c.id).join(db.contracts, db.contracts.c.id == db.documents.c.contract_id).where(
+                db.documents.c.id.in_([d['source_document_id'] for d in docs if d['source_document_id']] or ['']), db.contracts.c.test.is_(True))).scalars())
+        for d in docs:
+            if d['source_document_id'] not in marked:
+                finals[d['id']] = marks.watermark_pdf(finals[d['id']])
     t = now()
     entity = get_entity(envelope['entity'])
     with write_tx() as c:
@@ -1469,6 +1487,8 @@ def finalize(envelope_id: str) -> None:
         cert = esign_pdf.certificate(dict(envelope, status='completed', completed_at=t), entity,
                                      [dict(d, final_sha256=esign_pdf.sha256(finals[d['id']])) for d in docs],
                                      [dict(r, signature_id=signers[r['id']]['signature_id']) for r in rs], trail, sender, ersd(entity, box['address']), mailer.origin())
+        if envelope.get('test'):
+            cert = marks.watermark_pdf(cert)
         for d in docs:
             c.execute(update(documents).where(documents.c.id == d['id']).values(final_pdf=finals[d['id']], final_sha256=esign_pdf.sha256(finals[d['id']])))
         c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(status='completed', completed_at=t, updated=t, certificate=cert,
@@ -1624,7 +1644,7 @@ def summary(c, rows: list[dict]) -> list[dict]:
         acting = [p for p in ps if p['role'] != 'cc' and p['status'] not in INACTIVE]
         acting = [p for p in acting if p['role'] in SIGNING_ROLES] or acting     # progress counts signers: viewers never hold up completion
         out.append({k: r[k] for k in ('id', 'ref', 'subject', 'status', 'entity', 'client_id', 'sent_at', 'updated', 'completed_at', 'expires_at', 'template_name', 'created')}
-                   | {'client': clients.get(r['client_id'], ''), 'sender': owners.get(r['owner_id'], ''), 'recipients': ps,
+                   | {'test': bool(r.get('test')), 'client': clients.get(r['client_id'], ''), 'sender': owners.get(r['owner_id'], ''), 'recipients': ps,
                       'progress': [sum(p['status'] in DONE_STATUSES for p in acting), len(acting)],
                       'attention': any(p['delivery'] in ('bounced', 'failed') or p['status'] == 'auth_failed' for p in ps)})
     return out
@@ -1680,7 +1700,7 @@ def detail(c, actor: dict, envelope: dict) -> dict:
         'chain_ok': verify_chain(trail), 'mails': mails, 'replies': replies, 'entity_short': entity['short'],
         'mailbox': {'ready': mailer.ready(box), 'address': box['address'], 'signer_email': box['signer_email']},
         'can_sign_now': mine['id'] if mine else None, 'can_host': hosting, 'is_owner': envelope['owner_id'] == actor['id'], 'bulk_id': envelope.get('bulk_id'),
-        'hosts': hosts_for(c, envelope['entity'])}
+        'hosts': hosts_for(c, envelope['entity']), 'test': bool(envelope.get('test'))}
 
 
 def waiting_for(actor: dict):
@@ -1698,9 +1718,13 @@ def hosts_for(c, entity: str) -> list[dict]:
 
 
 def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = '', client_id: str = '', since: float | None = None,
-                   until: float | None = None) -> dict:
+                   until: float | None = None, test: str = 'all') -> dict:
+    """test: 'real' (real clients only), 'test' (test envelopes only) or 'all'. The 'test' box lists every test envelope."""
     page = max(0, min(int(page or 0), 10000))
-    if box == 'expiring':
+    test = test if test in ('real', 'test') else 'all'
+    if box == 'test':
+        cond = and_(visible(actor), envelopes.c.status != 'template', envelopes.c.test.is_(True))
+    elif box == 'expiring':
         cond = and_(visible(actor), envelopes.c.status == 'sent', envelopes.c.expires_at <= now() + 7 * 86400)
     elif box == 'action':
         cond = and_(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity), envelopes.c.id.in_(waiting_for(actor)))
@@ -1723,9 +1747,14 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = ''
                               func.lower(envelopes.c.template_name).contains(term, autoescape=True),
                               envelopes.c.id.in_(select(recipients.c.envelope_id).where(or_(func.lower(recipients.c.email).contains(term, autoescape=True),
                                                                                             func.lower(recipients.c.name).contains(term, autoescape=True))))))
+    split = {bool(k): v for k, v in c.execute(select(envelopes.c.test, func.count()).where(cond).group_by(envelopes.c.test)).all()}
+    filter_counts = {'real': split.get(False, 0), 'test': split.get(True, 0)}
+    filter_counts['all'] = filter_counts['real'] + filter_counts['test']
+    if test != 'all':
+        cond = and_(cond, envelopes.c.test.is_(test == 'test'))
     rows = [dict(r) for r in c.execute(select(envelopes.c.id, envelopes.c.ref, envelopes.c.subject, envelopes.c.status, envelopes.c.entity, envelopes.c.client_id,
                                               envelopes.c.owner_id, envelopes.c.sent_at, envelopes.c.updated, envelopes.c.completed_at, envelopes.c.expires_at,
-                                              envelopes.c.template_name, envelopes.c.created)
+                                              envelopes.c.template_name, envelopes.c.created, envelopes.c.test)
                                        .where(cond).order_by(envelopes.c.updated.desc(), envelopes.c.id).limit(51).offset(page * 50)).mappings()]
     counts = {}
     for name, statuses in (('waiting', ('sent', 'completing')), ('drafts', ('draft',))):
@@ -1734,13 +1763,14 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = ''
                                                                                     envelopes.c.expires_at <= now() + 7 * 86400)).scalar()
     counts['action'] = c.execute(select(func.count()).select_from(envelopes).where(envelopes.c.status == 'sent', sec.company_scope(actor, envelopes.c.entity),
                                                                                   envelopes.c.id.in_(waiting_for(actor)))).scalar()
+    counts['test'] = c.execute(select(func.count()).select_from(envelopes).where(visible(actor), envelopes.c.status != 'template', envelopes.c.test.is_(True))).scalar()
     out = summary(c, rows[:50])
     if box == 'action' and out:
         hosting = {x[0] for x in c.execute(select(recipients.c.envelope_id).where(recipients.c.envelope_id.in_([e['id'] for e in out]), recipients.c.role == 'in_person',
                                                                                  recipients.c.host_id == actor['id'], recipients.c.status.in_(OPEN_STATUSES)))}
         for e in out:
             e['hosting'] = e['id'] in hosting
-    return {'envelopes': out, 'has_more': len(rows) > 50, 'page': page, 'counts': counts}
+    return {'envelopes': out, 'has_more': len(rows) > 50, 'page': page, 'counts': counts, 'filter_counts': filter_counts, 'test': test}
 
 
 # ------------------------------------------------------------------ preparing a draft: suggested fields, the client's documents
@@ -1822,9 +1852,19 @@ def install(app) -> None:  # noqa: C901  (route table)
         return sec.get_actor(request, c)
 
     @app.get('/api/esign/envelopes')
-    def api_list(request: Request, box: str = 'waiting', q: str = '', page: int = 0, entity: str = '', client_id: str = '', since: float = 0, until: float = 0):
+    def api_list(request: Request, box: str = 'waiting', q: str = '', page: int = 0, entity: str = '', client_id: str = '', since: float = 0, until: float = 0,
+                 test: str = 'all'):
         with db.engine.connect() as c:
-            return list_envelopes(c, actor_of(request, c), box, q, page, entity[:100], client_id[:32], since or None, until or None)
+            return list_envelopes(c, actor_of(request, c), box, q, page, entity[:100], client_id[:32], since or None, until or None, test[:8])
+
+    @app.post('/api/esign/envelopes/mark-test')
+    def api_mark_test(request: Request, payload: dict = Body(...)):
+        """Mark envelopes as test (test: true) or real (test: false): {"ids": [...], "test": bool}."""
+        ids, flag = marks.ids_of(payload), marks.flag_of(payload)
+        with write_tx() as c:
+            a = actor_of(request, c)
+            changed = marks.mark_envelopes(c, a, ids, flag)
+            return {'ok': True, 'changed': changed, 'test': flag}
 
     @app.post('/api/esign/envelopes')
     def api_create(request: Request, payload: dict = Body(...)):

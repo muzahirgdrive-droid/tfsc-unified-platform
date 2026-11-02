@@ -22,12 +22,14 @@
   const VALIDATION = [["", "Any text"], ["letters", "Letters only"], ["number", "Number"], ["email", "Email address"], ["phone", "Phone number"], ["zip", "ZIP code"], ["date", "Date (MM/DD/YYYY)"]];
   const LOCKED = ["signed", "completed", "declined", "reassigned"];
   const FOLDERS = [["action", "Action required"], ["waiting", "Waiting for others"], ["expiring", "Expiring soon"], ["completed", "Completed"], ["drafts", "Drafts"],
-    ["sent", "All sent"], ["declined", "Declined"], ["voided", "Voided"], ["expired", "Expired"]];
+    ["sent", "All sent"], ["declined", "Declined"], ["voided", "Voided"], ["expired", "Expired"], ["test", "Test agreements"]];
+  // Real clients / Test / All: which envelopes a folder lists (test envelopes are practice runs, kept out of Home, Insights and reports).
+  const TEST_FILTER = [["real", "Real clients"], ["test", "Test"], ["all", "All"]];
   const EMAIL_KINDS = {invite: "Signing request", reminder: "Reminder", expiring: "Expiration warning", corrected: "Corrected request", copy: "Copy", completed: "Completed copy", voided: "Voided notice", declined: "Declined notice",
     host: "In-person signing notice to the host", removed: "Removed-from-envelope notice"};
   const PERIODS = [["", "Any time"], ["30", "Last 30 days"], ["90", "Last 90 days"], ["365", "Last 12 months"]];
   let user = null, entities = [];
-  const list = {box: "action", q: "", page: 0, entity: "", period: ""};
+  const list = {box: "action", q: "", page: 0, entity: "", period: "", test: "all", selected: new Set()};
   let editor = null;
   const images = new Map();  // page images reused across editor renders, so nothing is downloaded twice
 
@@ -111,16 +113,27 @@
     svg.append(path); return svg;
   }
   function badge(count) { const b = $("esign-count"); if (!b) return; b.textContent = String(count || ""); b.hidden = !count; }
+  function testBadge() { const b = el("span", "test-badge", "TEST"); b.title = "Test agreement: a practice run, kept out of Home, Insights and reports"; return b; }
+  async function markTest(ids, test) {
+    const d = await api("/api/esign/envelopes/mark-test", {ids, test});
+    const n = ids.length;
+    ok(`${n} envelope${n === 1 ? "" : "s"} marked as ${test ? "test" : "real client"}${d.changed < n ? ` (${n - d.changed} already ${test ? "test" : "real"})` : ""}.`);
+    return d;
+  }
 
   // ------------------------------------------------------------------ Agreements: folders and list
   async function showList(box) {
     if (!guard()) return;
     editor = null; document.body.classList.remove("tagging");
-    if (box && box !== list.box) { list.box = box; list.page = 0; }
+    if (box && box !== list.box) { list.box = box; list.page = 0; list.selected.clear(); }
     const templates = list.box === "templates";
+    const selectable = !templates && list.box !== "action";     // Action required lists envelopes others sent to you
     mark(templates ? "#/templates" : `#/agreements/${list.box}`);
     const since = list.period ? Math.floor(Date.now() / 1000) - Number(list.period) * 86400 : 0;
-    const d = await api(`/api/esign/envelopes?box=${list.box}&q=${encodeURIComponent(list.q)}&page=${list.page}&entity=${encodeURIComponent(list.entity)}&since=${since}`);
+    const filter = templates || list.box === "test" ? "all" : list.test;
+    const d = await api(`/api/esign/envelopes?box=${list.box}&q=${encodeURIComponent(list.q)}&page=${list.page}&entity=${encodeURIComponent(list.entity)}&since=${since}&test=${filter}`);
+    const shown = new Set(d.envelopes.map(e => e.id));
+    [...list.selected].forEach(id => { if (!shown.has(id)) list.selected.delete(id); });
     const view = root(); view.replaceChildren();
     const actions = el("div", "page-actions");
     if (!templates) actions.append(button("Bulk send", () => showBulk()), window.homeStartMenu ? window.homeStartMenu("Start", "button button-primary") : button("New envelope", startEnvelope, "button button-primary"));
@@ -133,7 +146,8 @@
       folders.append(button("Send an envelope", startEnvelope, "button button-primary"));
       folders.append(el("h3", "", "Envelopes"));
       FOLDERS.forEach(([key, label]) => {
-        const a = el("a", "folder"); a.href = `#/agreements/${key}`;
+        const a = el("a", key === "test" ? "folder folder-test" : "folder"); a.href = `#/agreements/${key}`;
+        if (key === "test") a.append(el("i", "test-dot"));
         a.append(el("span", "", label));
         const count = d.counts[key]; if (count) a.append(el("span", "badge-count", count));
         if (key === list.box) a.setAttribute("aria-current", "page");
@@ -155,6 +169,31 @@
     search.addEventListener("submit", event => { event.preventDefault(); apply(); });
     company.addEventListener("change", apply); period.addEventListener("change", apply);
     main.append(search);
+    if (!templates && list.box !== "test") {
+      const seg = el("div", "test-filter"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Real or test envelopes");
+      TEST_FILTER.forEach(([key, label]) => {
+        const b = button("", () => { list.test = key; list.page = 0; list.selected.clear(); return showList(); }, "test-filter-option");
+        b.append(el("span", "", label), el("b", "", String(d.filter_counts?.[key] ?? 0)));
+        b.setAttribute("aria-pressed", String(list.test === key)); seg.append(b);
+      });
+      main.append(seg);
+    }
+    // The bulk bar: "N selected · Mark as test · Mark as real client · Clear", shown while rows are selected.
+    const bar = el("div", "bulk-bar"); bar.setAttribute("role", "region"); bar.setAttribute("aria-label", "Selected envelopes"); bar.hidden = true;
+    const count = el("strong"), acts = el("div", "bulk-actions");
+    let allBox = null;
+    const syncSelection = () => {
+      const n = list.selected.size;
+      bar.hidden = !n; count.textContent = `${n} selected`;
+      main.querySelectorAll("tr[data-id]").forEach(tr => { const on = list.selected.has(tr.dataset.id); tr.classList.toggle("is-selected", on); const b = tr.querySelector(".select-cell input"); if (b) b.checked = on; });
+      if (allBox) { const picked = d.envelopes.filter(e => list.selected.has(e.id)).length; allBox.checked = picked > 0 && picked === d.envelopes.length; allBox.indeterminate = picked > 0 && picked < d.envelopes.length; }
+    };
+    if (selectable) {
+      acts.append(button("⚑ Mark as test", async () => { await markTest([...list.selected], true); list.selected.clear(); await showList(); }, "button bulk-test"),
+        button("✓ Mark as real client", async () => { await markTest([...list.selected], false); list.selected.clear(); await showList(); }, "button bulk-real"),
+        button("Clear", () => { list.selected.clear(); syncSelection(); }, "button bulk-clear"));
+      bar.append(count, acts); main.append(bar);
+    }
     if (!d.envelopes.length) {
       const empty = el("div", "empty-state list-empty");
       empty.append(el("strong", "", list.box === "action" ? "You're all caught up" : templates ? "No templates yet" : "Nothing here yet"),
@@ -165,11 +204,18 @@
       const card = el("div", "panel table-card"); const body = el("div", "panel-body");
       const table = el("table", "portal-table env-table");
       const head = el("tr");
+      if (selectable) {
+        const all = el("th", "select-cell"); allBox = input("", "checkbox");
+        allBox.setAttribute("aria-label", "Select every envelope on this page");
+        allBox.addEventListener("change", () => { d.envelopes.forEach(e => { if (allBox.checked) list.selected.add(e.id); else list.selected.delete(e.id); }); syncSelection(); });
+        all.append(allBox); head.append(all);
+      }
       (templates ? ["Template", "Company", "Recipients", "Last change", ""] : ["Subject", "Status", "Last change", ""]).forEach(t => head.append(el("th", "", t)));
       const thead = el("thead"); thead.append(head); table.append(thead);
       const tbody = el("tbody");
-      d.envelopes.forEach(e => tbody.append(templates ? templateRow(e) : row(e)));
+      d.envelopes.forEach(e => tbody.append(templates ? templateRow(e) : row(e, selectable ? syncSelection : null)));
       table.append(tbody); body.append(table); card.append(body); main.append(card);
+      syncSelection();
       const paging = el("div", "portal-paging");
       const back = button("Previous", () => { list.page--; return showList(); }), more = button("Next", () => { list.page++; return showList(); });
       back.disabled = list.page === 0; more.disabled = !d.has_more;
@@ -182,12 +228,21 @@
   }
 
   function open(e) { return (e.status === "draft" || e.status === "template" ? openEditor(e.id) : showEnvelope(e.id)); }
-  function row(e) {
-    const tr = el("tr"); tr.tabIndex = 0;
+  function row(e, onSelect = null) {
+    const tr = el("tr"); tr.tabIndex = 0; tr.dataset.id = e.id;
+    if (e.test) tr.classList.add("row-test");
     tr.addEventListener("click", () => open(e).catch(fail));
-    tr.addEventListener("keydown", event => { if (event.key === "Enter") open(e).catch(fail); });
+    tr.addEventListener("keydown", event => { if (event.key === "Enter" && event.target === tr) open(e).catch(fail); });
+    if (onSelect) {
+      const cell = el("td", "select-cell"); const box = input("", "checkbox", {checked: list.selected.has(e.id)});
+      box.setAttribute("aria-label", `Select ${e.subject || "envelope"}`);
+      box.addEventListener("change", () => { if (box.checked) list.selected.add(e.id); else list.selected.delete(e.id); onSelect(); });
+      cell.addEventListener("click", event => event.stopPropagation());   // ticking a row never opens it
+      cell.append(box); tr.append(cell);
+    }
     const subject = el("td"); const s = el("div", "env-subject"); s.append(el("span", "doc-icon", "PDF"));
-    const text = el("div"); text.append(el("strong", "", e.subject || "(no subject)"));
+    const text = el("div"); const title = el("strong"); if (e.test) title.append(testBadge());
+    title.append(document.createTextNode(e.subject || "(no subject)")); text.append(title);
     const people = e.recipients.filter(p => p.role !== "cc").map(p => p.name || p.email).join(", ");
     text.append(el("small", "", [people ? `To: ${people}` : "No recipients yet", e.client].filter(Boolean).join(" · ")));
     s.append(text); subject.append(s);
@@ -306,6 +361,7 @@
     progress.append(bar, el("span", "", `${done} of ${counted.length} ${signers.length ? "signed" : "done"}`));
     left.append(progress);
     const right = el("div", "env-actions");
+    if (e.test) right.append(testBadge());
     right.append(chip(e.status));
     if (e.can_sign_now) right.append(button("Sign now", () => signNow(e.id), "button button-primary"));
     (e.can_host || []).forEach(rid => {
@@ -329,6 +385,8 @@
       ["Save as template", () => saveTemplate(e)],
       e.status === "completed" && (e.settings.links_off ? ["Turn recipient links back on", () => links(e, true), "The emailed links open the completed documents again"]
         : ["Turn off recipient links", () => links(e, false), "Links in emails stop opening the documents"]),
+      e.test ? ["Mark as real client", async () => { await markTest([e.id], false); await showEnvelope(e.id); }, "Counts in Home, Insights and reports again"]
+        : ["Mark as test", async () => { await markTest([e.id], true); await showEnvelope(e.id); }, "A practice run: left out of Home, Insights and reports"],
       e.status === "sent" && ["Void envelope", () => voidEnvelope(e), "Cancel it; recipients are told"],
     ]));
     head.append(left, right);
@@ -337,6 +395,7 @@
     if (e.status === "completing") view.append(notice("info", e.completion_error ? `Finishing is being retried: ${e.completion_error}` : "Everyone has signed. The completed documents and certificate are being prepared and emailed."));
     if (e.status === "completed") view.append(notice("success", "Completed. Everyone received the completed documents and the Certificate of Completion by email."));
     if (e.settings.links_off) view.append(notice("warning", "Recipient links are turned off: the links in their emails no longer open these documents."));
+    if (e.test) view.append(notice("warning", "Test envelope: a practice run. Its emails start with [TEST], its signed copies are watermarked, and it is left out of Home, Insights and reports."));
     if (!e.mailbox.ready && e.status === "sent") view.append(notice("warning", `The ${e.entity_short} mailbox is not connected, so emails cannot be sent. A Super Admin can connect it under Admin › Company mailboxes.`));
 
     const grid = el("div", "env-body");
@@ -854,6 +913,13 @@
     flags.append(flag("attach_completed", "Attach the completed documents to the final email", "Everyone also gets a secure link to download them."),
       flag("allow_reassign", "Recipients may assign the documents to someone else", "For example to the person with signing authority."));
     body.append(flags);
+    if (editor.e.status === "draft" && !editor.correcting) {
+      const row = el("label", `switch-row test-switch${editor.e.test ? " is-on" : ""}`);
+      const c = input("", "checkbox", {checked: !!editor.e.test}); c.setAttribute("role", "switch");
+      c.addEventListener("change", () => { editor.e.test = c.checked; row.classList.toggle("is-on", c.checked); dirty(); });
+      const t = el("span"); t.append(document.createTextNode("Test envelope"), el("small", "", "A practice run: emails start with [TEST], signed copies are watermarked, and it stays out of Home, Insights and reports."));
+      row.append(c, t); body.append(row);
+    }
     return s;
   }
 
@@ -1202,7 +1268,7 @@
   async function save(quiet) {
     const e = editor.e, stage = editor.stage, library = editor.library, active = editor.active;
     const body = {version: e.version, message: e.message, settings: e.settings, ...layoutBody()};
-    if (e.status === "template") body.template_name = e.template_name; else { body.subject = e.subject; body.client_id = e.client_id || null; }
+    if (e.status === "template") body.template_name = e.template_name; else { body.subject = e.subject; body.client_id = e.client_id || null; body.test = !!e.test; }
     const saved = await api(`/api/esign/envelopes/${e.id}/draft`, body);
     const shows = new Map(editor.recipients.map(r => [r.key, r.show]));
     await openEditor(saved.id, saved, false, stage);

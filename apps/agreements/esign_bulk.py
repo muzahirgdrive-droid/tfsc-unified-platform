@@ -105,7 +105,8 @@ def run(actor_id: str, template_id: str, payload: dict, ip: str, ua: str) -> dic
 
 
 def report(c, actor: dict, since: float, until: float, entity: str) -> dict:
-    cond = and_(esign.visible(actor), envelopes.c.status.notin_(('template', 'draft')), envelopes.c.sent_at >= since, envelopes.c.sent_at < until)
+    cond = and_(esign.visible(actor), envelopes.c.status.notin_(('template', 'draft')), envelopes.c.sent_at >= since, envelopes.c.sent_at < until,
+                envelopes.c.test.is_(False))  # test envelopes stay out of reports
     if entity:
         cond = and_(cond, envelopes.c.entity == entity)
     rows = [dict(r) for r in c.execute(select(envelopes.c.id, envelopes.c.ref, envelopes.c.subject, envelopes.c.status, envelopes.c.entity, envelopes.c.owner_id,
@@ -156,7 +157,8 @@ def _cell(value) -> str:
 
 
 def envelopes_csv(c, actor: dict, since: float, until: float, entity: str) -> bytes:
-    cond = and_(esign.visible(actor), envelopes.c.status.notin_(('template', 'draft')), envelopes.c.sent_at >= since, envelopes.c.sent_at < until)
+    cond = and_(esign.visible(actor), envelopes.c.status.notin_(('template', 'draft')), envelopes.c.sent_at >= since, envelopes.c.sent_at < until,
+                envelopes.c.test.is_(False))  # test envelopes stay out of reports
     if entity:
         cond = and_(cond, envelopes.c.entity == entity)
     rows = [dict(r) for r in c.execute(select(envelopes).where(cond).order_by(envelopes.c.sent_at).limit(20000)).mappings()]

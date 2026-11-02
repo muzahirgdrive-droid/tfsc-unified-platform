@@ -8,7 +8,7 @@
   let config = null, catalog = null;
   const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const insight = {entity: "", months: "6"};
-  const builder = {dataset: "envelopes", columns: null, range: "90", since: "", until: "", entity: "", status: "", owner: "", client: "", page: 0};
+  const builder = {dataset: "envelopes", columns: null, range: "90", since: "", until: "", entity: "", status: "", owner: "", client: "", include_test: false, page: 0};
   const log = {range: "30", since: "", until: "", user: "", category: "", client: "", q: "", page: 0, rows: []};
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; }
@@ -186,7 +186,8 @@
   function spec() { return catalog.datasets.find(x => x.key === builder.dataset) || catalog.datasets[0]; }
   function payload(extra = {}) {
     const [since, until] = rangeOf(builder);
-    return {dataset: builder.dataset, columns: builder.columns || spec().default, filters: {since, until, entity: builder.entity, status: builder.status, owner: builder.owner, client: builder.client, tz: TZ}, ...extra};
+    return {dataset: builder.dataset, columns: builder.columns || spec().default, filters: {since, until, entity: builder.entity, status: builder.status, owner: builder.owner, client: builder.client,
+      include_test: builder.include_test === true, tz: TZ}, ...extra};
   }
   async function showBuilder() {
     window.portalMark?.("#/reports/builder");
@@ -225,20 +226,27 @@
     if (catalog.users.length > 1 && builder.dataset !== "clients") { const u = select([["", "Everyone"], ...catalog.users.map(x => [x.id, x.name])], builder.owner); u.addEventListener("change", () => { builder.owner = u.value; }); grid.append(field(builder.dataset === "activity" ? "User" : builder.dataset === "users" ? "User" : "Sender", u)); }
     if (builder.dataset !== "users") { const cl = input(builder.client, "search", {placeholder: "Name contains"}); cl.addEventListener("input", () => { builder.client = cl.value; }); grid.append(field("Client", cl)); }
     filt.append(grid);
+    if (builder.dataset !== "activity") {
+      // Test agreements (practice runs) are left out of every report unless asked for.
+      const testRow = el("label", "include-test"); const testBox = input("", "checkbox", {checked: builder.include_test === true});
+      testBox.addEventListener("change", () => { builder.include_test = testBox.checked; });
+      const testText = el("span"); testText.append(document.createTextNode("Include test agreements"), el("small", "", "Off: test agreements and test clients are left out."));
+      testRow.append(testBox, testText); filt.append(testRow);
+    }
     const run = button("Run report", () => { builder.page = 0; return results(); }, "button button-primary"); run.style.width = "100%"; run.style.marginTop = "12px";
     filt.append(run); config_.append(filt);
     const saved = el("section", "card"); saved.append(el("h3", "", "Saved reports"));
     if (!catalog.saved.length) saved.append(el("p", "muted small", "Save a report to run it again in one click."));
     catalog.saved.forEach(r => {
       const row = el("div", "library-item"); row.style.gridTemplateColumns = "minmax(0,1fr) auto auto";
-      row.append(el("strong", "", r.name), button("Open", () => { Object.assign(builder, {dataset: r.definition.dataset, columns: r.definition.columns?.length ? r.definition.columns : null, page: 0}, r.definition.filters || {}); return showBuilder().then(results); }, "button button-quiet button-sm"),
+      row.append(el("strong", "", r.name), button("Open", () => { Object.assign(builder, {dataset: r.definition.dataset, columns: r.definition.columns?.length ? r.definition.columns : null, page: 0, include_test: false}, r.definition.filters || {}); return showBuilder().then(results); }, "button button-quiet button-sm"),
         button("×", async () => { if (!confirm(`Delete the saved report ${r.name}?`)) return; await api(`/api/reports/saved/${r.id}/delete`, {}); catalog = null; await showBuilder(); }, "icon-button"));
       saved.append(row);
     });
     saved.append(button("Save this report", async () => {
       const name = prompt("Name this report", spec().label);
       if (!name) return;
-      await api("/api/reports/saved", {name, definition: {dataset: builder.dataset, columns: builder.columns || spec().default, filters: {entity: builder.entity, status: builder.status, owner: builder.owner, client: builder.client, range: builder.range}}});
+      await api("/api/reports/saved", {name, definition: {dataset: builder.dataset, columns: builder.columns || spec().default, filters: {entity: builder.entity, status: builder.status, owner: builder.owner, client: builder.client, range: builder.range, include_test: builder.include_test === true}}});
       catalog = null; toast("Report saved."); await showBuilder();
     }, "button button-ghost"));
     config_.append(saved);

@@ -48,6 +48,18 @@
     });
     box.append(head, form); document.body.append(box); box.addEventListener("close", () => box.remove()); box.showModal();
   }
+  // Test agreements: an amber TEST badge, and marking a client or an agreement as test or real.
+  function testBadge(text = "TEST") { const b = el("span", "test-badge", text); b.title = "A practice run: kept out of Home, Insights, reports and client counts"; return b; }
+  async function markClient(id, test) {
+    if (test && !confirm("Mark this client as a test client? Their agreements and envelopes become tests too, and are left out of Home, Insights, reports and client counts.")) return;
+    const d = await api(`/api/clients/${id}/test`, {test});
+    ok(test ? `Marked as a test client${d.agreements || d.envelopes ? ` with ${d.agreements} agreement${d.agreements === 1 ? "" : "s"} and ${d.envelopes} envelope${d.envelopes === 1 ? "" : "s"}` : ""}.` : "Marked as a real client.");
+    await show();
+  }
+  async function markAgreement(clientId, contractId, test) {
+    await api("/api/contracts/mark-test", {ids: [contractId], test});
+    ok(test ? "Agreement marked as a test." : "Agreement marked as real."); await profile(clientId);
+  }
   const readFile = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(",")[1]); r.onerror = reject; r.readAsDataURL(file); });
 
   // ------------------------------------------------------------------ layout: list on the left, profile on the right
@@ -85,7 +97,8 @@
     d.clients.forEach(c => {
       const b = button("", () => { state.client = c.id; state.tab = "overview"; window.portalMark?.(`#/clients/${c.id}`); document.querySelectorAll(".client-entry").forEach(x => x.setAttribute("aria-selected", String(x === b))); return profile(c.id); }, "client-entry");
       b.setAttribute("aria-selected", String(c.id === state.client));
-      b.append(el("strong", "", c.client_name), el("small", "", `${c.owner} · ${day(c.updated_at)}`));
+      const nameLine = el("strong", "", c.client_name); if (c.test) nameLine.append(testBadge("Test client"));
+      b.append(nameLine, el("small", "", `${c.owner} · ${day(c.updated_at)}`));
       box.append(b);
     });
     if (!d.clients.length) box.append(el("p", "empty-state", state.q ? "No clients match." : "No clients yet. Create one, or generate an agreement."));
@@ -110,13 +123,16 @@
     const d = await api(`/api/clients/${id}/profile`);
     const c = d.client, box = $("clients-detail"); box.replaceChildren();
     const head = el("div", "clients-head");
-    const name = el("div"); name.append(el("p", "eyebrow", "Client"), el("h3", "", c.name), el("p", "muted small", [c.address, c.entity && `Contracting company: ${c.entity}`, `Owner: ${c.owner}`].filter(Boolean).join(" · ")));
+    const title = el("h3", "", c.name); if (c.test) title.append(testBadge("Test client"));
+    const name = el("div"); name.append(el("p", "eyebrow", "Client"), title, el("p", "muted small", [c.address, c.entity && `Contracting company: ${c.entity}`, `Owner: ${c.owner}`].filter(Boolean).join(" · ")));
     const actions = el("div", "page-actions");
     if (d.can_edit) actions.append(button("Edit details", () => editClient(d)));
+    if (d.can_edit) actions.append(c.test ? button("Mark as real client", () => markClient(id, false), "button button-quiet test-toggle") : button("Mark as test client", () => markClient(id, true), "button button-quiet test-toggle"));
     actions.append(button("Create agreement", () => window.openClientDraft(id)));
     state.entity = c.entity && config.entities.some(e => e.name === c.entity) ? c.entity : config.entities[0]?.name;
     actions.append(button("Send documents for signature", () => sendFor(id), "button button-primary"));
     head.append(name, actions); box.append(head);
+    if (c.test) box.append(el("p", "notice notice-warning test-notice", "Test client: used only for practice runs. Left out of client counts, Home, Insights and reports. Mark as real client when real work starts."));
     const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist"); tabs.style.marginTop = "16px";
     const counts = d.counts, signed = counts.envelopes.completed || 0, waiting = (counts.envelopes.sent || 0) + (counts.envelopes.completing || 0);
     [["overview", "Overview"], ["contacts", `Contacts (${d.contacts.length})`], ["documents", "Documents"], ["signatures", `Signatures${waiting ? ` (${waiting} waiting)` : ""}`],
@@ -183,7 +199,7 @@
       const listBox = el("div", "clients-docs");
       groups[g].forEach(x => {
         const row = el("div", "clients-doc");
-        const info = el("div"); info.append(el("strong", "", x.name));
+        const info = el("div"); const docName = el("strong"); if (x.test) docName.append(testBadge()); docName.append(document.createTextNode(x.name)); info.append(docName);
         info.append(el("small", "", [x.kind, day(x.created), x.envelope && `Envelope ${x.envelope}`, x.status && x.group === "Sent for signature" && STATUS[x.status], x.pages && `${x.pages} page${x.pages === 1 ? "" : "s"}`,
           size(x.size), x.from && `from ${x.from}`, x.category && CATEGORIES[x.category], x.uploaded_by && `uploaded by ${x.uploaded_by}`,
           x.scan === "clean" ? "virus-scanned" : x.scan === "not_scanned" ? "not scanned" : ""].filter(Boolean).join(" · ")));
@@ -207,8 +223,10 @@
     const th = el("thead"); th.append(h); t.append(th); const tb = el("tbody");
     d.envelopes.forEach(e => {
       const tr = el("tr"); tr.tabIndex = 0; tr.addEventListener("click", () => window.esignOpen(e.id)); tr.addEventListener("keydown", ev => { if (ev.key === "Enter") window.esignOpen(e.id); });
+      if (e.test) tr.classList.add("row-test");
       const subject = el("td"); const s2 = el("div", "env-subject"); s2.append(el("span", "doc-icon", "PDF")); const tx = el("div");
-      tx.append(el("strong", "", e.subject || "(no subject)"), el("small", "", `To: ${e.recipients.filter(p => p.role !== "cc").map(p => p.name || p.email).join(", ")} · ${e.ref}`)); s2.append(tx); subject.append(s2);
+      const subj = el("strong"); if (e.test) subj.append(testBadge()); subj.append(document.createTextNode(e.subject || "(no subject)"));
+      tx.append(subj, el("small", "", `To: ${e.recipients.filter(p => p.role !== "cc").map(p => p.name || p.email).join(", ")} · ${e.ref}`)); s2.append(tx); subject.append(s2);
       const status = el("td"); const cell = el("div", "status-cell"); cell.append(el("span", `chip chip-${TONE[e.status] || "neutral"}`, STATUS[e.status] || e.status));
       if (e.status === "sent") cell.append(el("small", "", `${e.progress[0]} of ${e.progress[1]} signed`));
       status.append(cell);
@@ -221,14 +239,16 @@
     const d = await api(`/api/clients/${id}/history`);
     if (!d.contracts.length) { body.append(el("p", "empty-state", "No agreements generated yet. Use Create agreement.")); return; }
     d.contracts.forEach(c => {
-      const card = el("article", "revision-card");
-      card.append(el("strong", "", c.entity), el("p", "", c.id), el("p", "", `${when(c.created)} · ${c.owner}`));
+      const card = el("article", c.test ? "revision-card is-test" : "revision-card");
+      const company = el("strong", "", c.entity); if (c.test) company.prepend(testBadge());
+      card.append(company, el("p", "", c.id), el("p", "", `${when(c.created)} · ${c.owner}`));
       const links = el("div", "file-links");
       c.files.forEach(f => links.append(link(f.url, `${({baa: "BAA", services: "Services", nda: "NDA"}[f.agreement] || "Document")} · ${f.kind.toUpperCase()}`)));
       card.append(links);
       const sig = el("div", "file-links");
-      (c.envelopes || []).forEach(e => sig.append(button(`Signature: ${(STATUS[e.status] || e.status).toLowerCase()} · ${e.ref}`, () => window.esignOpen(e.id), "text-button")));
+      (c.envelopes || []).forEach(e => sig.append(button(`Signature: ${(STATUS[e.status] || e.status).toLowerCase()} · ${e.ref}${e.test ? " · TEST" : ""}`, () => window.esignOpen(e.id), "text-button")));
       if (c.files.some(f => f.kind === "pdf")) sig.append(button("Send for signature", () => window.esignFromContract(c.id), "text-button"));
+      sig.append(c.test ? button("Mark as real", () => markAgreement(id, c.id, false), "text-button") : button("Mark as test", () => markAgreement(id, c.id, true), "text-button"));
       card.append(sig); body.append(card);
     });
   }
