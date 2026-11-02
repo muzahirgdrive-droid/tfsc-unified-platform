@@ -444,7 +444,7 @@ company_admin.install(app)   # before companies.install so its literal routes be
 companies.install(app)
 import insights
 insights.install(app)
-PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','login.js','sign.js','sign.css','verify.js'}
+PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','login.js','sign.js','sign.css','verify.js','resilient.js'}
 PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):

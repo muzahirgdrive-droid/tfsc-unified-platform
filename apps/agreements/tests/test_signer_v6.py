@@ -155,8 +155,25 @@ class SigningPage(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('node'), 'node is not installed')
     def test_script_parses(self):
-        out = subprocess.run(['node', '--check', str(APP / 'sign.js')], capture_output=True, text=True)
-        self.assertEqual(out.returncode, 0, out.stderr)
+        for name in ('sign.js', 'resilient.js'):
+            out = subprocess.run(['node', '--check', str(APP / name)], capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+
+
+class SurvivesARestart(unittest.TestCase):
+    """An update restarts the application for a few seconds: requests the proxy could not deliver are sent again."""
+    def test_staff_pages_load_the_retry_first_and_it_is_public(self):
+        import portal
+        self.assertIn('resilient.js', portal.PUBLIC)
+        index = (APP / 'index.html').read_text()
+        self.assertLess(index.index('/resilient.js'), index.index('/portal.js'), 'loaded before every script that calls the server')
+        self.assertIn('/resilient.js', (APP / 'login.html').read_text())
+
+    def test_only_proxy_answers_are_retried(self):
+        for name in ('resilient.js', 'sign.js'):
+            js = (APP / name).read_text()
+            self.assertIn('status === 502 || ', js, name)
+            self.assertIn('.includes("application/json")', js, f'{name}: answers from the application are never repeated')
 
 
 if __name__ == '__main__':

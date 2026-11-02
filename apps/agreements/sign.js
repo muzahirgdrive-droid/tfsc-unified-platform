@@ -43,8 +43,18 @@
   async function call(path, body) {
     const options = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify(body)};
     let response;
-    try { response = await fetch(path, {...options, credentials: "same-origin", cache: "no-store"}); }
-    catch (_) { throw new Error("You appear to be offline. Check your connection and try again."); }
+    // A restart for an update, or a moment without signal, should not cost the signer anything: the request never reached
+    // the server (no connection, or the proxy answered 502/503), so it is sent again for up to about 25 seconds.
+    for (const wait of [1000, 2000, 3000, 4000, 5000, 5000, 5000, 0]) {
+      try {
+        response = await fetch(path, {...options, credentials: "same-origin", cache: "no-store"});
+        const fromProxy = (response.status === 502 || response.status === 503) && !(response.headers.get("content-type") || "").includes("application/json");
+        if (!fromProxy || !wait) break;
+      } catch (_) {
+        if (!wait) throw new Error("You appear to be offline. Check your connection and try again. Nothing you entered has been lost.");
+      }
+      await new Promise(done => setTimeout(done, wait));
+    }
     let data = {};
     try { data = await response.json(); } catch (_) { /* non-JSON error page */ }
     if (response.status === 401) { message("Your session has ended", "For your security, open the link from your email again."); throw new Error(""); }
