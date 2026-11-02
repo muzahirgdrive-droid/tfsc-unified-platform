@@ -44,9 +44,12 @@ class SigningState(test_esign.Base):
         return env
 
     def test_state_carries_company_colours_and_a_stable_signature_reference(self):
-        self.sent_envelope()
+        env = self.sent_envelope()
         token = self.smtp.link(self.smtp.to('jane@client.test')[0])
-        _, _, state = self.signer(token)
+        _, base, state = self.signer(token)
+        rid = base.rstrip('/').split('/')[-1]
+        self.assertEqual(state['signature_ref'], esign.signature_id({'id': env['id']}, {'id': rid})[:16].upper(),
+                         'the ID under "Signed by:" while signing is the one stamped on the PDF and listed on the certificate')
         brand = state['brand']
         self.assertEqual((brand['color'], brand['accent'], brand['dark']), ('#004B79', '#00AEEF', '#000F18'))
         self.assertEqual(brand['logo'], '/assets/brand/scribe.png', 'built-in logos stay public assets')

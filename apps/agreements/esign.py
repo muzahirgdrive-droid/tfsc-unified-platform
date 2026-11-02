@@ -1057,7 +1057,7 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
     out = dict(subject=envelope['subject'], message=envelope['message'], ref=envelope['ref'], envelope_status=status, sender=owner['name'],
                sender_email=box['address'] or owner['email'], company=entity['name'], company_short=entity['short'],
                brand=dict(logo=_brand_logo(entity), color=entity['color'], accent=entity['accent'], dark=entity.get('dark') or entity['color']),
-               signature_ref=hashlib.sha256(f"{envelope['id']}:{r['id']}".encode()).hexdigest()[:16].upper(),
+               signature_ref=signature_id(envelope, r)[:16].upper(),
                recipient=dict(name=r['name'], email=r['email'], role=r['role'], status=r['status'], note=r['note']),
                verified=bool(session['verified']), consent=bool(r['consent_at']), ersd=ersd(entity, box['address']), can_act=can_act,
                adopted=dict(signature=_data_url(r['signature_png']), initials=_data_url(r['initials_png'])), csrf=session['csrf'],
@@ -1427,7 +1427,9 @@ def complete_due() -> int:
 
 
 def signature_id(envelope: dict, r: dict) -> str:
-    return hashlib.sha256(f"{envelope['id']}:{r['id']}:{r.get('signed_at')}".encode()).hexdigest()
+    """One ID per signer and envelope: shown under "Signed by:" while signing, stamped on the PDF, listed on the certificate.
+    (The signing time is recorded separately on the certificate; completed envelopes keep the copies issued at the time.)"""
+    return hashlib.sha256(f"{envelope['id']}:{r['id']}".encode()).hexdigest()
 
 
 def finalize(envelope_id: str) -> None:
