@@ -7,7 +7,7 @@ text clears each letterhead's artwork. The signatory is left for a Super Admin t
 for the company asks for it first. They offer the standard service catalogue (an empty list of own services).
 
 Revision ID: 0009_five_companies
-Revises: 0008_client_records
+Revises: 0007_test_marks
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = '0009_five_companies'
-down_revision = '0008_client_records'
+down_revision = '0007_test_marks'
 branch_labels = None
 depends_on = None
 

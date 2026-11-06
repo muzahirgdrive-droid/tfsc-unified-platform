@@ -17,6 +17,7 @@ import entities as entmod
 import migrate
 import server as legacy
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, select, text
 from test_contract_studio import data
 from test_esign import Base
@@ -31,6 +32,8 @@ EXPECTED = {
     'BILLING NEST, LLC': ('13617 Avebury Dr, Apt 24, Laurel, MD 20708', 'Maryland'),
 }
 HOR = 'HOUSE OF RCM, LLC'
+# the revision just before the five companies (whatever this release puts there)
+BEFORE = ScriptDirectory.from_config(migrate.config()).get_revision("0009_five_companies").down_revision
 HAVE_RENDERER = bool(shutil.which('soffice') or shutil.which('libreoffice')) and bool(shutil.which('pdftoppm'))
 
 
@@ -60,7 +63,7 @@ class SeedMigration(unittest.TestCase):
 
     def test_upgrade_adds_the_five_and_keeps_existing_data(self):
         with self.engine.begin() as c:
-            command.upgrade(migrate.config(c), '0008_client_records')
+            command.upgrade(migrate.config(c), BEFORE)
             now = time.time()
             c.execute(text("INSERT INTO users (id, email, name, password, role, admin_id, companies, active, reset_required, created) "
                            "VALUES ('u1', 'a@b.test', 'A', 'x', 'super_admin', NULL, '[]', 1, 0, :now)"), {'now': now})
@@ -84,7 +87,7 @@ class SeedMigration(unittest.TestCase):
     def test_a_company_added_by_hand_is_left_alone_and_running_again_adds_nothing(self):
         lh = (ASSETS / MANIFEST[0]['letterhead']).read_bytes()
         with self.engine.begin() as c:
-            command.upgrade(migrate.config(c), '0008_client_records')
+            command.upgrade(migrate.config(c), BEFORE)
             c.execute(text("INSERT INTO companies (key, name, short, display, address, email, governing_state, timezone, color, accent, dark, signatory, "
                            "title, signature_scale, letterhead, letterhead_sha256, logo, logo_ext, width, top, bottom, \"left\", \"right\", services, doc_types, "
                            "active, created, created_by, updated) VALUES ('hor_by_hand', :name, 'HoR', 'HoR', 'Their own address', '', 'Texas', "
@@ -97,7 +100,7 @@ class SeedMigration(unittest.TestCase):
         self.assertEqual((rows[HOR]['key'], rows[HOR]['address'], rows[HOR]['signatory']), ('hor_by_hand', 'Their own address', 'Owner Name'))
         # an update that is stepped back and run again (agreements.sh rollback, then update) adds nothing twice
         with self.engine.begin() as c:
-            c.execute(text("UPDATE alembic_version SET version_num='0008_client_records'"))
+            c.execute(text('UPDATE alembic_version SET version_num=:v'), {'v': BEFORE})
         with self.engine.begin() as c:
             command.upgrade(migrate.config(c), 'head')
         self.assertEqual(len(self.rows()), 5)
@@ -111,7 +114,7 @@ class SeedMigration(unittest.TestCase):
             c.execute(text("INSERT INTO contracts (id, client_id, owner_id, entity, created, payload, folder, version, legacy) "
                            "VALUES ('Q-1', 'c1', 'u1', 'QUANTUM MEDICAL SERVICES', 1, '{}', '/x', '5', 0)"))
         with self.engine.begin() as c:
-            command.downgrade(migrate.config(c), '0008_client_records')
+            command.downgrade(migrate.config(c), BEFORE)
         self.assertEqual(set(self.rows()), {'QUANTUM MEDICAL SERVICES'})
 
 
