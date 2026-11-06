@@ -389,6 +389,25 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   release": the database changes were applied, and accounts, clients, envelopes, their histories and the signed PDFs
   were identical afterwards (the update took 30 seconds with the images built).
 
+**This update (November 2026), tested from this ZIP on the same Docker host**, over the release you have deployed
+(fea86f9) holding 7 clients, 5 completed envelopes and 3 envelopes left mid-way: one sent and not opened, one signed by
+the client and waiting for the company, one opened by the client (consent given, signature adopted) and left. The steps
+in "Updating to a new release" were followed exactly (the old folder kept under a dated name):
+- `backup` and `update` finished in about a minute; the database went from 0007 to 0009 and the pre-update copy was
+  saved.
+- 34 of the 36 tables were identical row for row afterwards; the other two gained the five companies and the counter
+  of client numbers. The 7 clients were numbered CL-0001 to CL-0007, oldest first.
+- All three envelopes left mid-way were finished on the new version from the links emailed before the update (the
+  opened one remembered the consent) and completed; every signed copy and Certificate of Completion, old and new,
+  downloaded as a PDF.
+- The five companies appeared with their letterheads, logos, addresses and governing law; generating for House of RCM
+  asked for its signatory first, and once it was set, a BAA and Services Agreement with Patient Help Desk,
+  Credentialing and Demographics Updates generated on its letterhead with its Austin address and Texas law.
+- The same update was also run from two older releases (0005 and 0006) against PostgreSQL 16 with every envelope
+  state, with the same result. In a browser: the eight companies in Create agreement, the letterhead check, the new
+  services, the custom-service preview, a 60-character signer title on a phone and a desktop, the clients register,
+  a client's record, adding a past DocuSign agreement, importing previous clients and the Signed BAA register.
+
 **Version 5, tested from this ZIP on the same Docker host:**
 - **Update from version 4.2** (the release installed on your server, 25460c4), holding two accounts, three clients,
   generated agreements, a completed envelope with replies, a signature installed with `./agreements.sh signatures`
