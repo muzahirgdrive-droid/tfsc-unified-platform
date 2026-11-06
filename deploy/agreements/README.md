@@ -161,7 +161,27 @@ upload the JSON key on the Company mailboxes screen.
 
 ## 7. Clients
 
-**Clients** lists every client you can see. A client's profile has:
+**Clients** is the register of every client you can see. Every client has a permanent **client number** (CL-0001,
+CL-0002, ...): clients already in the app when you update are numbered in the order they were created, every new client
+gets the next number, and a number is never given to anyone else, even after a client is deleted. Search by client
+number ("CL-0012", "cl-12" or "12"), name, NPI, email or address; filter by company, by where agreements were signed
+(this portal, DocuSign, manual email, Jotform) and by BAA signed or missing. The register shows each client's companies,
+the agreements on file, the date of its signed BAA and where it was signed.
+
+**Agreements signed before this portal** (returned by email, signed in DocuSign or submitted through Jotform):
+- On a client's record, **Agreements** > **Add a past agreement**: choose the signed PDF. The app reads what the file
+  contains (DocuSign and Jotform PDFs usually carry the envelope or submission ID, the signer, the dates and the company)
+  and fills in the form; check it, correct anything, and **Save to client record**. The original file is kept unchanged.
+- Many at once: **Clients** > **Import previous clients**. Upload an optional spreadsheet (download the template from
+  that page; .xlsx or .csv, one row per client) and any number of signed PDFs. The app matches each file to a client (by
+  client number, DocuSign envelope ID, the name in the file or the file name), shows what it will create or add, and
+  nothing is saved until you press **Import**. New clients get the next client numbers.
+
+**Signed BAA register** (from the Clients page): one tab per company with every client's signed BAA, wherever it was
+signed, the coverage per company, and the clients still missing one. **Export register** (.xlsx or .csv) for an audit,
+or **Download all signed BAAs** as one .zip.
+
+A client's profile has:
 - **Overview**: address, phone, email, website, specialty, NPI, tax ID and notes (**Edit details**).
 - **Contacts**: the people at the client (signatory, billing, compliance). Everyone you send an envelope to for the
   client is added automatically; contacts are suggested when you type a recipient's name or email.
@@ -303,6 +323,13 @@ Updating to version 5 also:
 - prints company signatures at the approved sizes (Naeem Abbas 60 %, Danish Ather 85 %; adjustable per company);
 - completes envelopes that were waiting only for someone who needed to view them;
 - keeps signature images installed with `./agreements.sh signatures` until you save one under Admin > Company settings.
+
+This update (November 2026) also:
+- gives every client already in the app a client number (CL-0001 onwards, oldest first); nothing else about the client
+  changes;
+- adds the five companies above (House of RCM, Quantum Medical Services, MedEquity Solutions, 3E Medical Billing and
+  Billing Nest); set each one's signatory in Company settings before its first agreement;
+- leaves every agreement already generated, every envelope already sent and every signed copy exactly as it was.
 
 ## Changing settings later
 
