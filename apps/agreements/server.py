@@ -58,6 +58,8 @@ def clean(value, label, required=False, limit=500):
     if not isinstance(value, (str, int, float)) or isinstance(value, bool):
         raise ValueError(f'{label} must be text.')
     value = unicodedata.normalize('NFC', str(value)).strip()
+    # A dash that starts a line is a bullet (format_guard), not punctuation to rewrite.
+    value = re.sub(r'(?m)^([ \t]*)[\u2014\u2013](?=[ \t])', r'\1-', value)
     value = value.replace('\u2014', ', ').replace('\u2013', '-').replace('--', ', ')
     value = ''.join(c for c in value if c in '\n\t' or ord(c) >= 32)
     if required and not value:
@@ -87,6 +89,11 @@ def date_value(value, label):
         raise ValueError(f'{label} must be a valid date.') from None
 
 
+# Service wording typed or pasted into the builder (a custom service's scope, responsibilities and exclusions, and any
+# service's parameters). The builder's text boxes use the same limit.
+SERVICE_TEXT_LIMIT = 6000
+
+
 def service_value(item, custom=False, catalog=None):
     if not isinstance(item, dict):
         raise ValueError('Each selected service must contain its pricing details.')
@@ -94,7 +101,7 @@ def service_value(item, custom=False, catalog=None):
     out = {}
     if custom:
         for field in ('name', 'scope', 'responsibilities', 'exclusions'):
-            out[field] = clean(item.get(field), f'Custom service {field}', True, 200 if field == 'name' else 2500)
+            out[field] = clean(item.get(field), f'Custom service {field}', True, 200 if field == 'name' else SERVICE_TEXT_LIMIT)
         out['id'] = 'custom_' + hashlib.sha256(out['name'].encode()).hexdigest()[:10]
         out['category'] = item.get('category', 'on_demand')
         if out['category'] not in ('recurring', 'on_demand'):
@@ -106,6 +113,9 @@ def service_value(item, custom=False, catalog=None):
             raise ValueError('An unknown service was selected. Reload the application.')
         spec = catalog[service_id]
         out.update(id=service_id, name=spec['name'], category=spec['category'])
+        if spec.get('category_follows_model'):
+            # billed per unit it is a recurring service; as a one-time project it is on demand
+            out['category'] = 'on_demand' if item.get('model') in ('one_time', 'two_installments') else 'recurring'
         # A custom company's own services carry their scope, responsibilities and exclusions into the document.
         for extra in ('scope', 'responsibilities', 'exclusions'):
             if spec.get(extra):
@@ -126,8 +136,9 @@ def service_value(item, custom=False, catalog=None):
             raise ValueError('Choose WordPress or custom website development.')
     out['quantity'] = number(item.get('quantity'), f"quantity for {out['name']}", default=1, maximum=1000000)
     out['hours'] = number(item.get('hours'), 'weekly hours per resource', default=40 if out['model']=='fte' else 20, maximum=168)
-    out['unit'] = clean(item.get('unit'), 'Unit description', out['model']=='unit', 100)
-    out['details'] = clean(item.get('details'), 'Service details', not custom and out['id']=='other', 2500)
+    unit = item.get('unit') if custom or str(item.get('unit') or '').strip() or out['model'] != 'unit' else spec.get('unit')
+    out['unit'] = clean(unit, 'Unit description', out['model']=='unit', 100)
+    out['details'] = clean(item.get('details'), 'Service details', not custom and out['id']=='other', SERVICE_TEXT_LIMIT)
     out['milestone1'] = clean(item.get('milestone1'), 'First invoice milestone', out['model']=='two_installments', 300)
     out['milestone2'] = clean(item.get('milestone2'), 'Second invoice milestone', out['model']=='two_installments', 300)
     out['installment_percent'] = number(item.get('installment_percent'), 'First installment percentage', default=50, maximum=99.99)
@@ -368,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
             if not file or not file.is_file():
                 return self.respond({'error':'File link expired. Open the saved output folder to find the documents.'},404)
             return self.send_file(file,download=True)
-        allowed={'/':APP/'index.html','/index.html':APP/'index.html','/styles.css':APP/'styles.css','/app.js':APP/'app.js','/premium.css':APP/'premium.css','/studio.js':APP/'studio.js'}
+        allowed={'/':APP/'index.html','/index.html':APP/'index.html','/styles.css':APP/'styles.css','/app.js':APP/'app.js','/premium.css':APP/'premium.css','/studio.js':APP/'studio.js','/format_guard.js':APP/'format_guard.js'}
         for weight in (400,700): allowed[f'/assets/fonts/Outfit-{weight}.woff2']=APP/'assets/fonts'/f'Outfit-{weight}.woff2'
         allowed['/tfsc.css']=APP/'tfsc.css'
         allowed['/assets/tfsc-logo.png']=APP/'assets/tfsc-logo.png'

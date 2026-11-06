@@ -13,12 +13,14 @@
     medical_coding: "Define the coding review scope, sample size, specialties, deliverables and review frequency.",
     prior_auth: "Specify authorization or benefit verification tasks, providers, payers and turnaround expectations.",
     virtual_assistant: "Specify administrative duties, schedule, time zone, systems and communication channels.",
+    patient_help_desk: "Specify call hours and time zone, expected call volume, languages, phone system and escalation contacts. For per-call pricing, state what counts as a completed call.",
     medical_scribe: "Specify live or offline work, specialties, schedule, time zone and documentation workflow.",
     ar_denials: "Define assigned accounts, aging range, dates of service, systems and reporting expectations.",
     rcm_consultancy: "Define the assessment areas, work schedule, deliverables and implementation support.",
     digital_marketing: "Specify channels, deliverables, approval workflow and budget. State whether media spend is separate.",
     telemarketing: "Specify campaign, target audience, approved scripts, calling schedule and consent records.",
     credentialing: "Identify providers, payer panels, states, application types and completion milestones.",
+    demographics_updates: "List the providers, payers and the updates needed (address, contact, tax and ownership, group roster or CAQH ProView), and any payer deadline.",
     state_licensing: "Identify applicants, jurisdictions, license types, application scope and completion milestones.",
     compliance_training: "Specify training topics, audience, session format, materials and delivery dates.",
     website_development: "Define pages, features, content, revision rounds, acceptance criteria and handover.",
@@ -27,6 +29,12 @@
     coding_consultancy: "Specify specialties, sample size, records reviewed, reporting and education deliverables.",
     other: "Required: define the exact service, deliverables, responsibilities and completion criteria."
   };
+  // The line under a service's name in the catalogue (otherwise its engagement type), and the services marked NEW.
+  const serviceLines = {patient_help_desk: "Recurring engagement · patient billing calls, payment plans, insurance follow-up",
+    demographics_updates: "Credentialing add-on · also on its own"};
+  const newServices = new Set(["patient_help_desk", "demographics_updates"]);
+  const ADD_ON = {credentialing: "demographics_updates"};   // offered inside the Credentialing card
+  const SERVICE_TEXT_LIMIT = 6000;                           // server.SERVICE_TEXT_LIMIT
 
   function el(tag, className, content) {
     const item = document.createElement(tag);
@@ -87,7 +95,7 @@
 
   function serviceDefaults(spec) {
     const model = spec.models[0].id;
-    return {id: spec.id, model, rate: "", government_rate: 150, commercial_rate: 150, website_kind: "wordpress", website_prices: {}, quantity: 1, hours: model === "pte" ? 20 : 40, unit: "", details: "", milestone1: "Execution and commencement", milestone2: "Delivery of the agreed final work product", installment_percent: 50};
+    return {id: spec.id, model, rate: "", government_rate: 150, commercial_rate: 150, website_kind: "wordpress", website_prices: {}, quantity: 1, hours: model === "pte" ? 20 : 40, unit: spec.unit || "", details: "", milestone1: "Execution and commencement", milestone2: "Delivery of the agreed final work product", installment_percent: 50};
   }
   function customModels(category) {
     return (category === "recurring" ? ["fte", "pte", "unit", "fixed", "consultancy"] : ["one_time", "two_installments"]).map(id => ({id, label: modelLabels[id]}));
@@ -118,7 +126,8 @@
         updateSummary();
       });
       const text = el("span", "service-option-name", spec.name);
-      text.append(el("small", "", spec.category === "recurring" ? "Recurring engagement" : "On-demand project"));
+      if (newServices.has(spec.id)) text.append(el("em", "new-badge", "NEW"));
+      text.append(el("small", "", serviceLines[spec.id] || (spec.category === "recurring" ? "Recurring engagement" : "On-demand project")));
       label.append(checkbox, text);
       container.append(label);
     });
@@ -260,19 +269,23 @@
       const header = el("div", "selected-service-header");
       const title = el("div");
       title.append(el("h4", "", spec.name), el("p", "", spec.description));
+      const addOn = ADD_ON[spec.id] && state.catalog.find(s => s.id === ADD_ON[spec.id]);
+      if (addOn && state.selected.has(addOn.id)) title.querySelector("h4").append(el("span", "addon-chip", "+ Demographics Updates"));
       const remove = el("button", "remove-service", "Remove");
       remove.type = "button";
       remove.setAttribute("aria-label", `Remove ${spec.name}`);
       remove.addEventListener("click", () => { state.selected.delete(spec.id); markDirty(); renderCatalog(); renderSelected(); updateSummary(); });
       header.append(title, remove);
       const body = el("div", "selected-service-body");
-      body.append(priceFields(item, spec.models), makeField(item, "details", "Service parameters & agreed deliverables", {multiline: true, required: spec.id === "other", placeholder: serviceHints[spec.id] || "Describe the service parameters for this engagement.", note: "These details are added to this service’s standard scope and responsibilities."}));
+      if (addOn) body.append(addOnOption(addOn, spec.id));
+      body.append(priceFields(item, spec.models), makeField(item, "details", "Service parameters & agreed deliverables", {multiline: true, maxLength: SERVICE_TEXT_LIMIT, required: spec.id === "other", placeholder: serviceHints[spec.id] || "Describe the service parameters for this engagement.", note: "These details are added to this service’s standard scope and responsibilities."}));
       card.append(header, body);
       selected.append(card);
     });
     const customContainer = $("custom-services");
     customContainer.replaceChildren();
-    state.custom.forEach(item => {
+    if (state.custom.length) customContainer.append(formattingBanner());
+    state.custom.forEach((item, index) => {
       const card = el("div", "selected-service");
       const header = el("div", "selected-service-header");
       const title = el("div");
@@ -283,15 +296,103 @@
       remove.addEventListener("click", () => { state.custom = state.custom.filter(x => x !== item); markDirty(); renderSelected(); updateSummary(); });
       header.append(title, remove);
       const body = el("div", "selected-service-body");
-      body.append(makeField(item, "name", "Service name", {required: true, placeholder: "Name of the service", onChange: value => { title.querySelector("h4").textContent = value || "New custom service"; }}));
-      body.append(makeField(item, "category", "Engagement type", {options: [{id: "on_demand", label: "On-demand project"}, {id: "recurring", label: "Recurring engagement"}], required: true, onChange: value => { item.model = customModels(value)[0].id; item.hours = 40; renderSelected(); }}));
-      body.append(priceFields(item, customModels(item.category)));
-      body.append(makeField(item, "scope", "Scope and deliverables", {required: true, multiline: true, placeholder: "State exactly what Scribe Align will provide and when the work is complete."}));
-      body.append(makeField(item, "responsibilities", "Client responsibilities", {required: true, multiline: true, placeholder: "Specify information, access, approvals and cooperation the client must provide."}));
-      body.append(makeField(item, "exclusions", "Limitations and exclusions", {required: true, multiline: true, placeholder: "Define work outside scope, third-party charges and any specific limitations."}));
+      const fields = el("div", "custom-fields"), print = printPreview(item, state.selected.size + index + 1);
+      const text = {required: true, multiline: true, rows: 6, maxLength: SERVICE_TEXT_LIMIT, onChange: print.refresh};
+      fields.append(makeField(item, "name", "Service name", {required: true, placeholder: "Name of the service", onChange: value => { title.querySelector("h4").textContent = value || "New custom service"; print.refresh(); }}));
+      fields.append(makeField(item, "category", "Engagement type", {options: [{id: "on_demand", label: "On-demand project"}, {id: "recurring", label: "Recurring engagement"}], required: true, onChange: value => { item.model = customModels(value)[0].id; item.hours = 40; renderSelected(); }}));
+      fields.append(priceFields(item, customModels(item.category)));
+      fields.append(makeField(item, "scope", "Scope and deliverables", {...text, placeholder: "State exactly what Scribe Align will provide and when the work is complete. Paste it as it comes: bullets, numbering and line breaks print in the agreement’s own style."}));
+      fields.append(makeField(item, "responsibilities", "Client responsibilities", {...text, placeholder: "Specify information, access, approvals and cooperation the client must provide."}));
+      fields.append(makeField(item, "exclusions", "Limitations and exclusions", {...text, placeholder: "Define work outside scope, third-party charges and any specific limitations."}));
+      body.classList.add("custom-editor");
+      body.append(fields, print.node);
       card.append(header, body);
       customContainer.append(card);
     });
+  }
+
+  // "Add Demographics Updates" inside the Credentialing card: selects or removes the add-on service, which keeps its own
+  // pricing card and prints as its own service, right after Credentialing.
+  function addOnOption(spec, parentId) {
+    const option = el("label", "addon-option");
+    const box = el("input"); box.type = "checkbox"; box.checked = state.selected.has(spec.id); box.disabled = !$("generate-services").checked;
+    box.addEventListener("change", () => {
+      if (box.checked) {
+        const entries = [...state.selected.entries()].filter(([id]) => id !== spec.id), at = entries.findIndex(([id]) => id === parentId);
+        entries.splice(at < 0 ? entries.length : at + 1, 0, [spec.id, serviceDefaults(spec)]);
+        state.selected = new Map(entries);
+      } else state.selected.delete(spec.id);
+      markDirty(); renderCatalog(); renderSelected(); updateSummary();
+    });
+    const text = el("span", "addon-text"), name = el("strong", "", "Add Demographics Updates");
+    name.append(el("em", "new-badge", "NEW"));
+    text.append(name, el("small", "", box.checked ? "Added · priced per payer update or as a project in its own card below" : "Payer updates of provider and practice details, CAQH ProView included"));
+    option.append(box, text);
+    return option;
+  }
+
+  function formattingBanner() {
+    const banner = el("div", "format-banner");
+    const text = el("p");
+    text.append(el("strong", "", "Formatting is protected. "), document.createTextNode("Type or paste the custom service however it comes (from Word, an email or a PDF). It prints in the agreement’s own headings, bullets and numbering, exactly like the standard services."));
+    banner.append(el("span", "format-banner-mark", "✓"), text);
+    return banner;
+  }
+
+  // Blocks from format_guard (p, lead, bullet, number with label/style/start) as they print. Lists are grouped.
+  function appendFormatted(container, block) {
+    if (block.type === "bullet" || block.type === "number") {
+      const tag = block.type === "bullet" ? "UL" : "OL", last = container.lastElementChild;
+      const letter = block.type === "number" && block.style === "letter";
+      let list = last && last.tagName === tag && !(block.type === "number" && block.start !== undefined) && last.classList.contains("letter") === letter ? last : null;
+      if (!list) {
+        list = el(tag.toLowerCase(), letter ? "letter" : "");
+        if (block.type === "number" && block.start > 1) list.start = block.start;
+        container.append(list);
+      }
+      const li = el("li");
+      const text = String(block.text || "");
+      if (block.label && text.startsWith(block.label)) li.append(el("strong", "", block.label), document.createTextNode(text.slice(block.label.length)));
+      else li.textContent = text;
+      list.append(li);
+    } else container.append(el("p", block.type === "lead" ? "print-lead" : "", block.text || ""));
+  }
+
+  function printPreview(item, number) {
+    const node = el("aside", "print-preview"), head = el("div", "print-head"), paper = el("div", "print-paper"), chips = el("ul", "print-chips");
+    head.append(el("strong", "", "How it will print"), el("span", "", "live preview · Services Agreement"));
+    node.append(head, paper, chips);
+    node.setAttribute("aria-label", "How this custom service will print");
+    const refresh = () => {
+      const guard = window.TFSCFormat;
+      paper.replaceChildren(); chips.replaceChildren();
+      paper.append(el("h3", "", `1.${number} ${item.name || "New custom service"}`));
+      const total = {bullets: 0, numbers: 0, leads: 0, labels: 0, joined: 0, spaces: 0, capitalised: 0};
+      let lead = "", any = false;
+      [["scope", ""], ["responsibilities", "Client Responsibilities"], ["exclusions", "Limitations and Exclusions"]].forEach(([key, heading]) => {
+        const value = String(item[key] || "");
+        if (!value.trim()) return;
+        any = true;
+        if (heading) paper.append(el("h4", "", heading));
+        const result = guard ? guard.inspect(value) : {blocks: [{type: "p", text: value}], stats: {}};
+        result.blocks.forEach(block => { appendFormatted(paper, block); if (block.type === "lead" && !lead) lead = block.text; });
+        Object.keys(total).forEach(k => { total[k] += result.stats[k] || 0; });
+      });
+      if (!any) paper.append(el("p", "print-empty", "Type or paste the scope, responsibilities and exclusions to see them as they print."));
+      const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+      const notes = [];
+      if (total.bullets) notes.push(`${plural(total.bullets, "bullet", "bullets")} in the agreement’s style`);
+      if (total.numbers) notes.push(plural(total.numbers, "numbered step", "numbered steps"));
+      if (total.leads) notes.push(total.leads === 1 ? `“${lead.length > 40 ? lead.slice(0, 38) + "…:" : lead}” introduces the list` : `${total.leads} lead-ins kept with their lists`);
+      if (total.labels) notes.push(`${plural(total.labels, "label", "labels")} in bold`);
+      if (total.joined) notes.push(total.joined === 1 ? "Broken line joined" : `${total.joined} broken lines joined`);
+      if (total.spaces) notes.push("Extra spaces removed");
+      if (total.capitalised) notes.push("First letters capitalised");
+      if (any) notes.push("Same font and spacing as the standard services");
+      notes.forEach(text => chips.append(el("li", "", `✓ ${text}`)));
+    };
+    refresh();
+    return {node, refresh};
   }
 
   function allSelected() {
@@ -627,10 +728,16 @@
           row.append(el("td", "", `Signature: ____________________\n${$("signatory-name").textContent}\n${$("signatory-title").textContent.split(" · ")[0]}\nDate: ${dateLabel(effective)}`), el("td", "", `Signature: ____________________\nName: ${$("client_signatory").value || "____________________"}\nTitle: ${$("client_title").value || "____________________"}\nDate: ____________________`));
           body.append(row); signatures.append(head, body); container.append(signatures);
         }
-      } else if (["bullet", "li"].includes(block.type)) {
+      } else if (["bullet", "number", "lead"].includes(block.type)) {
+        appendFormatted(container, block);
+      } else if (block.type === "li") {
         const list = container.lastElementChild?.tagName === "UL" ? container.lastElementChild : el("ul");
         list.append(el("li", "", block.text));
         if (!list.parentElement) container.append(list);
+      } else if (block.runs?.length && block.type === "p") {
+        const p = el("p");
+        block.runs.forEach(run => p.append(run.bold ? el("strong", "", run.text) : document.createTextNode(run.text)));
+        container.append(p);
       } else {
         const tag = ["h1", "h2", "h3"].includes(block.type) ? block.type : block.type === "title" ? "h1" : "p";
         container.append(el(tag, "", block.text || ""));

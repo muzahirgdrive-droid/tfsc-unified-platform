@@ -50,7 +50,7 @@ def _run(text, bold=False, size=None, color=None):
     return '<w:r><w:rPr>' + props + '</w:rPr>' + '<w:br/>'.join('<w:t xml:space="preserve">'+_escape(c)+'</w:t>' for c in chunks) + '</w:r>'
 
 
-def _p(text, style='SABody', *, keep=False, page_break=False, bold=False, align=None, bullet=False):
+def _p(text, style='SABody', *, keep=False, page_break=False, bold=False, align=None, bullet=False, number=None):
     props = f'<w:pStyle w:val="{style}"/>'
     if keep:
         props += '<w:keepNext/>'
@@ -60,7 +60,33 @@ def _p(text, style='SABody', *, keep=False, page_break=False, bold=False, align=
         props += f'<w:jc w:val="{align}"/>'
     if bullet:
         props += '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="9999"/></w:numPr>'
+    if number:
+        props += f'<w:numPr><w:ilvl w:val="0"/><w:numId w:val="{int(number)}"/></w:numPr>'
     return '<w:p><w:pPr>'+props+'</w:pPr>'+_run(text,bold)+'</w:p>'
+
+
+# Numbered and lettered lists (format_guard): one numbering instance per list, so each list restarts at its own first
+# number; the marker hangs like the bullets'. Ids sit far above any a letterhead's own numbering uses.
+LIST_BASE = 10000
+_LIST_ABSTRACT = {'decimal': (9998, 'decimal', '%1.', 400, 280), 'letter': (9997, 'lowerLetter', '(%1)', 440, 320)}
+
+
+def _list_numbering(lists):
+    abstract = ''.join(f'<w:abstractNum w:abstractNumId="{aid}"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/>'
+                       f'<w:numFmt w:val="{fmt}"/><w:lvlText w:val="{text}"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="{left}"/></w:tabs>'
+                       f'<w:ind w:left="{left}" w:hanging="{hanging}"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/></w:rPr></w:lvl></w:abstractNum>'
+                       for aid, fmt, text, left, hanging in _LIST_ABSTRACT.values()) if lists else ''
+    nums = ''.join(f'<w:num w:numId="{LIST_BASE+index}"><w:abstractNumId w:val="{_LIST_ABSTRACT[style][0]}"/><w:lvlOverride w:ilvl="0">'
+                   f'<w:startOverride w:val="{start}"/></w:lvlOverride></w:num>' for index, (style, start) in enumerate(lists, 1))
+    return abstract, nums
+
+
+def _label_runs(block):
+    """A list item that starts with a short label ("System Access: Provide ...") prints the label in bold."""
+    label, text = block.get('label'), _text(block.get('text', ''))
+    if block.get('type') in ('bullet', 'number') and label and text.startswith(label) and len(text) > len(label):
+        return [{'text': label, 'bold': True}, {'text': text[len(label):], 'bold': False}]
+    return None
 
 
 def _style(style_id, name, size=22, bold=False, color='000000', before=0, after=120, align='both', keep=False, outline=None, line=269):
@@ -251,6 +277,8 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
                 parts[name]=parts[name].replace(b'<w:t>0</w:t>',b'<w:t></w:t>')
     content=[]
     signature_count=0
+    lists=[]            # (style, start) of each numbered list, in order
+    previous=None
     for block in blocks:
         kind=block.get('type')
         text=block.get('text','')
@@ -258,10 +286,18 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
             content.append(_p(text,'SATitle',keep=True))
         elif kind in ('h1','h2','h3'):
             content.append(_p(text,'SAHeading'+kind[-1],keep=True))
-        elif kind in ('p','bullet'):
-            paragraph=_p(text,bullet=kind=='bullet')
-            if block.get('runs'):
-                paragraph=paragraph.replace(_run(text),''.join(_run(r['text'],r.get('bold',False)) for r in block['runs']))
+        elif kind in ('p','bullet','number','lead'):
+            number=None
+            if kind=='number':
+                style='letter' if block.get('style')=='letter' else 'decimal'
+                if block.get('start') is not None or not previous or previous.get('type')!='number' or ('letter' if previous.get('style')=='letter' else 'decimal')!=style:
+                    lists.append((style,max(1,int(block.get('start') or 1))))
+                number=LIST_BASE+len(lists)
+            # A lead-in ("The Client shall:") is left-aligned and stays with the list it introduces.
+            paragraph=_p(text,bullet=kind=='bullet',number=number,align='left' if kind=='lead' else None,keep=kind=='lead')
+            runs=block.get('runs') or _label_runs(block)
+            if runs:
+                paragraph=paragraph.replace(_run(text),''.join(_run(r['text'],r.get('bold',False)) for r in runs))
             content.append(paragraph)
         elif kind=='table':
             content.append(_table(block.get('headers',[]),block.get('rows',[]),width=entity['width']))
@@ -276,6 +312,7 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
             content.append(_signature(text,data,contract_id,final_clause,block.get('source_exact',False),entity=entity))
         else:
             raise ValueError(f'Unsupported document block: {kind}')
+        previous=block
     if signature_count!=1:
         raise ValueError('Each agreement must include exactly one execution block.')
     xml=re.sub(r'<w:body>.*?</w:body>',lambda _: '<w:body>'+''.join(content)+section+'</w:body>',xml,flags=re.S)
@@ -289,10 +326,11 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
     for level,size in ((1,32),(2,28),(3,26)):
         styles.append(_style('SAHeading'+str(level),'Scribe Align Heading '+str(level),size,True,ACCENT,180 if level==1 else 120,80,'left',True,level-1))
     parts['word/styles.xml']=parts['word/styles.xml'].replace(b'</w:styles>',''.join(styles).encode()+b'</w:styles>')
-    numbering='<w:abstractNum w:abstractNumId="9999"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="360"/></w:tabs><w:ind w:left="360" w:hanging="240"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/></w:rPr></w:lvl></w:abstractNum><w:num w:numId="9999"><w:abstractNumId w:val="9999"/></w:num>'
+    list_abstract,list_nums=_list_numbering(lists)
+    numbering='<w:abstractNum w:abstractNumId="9999"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="360"/></w:tabs><w:ind w:left="360" w:hanging="240"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/></w:rPr></w:lvl></w:abstractNum>'+list_abstract+'<w:num w:numId="9999"><w:abstractNumId w:val="9999"/></w:num>'+list_nums
     if 'word/numbering.xml' in parts:
         parts['word/numbering.xml']=parts['word/numbering.xml'].replace(b'</w:numbering>',numbering.encode()+b'</w:numbering>')
-    elif any(b.get('type')=='bullet' for b in blocks):
+    elif any(b.get('type') in ('bullet','number') for b in blocks):
         parts['word/numbering.xml']=('<w:numbering xmlns:w="'+W+'">'+numbering+'</w:numbering>').encode()
         parts['word/_rels/document.xml.rels']=parts['word/_rels/document.xml.rels'].replace(b'</Relationships>',b'<Relationship Id="rIdSANumbering" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>')
         parts['[Content_Types].xml']=parts['[Content_Types].xml'].replace(b'</Types>',b'<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>')

@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/marks.css">
   <script src="/resilient.js" defer></script>
   <script src="/portal.js" defer></script>
+  <script src="/format_guard.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/studio.js" defer></script>
   <script src="/esign.js" defer></script>
@@ -76,7 +77,7 @@
       <button type="button" data-step="terms-panel"><span>04</span>Agreement terms</button>
       <button type="button" data-step="output-panel"><span>05</span>Sign &amp; export</button>
     </nav>
-    <div class="studio-progress"><span id="stage-label">01 / 05 · Client details</span><div><i id="stage-progress"></i></div><span id="catalog-total-wrap"><span id="catalog-total">19</span> services available</span></div>
+    <div class="studio-progress"><span id="stage-label">01 / 05 · Client details</span><div><i id="stage-progress"></i></div><span id="catalog-total-wrap"><span id="catalog-total">21</span> services available</span></div>
     <form id="contract-form" hidden novalidate>
       <div class="workspace-grid">
         <div class="form-column">
@@ -104,7 +105,7 @@
 
           <section class="panel" id="services-panel" aria-labelledby="services-heading">
             <div class="panel-heading"><div class="step">03</div><div><p class="eyebrow">SCOPE &amp; PRICING</p><h2 id="services-heading">Build the service schedule</h2></div><span class="count-pill" id="selected-count">0 selected</span></div>
-            <div class="panel-body"><p class="section-description">Select only the services covered by this agreement. Each adds its own scope, responsibilities and pricing.</p><div class="service-toolbar"><div class="segmented" role="group" aria-label="Filter services"><button type="button" data-filter="all" aria-pressed="true">All services</button><button type="button" data-filter="recurring" aria-pressed="false">Recurring</button><button type="button" data-filter="on_demand" aria-pressed="false">On demand</button></div><label class="search-label"><span class="sr-only">Search services</span><input id="service-search" type="search" placeholder="Find a service…"></label></div><div id="service-catalog" class="service-catalog"></div><p id="no-service-results" class="empty-small" hidden>No services match your search.</p><div class="selection-divider"><h3>Selected services</h3><span>All prices in USD</span></div><div id="selected-services"><div class="selection-empty"><span aria-hidden="true">＋</span><strong>Your agreement starts here.</strong><p>Select a service above to define its pricing and scope.</p></div></div><div id="custom-services"></div><button class="button button-quiet add-custom" type="button" id="add-custom">+ Add a custom service</button><p class="field-note">Custom service wording is inserted as entered. Define the scope and each party’s responsibilities clearly.</p></div>
+            <div class="panel-body"><p class="section-description">Select only the services covered by this agreement. Each adds its own scope, responsibilities and pricing.</p><div class="service-toolbar"><div class="segmented" role="group" aria-label="Filter services"><button type="button" data-filter="all" aria-pressed="true">All services</button><button type="button" data-filter="recurring" aria-pressed="false">Recurring</button><button type="button" data-filter="on_demand" aria-pressed="false">On demand</button></div><label class="search-label"><span class="sr-only">Search services</span><input id="service-search" type="search" placeholder="Find a service…"></label></div><div id="service-catalog" class="service-catalog"></div><p id="no-service-results" class="empty-small" hidden>No services match your search.</p><div class="selection-divider"><h3>Selected services</h3><span>All prices in USD</span></div><div id="selected-services"><div class="selection-empty"><span aria-hidden="true">＋</span><strong>Your agreement starts here.</strong><p>Select a service above to define its pricing and scope.</p></div></div><div id="custom-services"></div><button class="button button-quiet add-custom" type="button" id="add-custom">+ Add a custom service</button><p class="field-note">Custom service wording prints as entered, in the agreement’s own formatting. Define the scope and each party’s responsibilities clearly.</p></div>
           </section>
 
           <section class="panel" id="terms-panel" aria-labelledby="terms-heading">

@@ -1067,7 +1067,7 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
     out = dict(subject=envelope['subject'], message=envelope['message'], ref=envelope['ref'], envelope_status=status, sender=owner['name'],
                sender_email=box['address'] or owner['email'], company=entity['name'], company_short=entity['short'],
                brand=dict(logo=_brand_logo(entity), color=entity['color'], accent=entity['accent'], dark=entity.get('dark') or entity['color']),
-               signature_ref=signature_id(envelope, r)[:16].upper(),
+               signature_ref=signature_id(envelope, r)[:16].upper(), fit=esign_pdf.fit_constants(),
                recipient=dict(name=r['name'], email=r['email'], role=r['role'], status=r['status'], note=r['note']),
                verified=bool(session['verified']), consent=bool(r['consent_at']), ersd=ersd(entity, box['address']), can_act=can_act,
                adopted=dict(signature=_data_url(r['signature_png']), initials=_data_url(r['initials_png'])), csrf=session['csrf'],

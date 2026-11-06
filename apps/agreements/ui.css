@@ -776,3 +776,33 @@ body.picking{overflow:hidden}
 .logo-now img{max-height:44px;max-width:180px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 8px}
 input.is-locked{background:var(--surface-2,#f3f5f8);color:var(--ink-2,#3b4658);cursor:not-allowed}
 .company-card .company-address{margin:2px 0 10px;line-height:1.45;overflow-wrap:break-word}
+
+/* Builder: NEW badge, the Credentialing add-on, and the custom service "How it will print" preview (format_guard.js) */
+.new-badge{display:inline-block;margin-left:7px;padding:1px 6px;border-radius:5px;background:var(--success-soft);color:var(--success);font-size:9.5px;font-weight:700;font-style:normal;letter-spacing:.06em;vertical-align:1px}
+.addon-chip{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:6px;background:var(--primary-soft);color:var(--primary);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;vertical-align:2px}
+.addon-option{display:flex;gap:10px;align-items:flex-start;margin:0 0 16px;padding:12px 14px;border:1.5px dashed var(--primary-line);border-radius:10px;background:#fbfdff;cursor:pointer}
+.addon-option input{margin-top:3px;flex:none}
+.addon-text strong{display:block;font-size:13px;color:var(--ink)}
+.addon-text small{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+.format-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:14px 16px;border:1px solid #bfe3cc;border-radius:10px;background:var(--success-soft);color:var(--ink-2);font-size:13px;line-height:1.5}
+.format-banner p{margin:0}
+.format-banner strong{color:var(--ink)}
+.format-banner-mark{display:grid;place-items:center;flex:none;width:24px;height:24px;border-radius:50%;background:var(--success);color:#fff;font-size:13px;font-weight:700}
+.selected-service-body.custom-editor{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+.print-preview{position:sticky;top:84px;min-width:0}
+.print-head{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:8px;font-size:12px;color:var(--ink-3)}
+.print-head strong{font-size:13px;color:var(--ink-2)}
+.print-paper{border:1px solid var(--line);border-radius:8px;background:#fff;padding:18px 20px;font-family:"Times New Roman",Times,serif;font-size:14.5px;line-height:1.45;color:#111;box-shadow:var(--shadow-sm);max-height:540px;overflow:auto;overflow-wrap:anywhere}
+.print-paper h3{margin:0 0 8px;font-size:17px;color:#004b79;font-family:inherit}
+.print-paper h4{margin:12px 0 6px;font-size:15.5px;color:#004b79;font-family:inherit}
+.print-paper p{margin:0 0 7px;text-align:justify}
+.print-paper ul,.print-paper ol{margin:0 0 8px;padding-left:22px}
+.print-paper li{margin:0 0 5px;text-align:justify}
+.print-paper p.print-lead,.preview-content p.print-lead{text-align:left}
+.print-empty{color:var(--ink-4);font-style:italic}
+.print-chips{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;padding:0}
+.print-chips li{padding:4px 10px;border:1px solid #bfe3cc;border-radius:14px;background:var(--success-soft);color:var(--success);font-size:12px;font-weight:600}
+.preview-content ol{margin:0 0 12px;padding-left:28px}
+.preview-content ol>li{margin-bottom:9px;text-align:justify}
+.preview-content ol.letter>li::marker,.print-paper ol.letter>li::marker{content:"(" counter(list-item,lower-alpha) ") "}
+@media(max-width:1100px){.selected-service-body.custom-editor{grid-template-columns:1fr}.print-preview{position:static}}

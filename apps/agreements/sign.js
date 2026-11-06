@@ -337,10 +337,13 @@
       node.addEventListener("input", () => {
         S.values[f.id] = node.value; node.classList.toggle("has-value", !!node.value); node.classList.toggle("invalid", !!invalid(f));
         if (S.copied[f.id]) { delete S.copied[f.id]; paintCopied(f); }        // the signer changed a copied value: it is theirs now
+        fitField(node, f); fitHint(node, f, label);
         propagate(f, true);
         refresh();
       });
       node.addEventListener("focus", focus);
+      node.addEventListener("focus", () => fitHint(node, f, label));
+      node.addEventListener("blur", () => { fitHint(null, f); if (!node.classList.contains("fitted")) node.scrollLeft = 0; });
     }
     if (o.tooltip) node.title = o.tooltip;
     node.dataset.field = f.id;
@@ -413,7 +416,7 @@
       else return;
       if (live) {
         const node = nodeOf(g.id);
-        if (node) { node.value = S.values[g.id] || ""; node.classList.toggle("has-value", !!node.value); node.classList.toggle("invalid", !!invalid(g)); }
+        if (node) { node.value = S.values[g.id] || ""; node.classList.toggle("has-value", !!node.value); node.classList.toggle("invalid", !!invalid(g)); fitField(node, g); }
         paintCopied(g);
       }
     });
@@ -429,12 +432,74 @@
     edit.addEventListener("click", () => { node.focus(); node.select?.(); });
     chip.append(edit);
     chip.style.left = `${g.x / w * 100}%`; chip.style.top = `calc(${(g.y + g.h) / h * 100}% + 3px)`;
+    chip.style.maxWidth = `${Math.max(20, (w - g.x - 8) / w * 100)}%`;     // wraps on a phone instead of widening the page
     page.append(chip);
   }
 
   function scale() {
     document.querySelectorAll(".page").forEach(page => page.style.setProperty("--pt", `${page.clientWidth / Number(page.dataset.width)}px`));
+    fitFields();
     placeGuide();
+  }
+
+  // ------------------------------------------------------------------ long typed values stay whole
+  // The same rule as esign_pdf.fit_value on the signed PDF (constants from the server, state.fit): a value wider than its
+  // box grows the box to the right, up to the page's right margin or the next field on the line (in page points, so zoom
+  // and screen size do not change it), then the font shrinks instead of the text scrolling out of view.
+  const FIT_DEFAULT = {right_margin: 54, min_scale: 0.6, gap: 2, floor: 4};
+  let measurer = null;
+  function textWidth(text, style) {
+    measurer ||= document.createElement("canvas").getContext("2d");
+    measurer.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return measurer.measureText(text).width;
+  }
+  function fitLimit(f, pageWidth, rule) {
+    let limit = pageWidth - rule.right_margin;
+    [...(S.state?.fields || []), ...(S.state?.others || [])].forEach(o => {
+      if (o === f || o.kind === "note" || o.document_id !== f.document_id || o.page !== f.page) return;
+      if (o.x >= f.x + f.w - 0.5 && o.y < f.y + f.h && o.y + o.h > f.y) limit = Math.min(limit, o.x - rule.gap);
+    });
+    return Math.max(limit, f.x + f.w);
+  }
+  function fitField(node, f) {
+    const page = node?.parentElement;
+    if (!page || !page.classList.contains("page") || node.tagName === "SELECT") return;
+    const rule = {...FIT_DEFAULT, ...(S.state?.fit || {})};
+    const pageWidth = Number(page.dataset.width) || 612, ratio = page.clientWidth / pageWidth;
+    node.style.width = `${f.w / pageWidth * 100}%`; node.style.fontSize = ""; node.classList.remove("fitted", "shrunk"); delete node.dataset.fitScale;
+    const text = node.tagName === "INPUT" ? node.value : node.textContent;
+    if (!text || !ratio) return;
+    const style = getComputedStyle(node);
+    const pad = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"].reduce((n, k) => n + (parseFloat(style[k]) || 0), 0) + 2;
+    const normal = parseFloat(style.fontSize), needed = textWidth(text, style) + pad;
+    if (needed <= f.w * ratio) return;
+    const room = (fitLimit(f, pageWidth, rule) - f.x) * ratio;
+    node.style.width = `${Math.min(needed, room) / page.clientWidth * 100}%`;
+    node.classList.add("fitted");
+    if (needed > room) {
+      const size = Math.max(rule.floor * ratio, normal * (room - pad) / (needed - pad));
+      node.style.fontSize = `${size}px`; node.dataset.fitScale = (size / normal).toFixed(3);
+      node.classList.add("shrunk");
+    }
+    if (document.activeElement !== node) node.scrollLeft = 0;
+  }
+  function fitFields() {
+    (S.state?.fields || []).forEach(f => { const node = nodeOf(f.id); if (node && (node.matches("input.field") || node.matches(".field.auto"))) fitField(node, f); });
+  }
+  if (document.fonts?.ready) document.fonts.ready.then(() => fitFields()).catch(() => {});
+  // While a fitted value is being typed, a note above the field confirms it is shown in full; when the font had to go below
+  // min_scale of its normal size (a phone, a very long value), the note shows the value itself at a readable size.
+  function fitHint(node, f, label) {
+    document.querySelectorAll(".fit-hint").forEach(x => x.remove());
+    if (!node || document.activeElement !== node || !node.classList.contains("fitted") || !node.parentElement) return;
+    const page = node.parentElement, h = Number(page.dataset.height) || 792, w = Number(page.dataset.width) || 612;
+    const rule = {...FIT_DEFAULT, ...(S.state?.fit || {})}, size = parseFloat(node.style.fontSize);
+    const small = !!size && (size < 9 || Number(node.dataset.fitScale || 1) < rule.min_scale);
+    const hint = el("span", `fit-hint${small ? " fit-hint-text" : ""}`, small ? node.value : `${label || "Text"} · ${node.value.length} characters · shown in full`);
+    hint.setAttribute("aria-hidden", "true");
+    hint.style.left = `${f.x / w * 100}%`; hint.style.top = `calc(${f.y / h * 100}% - 5px)`;
+    hint.style.maxWidth = `${Math.max(20, (w - f.x - 8) / w * 100)}%`;     // stays on the page: no sideways scrolling
+    page.append(hint);
   }
   window.addEventListener("resize", () => { scale(); if (S.active) setActive(S.active); });
   function setZoom(value) {

@@ -457,7 +457,7 @@ companies.install(app)
 import insights
 insights.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','resilient.js'}
-PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js'}
+PRIVATE={'app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):
     if name in PRIVATE:
