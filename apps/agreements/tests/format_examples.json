@@ -1,0 +1,114 @@
+[
+ {
+  "name": "owner scope (generated.pdf input)",
+  "text": "•\tIncoming Call Management: Handle all incoming calls and route them to the appropriate department or designated staff member based on the nature of the inquiry.\n•\tPatient Billing Inquiries: Assist patients with billing-related questions, concerns, outstanding balances, and payment inquiries.\n•\tPayment Processing: Coordinate and assist with patient payment processing, including collecting payments and addressing payment-related concerns.\n•\tActive Insurance Coverage Follow-Up: Coordinate with the billing team to contact patients regarding active insurance coverage and obtain updated insurance information when needed.\n•\tCoordination of Benefits (COB): Assist with COB-related follow-ups by contacting patients to obtain required information and help resolve insurance coordination issues.\nPatient Communication & Follow-Up: Ensure patient inquiries are addressed promptly and communicated to the appropriate team for resolution."
+ },
+ {
+  "name": "owner client responsibilities",
+  "text": "The Client shall:\n\nSystem Access: Provide timely and authorized access to the practice management system, electronic health records (EHR), patient billing records, insurance information, payment processing systems, and other necessary platforms.\n\nCall Management: Provide the required telephone lines, call routing instructions, departmental contact information, escalation procedures, and designated staff members for handling transferred calls and unresolved inquiries.\n\nBilling and Payment Information: Ensure that patient balances, payment histories, billing statements, insurance details, and account information are accurate and regularly updated. Provide approved payment processing methods and clearly defined policies regarding payment plans, refunds, adjustments, and outstanding balances.\n\nInsurance and COB Coordination: Provide access to relevant insurance information, identify accounts requiring active coverage verification or Coordination of Benefits (COB) follow-ups, and ensure the billing team is available to address insurance-related discrepancies.\n\nOperational Support: Designate authorized representatives to provide timely responses, necessary approvals, and guidance on matters requiring the Client's involvement, including billing disputes, insurance issues, and patient complaints.\n\nPolicies and Compliance: Provide applicable patient communication guidelines, financial policies, and necessary authorizations. The Client shall remain responsible for the accuracy of its records, final billing decisions, and compliance obligations applicable to its practice.\n\nPayment Infrastructure: Maintain an approved and secure payment processing system, including merchant accounts and necessary third-party arrangements, for receiving and processing patient payments."
+ },
+ {
+  "name": "owner exclusions",
+  "text": "The Patient Help Desk services are limited to administrative patient communication, incoming call management, billing assistance, payment coordination, insurance information follow-ups, and Coordination of Benefits (COB) support as expressly defined in the agreed scope of work.\n\nThe following limitations and exclusions shall apply:\n\nClinical Services: Medical advice, clinical consultations, diagnosis, treatment recommendations, prescription management, and other clinical responsibilities are excluded. Clinical inquiries shall be referred to the Client's designated medical personnel.\n\nBilling and Insurance Decisions: 24-7 Consultancy shall not independently modify patient balances, approve discounts, waive charges, authorize refunds, determine insurance benefits, or make final billing decisions without the Client's authorization.\n\nPayment Processing: Patient payments shall be processed exclusively through Client-approved payment systems. 24-7 Consultancy shall not independently receive, retain, or manage patient funds. Payment gateway fees, merchant processing charges, and other third-party expenses are excluded from the service fee unless expressly agreed otherwise.\n\nInsurance and COB Outcomes: 24-7 Consultancy shall assist with obtaining updated insurance information and COB-related patient follow-ups but shall not guarantee insurance eligibility, coverage approval, claim payment, or resolution of payer-related issues.\n\nDebt Collection and Legal Matters: Formal debt collection activities requiring licensing, legal proceedings, litigation, and legal representation are excluded. Routine patient balance inquiries and payment assistance remain within the agreed scope.\n\nThird-Party Dependencies: 24-7 Consultancy shall not be responsible for delays or unsuccessful outcomes caused by inaccurate information supplied by the Client, patient non-responsiveness, insurance companies, payment processors, or other independent third parties, except to the extent attributable to 24-7 Consultancy's own failure to perform its agreed responsibilities.\n\nService Availability and Additional Work: Services shall be provided during mutually agreed operating hours and within the approved staffing allocation. After-hours coverage, additional staffing, outbound campaigns unrelated to the agreed scope, and other additional services shall require prior written agreement.\n\nConfidentiality and Compliance: Patient information shall be accessed and handled only through authorized systems in accordance with a"
+ },
+ {
+  "name": "mockup scope: mixed bullets, broken lines, numbers",
+  "text": "Patient Help Desk Services include:\n• Answering inbound patient calls about statements,\n  balances and insurance payments\n• Explaining charges, adjustments and patient\nresponsibility\n-  Setting up payment plans in line with Client's policy\n1. Call hours: Monday to Friday, 9:00 a.m. to 5:00 p.m.\n2. Voicemails returned within one business day"
+ },
+ {
+  "name": "mockup client lead-in with asterisks",
+  "text": "Client shall:\n* provide a dedicated phone line or forwarding\n* share its payment-plan policy in writing"
+ },
+ {
+  "name": "plain standard paragraph",
+  "text": "Scribe Align shall perform only the administrative or advisory services, deliverables and completion criteria expressly described in the service parameters below. No unstated service is included by implication."
+ },
+ {
+  "name": "pdf paste with hyphenated break",
+  "text": "Client shall supply timely and accurate information, lawful access, necessary approvals and a responsive decision-\nmaker, and shall maintain its required licenses and authority. Each Party shall promptly inform the other of a material\ncompliance issue affecting the work."
+ },
+ {
+  "name": "pdf wrapped line starting with a capital",
+  "text": "System Access: Provide timely and authorized access to the practice management system, electronic health records\n(EHR), patient billing records and other necessary platforms.\nCall Management: Provide the required telephone lines, call routing instructions, departmental contact information,\nEscalation procedures and designated staff members."
+ },
+ {
+  "name": "short lines stay separate",
+  "text": "Up to 400 calls per month\nEnglish and Spanish\nTwo locations"
+ },
+ {
+  "name": "labelled parameters run",
+  "text": "Call hours: Monday to Friday, 9:00 a.m. to 5:00 p.m. Client local time\nLanguages: English and Spanish\nVolume: up to 400 calls per month"
+ },
+ {
+  "name": "single label line stays a paragraph",
+  "text": "Note: all calls are recorded for quality purposes."
+ },
+ {
+  "name": "numbered steps with parentheses and restart",
+  "text": "Onboarding:\n1) Kick-off call\n2) System access set up\n(3) Script approval\n\nMonthly:\n1. Report delivered\n2. Review meeting"
+ },
+ {
+  "name": "lettered list",
+  "text": "The Client shall:\n(a) approve scripts;\n(b) name an escalation contact; and\nc) keep the payment policy current."
+ },
+ {
+  "name": "list continuing from 3",
+  "text": "3. Third step\n4. Fourth step"
+ },
+ {
+  "name": "bullet symbol alone on its line",
+  "text": "Deliverables:\n•\nMonthly activity report\n•\nQuarterly review"
+ },
+ {
+  "name": "tabs, nbsp, zero-width and double spaces",
+  "text": "\tScope of  work:​\n•\tFirst item\n▪  Second   item"
+ },
+ {
+  "name": "word symbol-font bullets and checkmarks",
+  "text": " Intake of new patients\n Appointment setting\n✓ Insurance verification\n➢ Referral tracking"
+ },
+ {
+  "name": "dashes that are not bullets",
+  "text": "-5% on early payment\n*Note* applies to all invoices\n— Em dash item\n– En dash item"
+ },
+ {
+  "name": "label rules: long labels and sentences are not labels",
+  "text": "This sentence is a fairly long one that just happens to contain a colon: it is not a label\nAgreed: yes\nE.g. something: else"
+ },
+ {
+  "name": "lowercase first letters and brand names",
+  "text": "provide records\n\neClinicalWorks access is required.\n\nw-9 forms are collected."
+ },
+ {
+  "name": "windows line endings and blank lines between items",
+  "text": "The Client shall:\r\n\r\nSystem Access: Provide access.\r\n\r\nCall Management: Provide phone lines.\r\n"
+ },
+ {
+  "name": "email text",
+  "text": "Hi team,\nplease see below.\n\nThanks"
+ },
+ {
+  "name": "colon line not before a list",
+  "text": "The following applies:\nAll work is remote."
+ },
+ {
+  "name": "empty",
+  "text": ""
+ },
+ {
+  "name": "only whitespace",
+  "text": "   \n\t\n"
+ },
+ {
+  "name": "numbers that are not lists",
+  "text": "1.5 hours per day\n2024. A year to remember\n10:00 a.m. start"
+ },
+ {
+  "name": "unicode label",
+  "text": "Électronique Records: Provide exports.\nZürich Office: Closed on holidays."
+ },
+ {
+  "name": "emoji and astral characters",
+  "text": "• 📞 Calls answered within three rings\n• 📧 Emails answered the same day"
+ }
+]

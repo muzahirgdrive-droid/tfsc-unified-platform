@@ -21,10 +21,12 @@ MODELS = {
     "two_installments": "Two project installments",
 }
 
-def _item(identifier, name, category, models, description):
+def _item(identifier, name, category, models, description, **extra):
+    # extra: unit (the default unit for per-unit pricing) and category_follows_model (a service billed either per unit or as
+    # a one-time project is recurring or on-demand according to the pricing model chosen).
     return {"id": identifier, "name": name, "category": category,
             "models": [{"id": m, "label": MODELS[m]} for m in models],
-            "description": description}
+            "description": description, **extra}
 
 CATALOG = [
     _item("medical_billing", "Medical Billing, Including Coding", "recurring", ["percentage", "fte"], "Claim preparation, coding review, submission, payment posting and ordinary payer follow-up."),
@@ -33,12 +35,14 @@ CATALOG = [
     _item("medical_coding", "Medical Coding Consultancy", "recurring", ["consultancy"], "Documentation-based code review, coding guidance and education."),
     _item("prior_auth", "Prior Authorizations and Verification of Benefits", "recurring", ["unit", "fte", "pte"], "Benefit verification, authorization submissions and status tracking."),
     _item("virtual_assistant", "Virtual Assistant Services", "recurring", ["fte", "pte"], "Nonclinical scheduling, communication and administrative assistance."),
+    _item("patient_help_desk", "Patient Help Desk Services", "recurring", ["fte", "pte", "fixed", "unit"], "Patient billing calls, payment assistance, insurance coverage and COB follow-up.", unit="completed call"),
     _item("medical_scribe", "Virtual Live or Offline Medical Scribe", "recurring", ["fte", "pte"], "Encounter documentation support subject to clinician review and authentication."),
     _item("ar_denials", "AR and Denial Management", "recurring", ["fte", "pte"], "Assigned receivable follow-up, denial analysis and administrative appeals."),
     _item("rcm_consultancy", "RCM Consultancy", "recurring", ["fte", "pte"], "Revenue cycle assessment, workflow recommendations and agreed implementation assistance."),
     _item("digital_marketing", "Digital Marketing", "recurring", ["fixed"], "Approved campaign planning, content and performance reporting."),
     _item("telemarketing", "Telemarketing", "recurring", ["fixed"], "Approved outreach campaigns with consent and suppression controls."),
     _item("credentialing", "Credentialing and Enrollment", "on_demand", ["one_time", "two_installments"], "Defined provider and payer applications, follow-up and deficiency coordination."),
+    _item("demographics_updates", "Demographics Updates (Credentialing Add-on)", "on_demand", ["unit", "one_time"], "Payer updates of provider and practice information, CAQH ProView included.", unit="payer demographic update", category_follows_model=True),
     _item("state_licensing", "State Licensing Services", "on_demand", ["one_time", "two_installments"], "Administrative preparation and tracking of identified licensing applications."),
     _item("compliance_training", "Compliance Training", "on_demand", ["one_time", "two_installments"], "Defined training materials, instruction and attendance documentation."),
     _item("website_development", "Website Development", "on_demand", ["one_time", "two_installments"], "An agreed website specification, development, review and handover."),
@@ -122,6 +126,47 @@ SCOPES = {
         "Scribe Align shall check administrative completeness against available application instructions, obtain Client approval before submission, preserve submitted copies and provide reasonable ordinary follow-up through the agreed project milestone. It shall promptly route adverse findings and requests for an authorized signature to Client.",
         "Client shall provide accurate licenses, insurance, education, ownership and other required disclosures; timely review all statements; execute required attestations through an authorized individual; and disclose changes and adverse actions. Client remains responsible for continuing eligibility, revalidation and payer participation decisions.",
         "Payers and licensing or accreditation bodies alone decide participation, privileges, effective dates and processing times. Approval, retroactive reimbursement and network admission are not guaranteed. Application fees, legal appeals, new applications caused by material Client changes and ongoing maintenance are excluded unless expressly listed."
+    ),
+    "patient_help_desk": (
+        "• Incoming Call Management: Handle all incoming calls and route them to the appropriate department or designated staff member based on the nature of the inquiry.\n"
+        "• Patient Billing Inquiries: Assist patients with billing-related questions, concerns, outstanding balances, and payment inquiries.\n"
+        "• Payment Processing: Coordinate and assist with patient payment processing, including collecting payments and addressing payment-related concerns.\n"
+        "• Active Insurance Coverage Follow-Up: Coordinate with the billing team to contact patients regarding active insurance coverage and obtain updated insurance information when needed.\n"
+        "• Coordination of Benefits (COB): Assist with COB-related follow-ups by contacting patients to obtain required information and help resolve insurance coordination issues.\n"
+        "• Patient Communication & Follow-Up: Ensure patient inquiries are addressed promptly and communicated to the appropriate team for resolution.",
+        "Scribe Align shall maintain appropriate work records, identify material dependencies and deliver the agreed work product for Client review.",
+        "The Client shall:\n"
+        "• System Access: Provide timely and authorized access to the practice management system, electronic health records (EHR), patient billing records, insurance information, payment processing systems, and other necessary platforms.\n"
+        "• Call Management: Provide the required telephone lines, call routing instructions, departmental contact information, escalation procedures, and designated staff members for handling transferred calls and unresolved inquiries.\n"
+        "• Billing and Payment Information: Ensure that patient balances, payment histories, billing statements, insurance details, and account information are accurate and regularly updated. Provide approved payment processing methods and clearly defined policies regarding payment plans, refunds, adjustments, and outstanding balances.\n"
+        "• Insurance and COB Coordination: Provide access to relevant insurance information, identify accounts requiring active coverage verification or Coordination of Benefits (COB) follow-ups, and ensure the billing team is available to address insurance-related discrepancies.\n"
+        "• Operational Support: Designate authorized representatives to provide timely responses, necessary approvals, and guidance on matters requiring the Client's involvement, including billing disputes, insurance issues, and patient complaints.\n"
+        "• Policies and Compliance: Provide applicable patient communication guidelines, financial policies, and necessary authorizations. The Client shall remain responsible for the accuracy of its records and compliance obligations applicable to its practice.\n"
+        "• Payment Infrastructure: Maintain an approved and secure payment processing system, including merchant accounts and necessary third-party arrangements, through which all patient payments shall be processed exclusively.",
+        "The Patient Help Desk services are limited to the administrative services described in Section 1.1, as expressly defined in the agreed scope of work.\n"
+        "The following limitations and exclusions shall apply:\n"
+        "• Clinical Services: Medical advice, clinical consultations, diagnosis, treatment recommendations, prescription management, and other clinical responsibilities are excluded. Clinical inquiries shall be referred to the Client's designated medical personnel.\n"
+        "• Billing and Insurance Decisions: Scribe Align shall not independently modify patient balances, approve discounts, waive charges, authorize refunds, determine insurance benefits, or make final billing decisions without the Client's authorization.\n"
+        "• Payment Processing: Scribe Align shall not independently receive, retain, or manage patient funds.\n"
+        "• Insurance and COB Outcomes: Scribe Align shall not guarantee insurance eligibility, coverage approval, claim payment, or resolution of payer-related issues.\n"
+        "• Debt Collection and Legal Matters: Formal debt collection activities requiring licensing, legal proceedings, litigation, and legal representation are excluded. Routine patient balance inquiries and payment assistance remain within the agreed scope.\n"
+        "• Third-Party Dependencies: Scribe Align shall not be responsible for delays or unsuccessful outcomes caused by inaccurate information supplied by the Client, patient non-responsiveness, insurance companies, payment processors, or other independent third parties, except to the extent attributable to Scribe Align's own failure to perform its agreed responsibilities.\n"
+        "• Service Availability and Additional Work: Services shall be provided during mutually agreed operating hours and within the approved staffing allocation. After-hours coverage, additional staffing, outbound campaigns unrelated to the agreed scope, and other additional services shall require prior written agreement.\n"
+        "• Confidentiality and Compliance: Patient information shall be accessed and handled only through authorized systems in accordance with Section 6 and the BAA."
+    ),
+    "demographics_updates": (
+        "As an add-on to Credentialing and Enrollment, Scribe Align shall update the provider and practice information each payer holds on file, including:\n"
+        "• Address Changes: Practice, billing and remit-to address changes, and new or closed practice locations.\n"
+        "• Contact Details: Phone, fax, email and contact person changes.\n"
+        "• Tax and Ownership Details: Tax identification, NPI-linked and ownership information.\n"
+        "• Group Roster Changes: Adding a provider to, or removing a provider from, an existing group enrollment.\n"
+        "• CAQH ProView: Updating and re-attesting the CAQH ProView profile.",
+        "Scribe Align shall prepare and submit each requested update to the applicable payer, track it to confirmation and keep Client informed of its status.",
+        "The Client shall:\n"
+        "• Accurate Information: Provide accurate updated information with supporting documents (W-9, licenses, IRS letters) before submission.\n"
+        "• Signatures and Attestations: Sign payer forms and attestations promptly.\n"
+        "• Payer Correspondence: Inform Scribe Align of any payer correspondence about a submitted update.",
+        "Payer processing times are outside Scribe Align's control. New payer enrollments are performed and billed under Credentialing and Enrollment."
     ),
     "state_licensing": (
         "Scribe Align shall provide administrative support for the identified license type, applicant and jurisdiction by collecting materials, completing draft applications, tracking submissions and coordinating ordinary deficiency responses through the agreed milestone.",
@@ -258,7 +303,8 @@ def _fee_description(s):
         return f"{_plain_number(rate)}% of Eligible Net Collections; invoiced monthly in arrears."
     if model in ("fte", "pte"):
         hours = _plain_number(s.get("hours", 40 if model == "fte" else 20))
-        return f"{_money(rate)} per {model.upper()} per month x {_plain_number(quantity)} positions = {_money(rate * quantity)} per month. Each position includes {hours} scheduled hours per week."
+        positions = "position" if quantity == 1 else "positions"
+        return f"{_money(rate)} per {model.upper()} per month x {_plain_number(quantity)} {positions} = {_money(rate * quantity)} per month. Each position includes {hours} scheduled hours per week."
     if model == "unit":
         unit = _clean(s.get("unit")) or "completed case"
         return f"{_money(rate)} per {unit}; monthly invoice equals that rate multiplied by documented completed units. Planning volume: {_plain_number(quantity)} units, without a minimum purchase commitment."

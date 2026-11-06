@@ -361,12 +361,47 @@ def _display_to_user(rotation: int, width: float, height: float, llx: float, lly
     return Transformation((1, 0, 0, 1, llx, lly))
 
 
-def _fit_text(c, text, font, box_w, size):
-    while size > 5 and pdfmetrics.stringWidth(text, font, size) > box_w:
-        size -= 0.5
-    while text and pdfmetrics.stringWidth(text, font, size) > box_w:
-        text = text[:-1]
-    return text, size
+# ------------------------------------------------------------------ long typed values stay whole
+# A value wider than its box (a long title or company name) is never cut off. The signing page (sign.js, which receives
+# these constants as state.fit) and the signed PDF apply the same rule: the text starts at the box's left edge and may run
+# right, up to FIT_RIGHT_MARGIN from the page's right edge or the next field on the same line; beyond that the font
+# shrinks to fit: to FIT_MIN_SCALE of its normal size for any realistic value, smaller only when nothing else keeps a very
+# long value whole (never below FIT_FLOOR points).
+FIT_RIGHT_MARGIN = 54.0     # points from the right edge of the page (0.75 in), inside every letterhead's text margin
+FIT_MIN_SCALE = 0.6
+FIT_GAP = 2.0               # points kept clear before the next field on the line
+FIT_FLOOR = 4.0
+
+
+def fit_constants() -> dict:
+    return {'right_margin': FIT_RIGHT_MARGIN, 'min_scale': FIT_MIN_SCALE, 'gap': FIT_GAP, 'floor': FIT_FLOOR}
+
+
+def fit_limit(field: dict, fields: list[dict], page_width: float) -> float:
+    """The right edge (display points) a field's text may reach: the page's right margin, or just before the next field on
+    its line. Never left of the field's own box."""
+    x, y, w, h = float(field['x']), float(field['y']), float(field['w']), float(field['h'])
+    limit = page_width - FIT_RIGHT_MARGIN
+    for other in fields:
+        if other is field or other.get('kind') == 'note' or int(other.get('page', 0)) != int(field.get('page', 0)):
+            continue
+        ox, oy, oh = float(other['x']), float(other['y']), float(other['h'])
+        if ox >= x + w - 0.5 and oy < y + h and oy + oh > y:
+            limit = min(limit, ox - FIT_GAP)
+    return max(limit, x + w)
+
+
+def fit_value(text: str, font: str, size: float, box_w: float, room_w: float) -> tuple[str, float, bool]:
+    """(text, font size, fitted) for a value drawn from the box's left edge. A value that fits its box is unchanged; a longer
+    one uses the room up to the limit and then a smaller font; only beyond FIT_FLOOR is it shortened, with an ellipsis."""
+    width = pdfmetrics.stringWidth(text, font, size)
+    if width <= box_w:
+        return text, size, False
+    if width > room_w:
+        size = max(FIT_FLOOR, int(size * room_w / width * 10) / 10)
+        while text and pdfmetrics.stringWidth(text, font, size) > room_w:
+            text = text[:-2].rstrip() + '…' if len(text) > 1 else ''
+    return text, size, True
 
 
 def _draw_image(c, png: bytes, x, y, w, h, left=False):
@@ -415,7 +450,8 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
         c.setFillColor(MUTED)
         c.setFont(regular, 6.5)
         c.drawString(14, dh - 11, _safe_text(f'TFSC Envelope ID: {ref}', regular))
-        for f in by_page.get(number, []):
+        page_fields = by_page.get(number, [])
+        for f in page_fields:
             value = f.get('value')
             if value in (None, ''):
                 continue
@@ -458,7 +494,8 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
                     c.line(x + 2.5, by + 2.5, x + side - 2.5, by + side - 2.5)
                     c.line(x + 2.5, by + side - 2.5, x + side - 2.5, by + 2.5)
             else:
-                text, size = _fit_text(c, _safe_text(value, regular).replace('\n', ' '), regular, w - 2, min(float(f.get('font_size') or 10.5), h * 0.8))
+                room = fit_limit(f, page_fields, dw) - x
+                text, size, _ = fit_value(_safe_text(value, regular).replace('\n', ' '), regular, min(float(f.get('font_size') or 10.5), h * 0.8), w - 2, room - 2)
                 c.setFillColor(INK)
                 c.setFont(regular, size)
                 c.drawString(x + 1, y + (h - size) / 2 + size * 0.22, text)

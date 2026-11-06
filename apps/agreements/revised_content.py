@@ -10,6 +10,7 @@ import json
 import re
 import contract_content as original
 from entities import get_entity
+from format_guard import structure
 
 CATALOG = deepcopy(original.CATALOG)
 for spec in CATALOG:
@@ -70,6 +71,8 @@ def build_services(data, contract_id):
         scope=list(original.SCOPES.get(s['id'],original.SCOPES['other']))
         for key,pos in [('scope',0),('responsibilities',2),('exclusions',3)]:
             if s.get(key): scope[pos]=s[key]
+        if s['id']=='patient_help_desk':   # its exclusions refer to its own scope section
+            scope[3]=scope[3].replace('described in Section 1.1,',f'described in Section 1.{i},')
         scopes.append(scope)
         out.append(B('h2',f'1.{i} {service_name(s)}'))
         if s['id'] in source_scopes:
@@ -78,10 +81,12 @@ def build_services(data, contract_id):
                 b['text']=b['text'].replace('PRACTICE NAME',data['client_name'])
                 out.append(b)
         else:
-            out.append(B('p',scope[0]))
+            # Typed, pasted and company-specific wording prints in the agreement's own formatting (format_guard);
+            # a standard single paragraph comes out unchanged.
+            out.extend(structure(scope[0]))
         if s.get('details'):
             out.append(B('h3',f'1.{i}.1 Agreed Service Parameters'))
-            out.extend(original._paragraphs(s['details']))
+            out.extend(structure(s['details']))
     out += [B('h1','2. Responsibilities'),B('h2','2.1 General Responsibilities')]+groups[5]
     # Only identical paragraphs in the same role are common. Similar wording is
     # never treated as interchangeable; that would silently change obligations.
@@ -93,14 +98,14 @@ def build_services(data, contract_id):
                 common.append(scope[role])
         if common:
             out.append(B('h3',label+' for the Applicable Services'))
-            for text in common: out.append(B('p',text))
+            for text in common: out.extend(structure(text))
         for scope in scopes:
             if key(scope[role]) in [key(x) for x in common]: scope[role]=''
     for i,(s,scope) in enumerate(zip(chosen,scopes),2):
         if scope[1] or scope[2]:
             out.append(B('h2',f'2.{i} {service_name(s)}'))
             for role,label in [(1,'Scribe Align Responsibilities'),(2,'Client Responsibilities')]:
-                if scope[role]: out += [B('h3',label),B('p',scope[role])]
+                if scope[role]: out += [B('h3',label)]+structure(scope[role])
     out += [B('h1','3. Fees'),B('h2','3.1 Initial Setup'),B('p','There is no charge for the initial set up of the services.')]
     for i,s in enumerate(chosen,2):
         out.append(B('h2',f'3.{i} {service_name(s)}'))
@@ -129,7 +134,7 @@ def build_services(data, contract_id):
             seen=set()
             for i,(s,scope) in enumerate(zip(chosen,scopes),1):
                 if scope[3] and key(scope[3]) not in seen:
-                    out += [B('h2',f'9.{i} {service_name(s)}: Limitations and Exclusions'),B('p',scope[3])]
+                    out += [B('h2',f'9.{i} {service_name(s)}: Limitations and Exclusions')]+structure(scope[3])
                     seen.add(key(scope[3]))
     if 11 in groups: out += [B('h1','11. Special Terms')]+groups[11]
     execution['text']=execution['text'].replace('services and fees stated in Section 3','services stated in Section 1 and fees stated in Section 3')
