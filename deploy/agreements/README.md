@@ -291,11 +291,12 @@ A User sees their own work, an Admin their own and their team's, and the Super A
 ```
 cd /opt && unzip TFSC-Agreements-Deploy-NEW.zip
 cp tfsc-agreements/deploy/agreements/.env TFSC-Agreements-Deploy-NEW/deploy/agreements/   # and backup-offsite.env if you use it
-mv tfsc-agreements tfsc-agreements-previous && mv TFSC-Agreements-Deploy-NEW tfsc-agreements && cd tfsc-agreements
+mv tfsc-agreements tfsc-agreements-$(date +%Y%m%d-%H%M) && mv TFSC-Agreements-Deploy-NEW tfsc-agreements && cd tfsc-agreements
 sudo ./agreements.sh backup && sudo ./agreements.sh update
 ```
 
-Data lives in Docker volumes and is kept: users, clients, agreements, envelopes, signatures, mailboxes and backups.
+The old folder is kept under a dated name (for example `tfsc-agreements-20261106-1430`), so the settings it holds are
+never lost and a folder from an earlier update is never overwritten. Data lives in Docker volumes and is kept: users, clients, agreements, envelopes, signatures, mailboxes and backups.
 Database changes are applied automatically during the update; they only ever add tables and columns.
 
 What `update` does, in order, so nothing is lost and the site is never left down:
