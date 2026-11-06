@@ -4,11 +4,11 @@
   const $ = id => document.getElementById(id);
   const root = () => $("history-view");
   let config = null, user = null;
-  const state = {q: "", page: 0, client: null, tab: "overview"};
+  const state = {client: null, tab: "agreements"};
   const ROLE_NAMES = {signatory: "Signatory", billing: "Billing", compliance: "Compliance", other: "Other"};
   const CATEGORIES = {contract: "Contract", correspondence: "Correspondence", identification: "Identification", insurance: "Insurance", other: "Other"};
   const STATUS = {draft: "Draft", sent: "Waiting for others", completing: "Finishing", completed: "Completed", declined: "Declined", voided: "Voided", expired: "Expired"};
-  const GROUP_ORDER = ["Signed documents", "Certificates of Completion", "Sent for signature", "Attachments from signers", "Email attachments from the client", "Uploaded files", "Generated agreements"];
+  const GROUP_ORDER = ["Signed documents", "Certificates of Completion", "Signed before this portal", "Sent for signature", "Attachments from signers", "Email attachments from the client", "Uploaded files", "Generated agreements"];
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; }
   function button(text, fn, cls = "button button-quiet") { const b = el("button", cls, text); b.type = "button"; b.addEventListener("click", () => Promise.resolve().then(fn).catch(fail)); return b; }
@@ -62,97 +62,74 @@
   }
   const readFile = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(",")[1]); r.onerror = reject; r.readAsDataURL(file); });
 
-  // ------------------------------------------------------------------ layout: list on the left, profile on the right
+  // ------------------------------------------------------------------ layout: the clients register, or one client's record
+  const ctx = {
+    get user() { return user; }, get config() { return config; },
+    openClient: id => window.portalRoute(`#/clients/${id}`), newClient: () => newClient(), importLegacy: () => importLegacy(),
+    refresh: focus => window.Records.register(root(), ctx).then(r => { if (focus) r.focusSearch(); }).catch(fail),
+  };
   async function show() {
-    window.portalMark?.(state.client ? `#/clients/${state.client}` : "#/clients");
-    const view = root(); view.replaceChildren();
-    const head = el("div", "page-head");
-    const title = el("div"); title.append(el("p", "eyebrow", "Your records"), el("h1", "", "Clients"),
-      el("p", "page-sub", "Every client's details, contacts and documents in one place: generated agreements, everything sent for signature, signed copies with their certificates, and files."));
-    const actions = el("div", "page-actions");
-    if (user.role === "super_admin" && config.local) actions.append(button("Import existing local contracts", importLegacy));
-    actions.append(button("New client", newClient, "button button-primary"));
-    head.append(title, actions);
-    view.append(head);
-    const grid = el("div", "history-grid clients-grid");
-    const side = el("div", "clients-side"); side.id = "clients-side";
-    const detail = el("div", "history-detail clients-detail"); detail.id = "clients-detail";
-    grid.append(side, detail); view.append(grid);
-    await list();
-    if (state.client) await profile(state.client);
-    else detail.append(el("p", "empty-state", "Select a client to see their profile."));
+    const view = root();
+    if (state.client === "import") { window.portalMark?.("#/clients/import"); return window.Records.importPage(view); }
+    if (state.client === "baa-register") { window.portalMark?.("#/clients/baa-register"); return window.Records.baaRegister(view); }
+    if (state.client) { window.portalMark?.(`#/clients/${state.client}`); return profile(state.client); }
+    window.portalMark?.("#/clients");
+    await window.Records.register(view, ctx);
   }
 
-  let b0 = null;
-  async function list() {
-    b0 = null;
-    const side = $("clients-side"); side.replaceChildren();
-    const search = el("form", "clients-search");
-    const q = input(state.q, "search", {placeholder: "Search clients"}); q.setAttribute("aria-label", "Search clients");
-    search.append(q, el("button", "button button-quiet", "Search"));
-    search.addEventListener("submit", event => { event.preventDefault(); state.q = q.value.trim(); state.page = 0; list().catch(fail); });
-    side.append(search);
-    const d = await api(`/api/clients?q=${encodeURIComponent(state.q)}&page=${state.page}`);
-    const box = el("div", "client-list");
-    d.clients.forEach(c => {
-      const b = button("", () => { state.client = c.id; state.tab = "overview"; window.portalMark?.(`#/clients/${c.id}`); document.querySelectorAll(".client-entry").forEach(x => x.setAttribute("aria-selected", String(x === b))); return profile(c.id); }, "client-entry");
-      b.setAttribute("aria-selected", String(c.id === state.client));
-      const nameLine = el("strong", "", c.client_name); if (c.test) nameLine.append(testBadge("Test client"));
-      b.append(nameLine, el("small", "", `${c.owner} · ${day(c.updated_at)}`));
-      box.append(b);
-    });
-    if (!d.clients.length) box.append(el("p", "empty-state", state.q ? "No clients match." : "No clients yet. Create one, or generate an agreement."));
-    else if (!state.client && window.matchMedia("(min-width: 1081px)").matches) { state.client = d.clients[0].id; b0 = box.firstChild; }
-    side.append(box);
-    const paging = el("div", "portal-paging");
-    const back = button("Previous", () => { state.page--; return list(); }), more = button("Next", () => { state.page++; return list(); });
-    back.disabled = state.page === 0; more.disabled = !d.has_more;
-    paging.append(back, el("span", "", `Page ${state.page + 1}`), more); side.append(paging);
-    if (b0) b0.setAttribute("aria-selected", "true");
-    const jobs = el("details", "card clients-jobs"); jobs.style.padding = "12px 14px"; jobs.append(el("summary", "", "Recent agreement generations"));
-    jobs.addEventListener("toggle", async () => {
-      if (!jobs.open || jobs.dataset.loaded) return; jobs.dataset.loaded = "1";
-      const j = await api("/api/jobs");
-      jobs.append(...(j.jobs.length ? j.jobs.map(x => el("p", "muted small", `${when(x.created)} · ${x.state}${x.error ? ` · ${x.error}` : ""}`)) : [el("p", "muted small", "No recent generations.")]));
-    });
-    side.append(jobs);
-  }
-
-  // ------------------------------------------------------------------ profile
+  // ------------------------------------------------------------------ the client record
   async function profile(id) {
-    const d = await api(`/api/clients/${id}/profile`);
-    const c = d.client, box = $("clients-detail"); box.replaceChildren();
-    const head = el("div", "clients-head");
-    const title = el("h3", "", c.name); if (c.test) title.append(testBadge("Test client"));
-    const name = el("div"); name.append(el("p", "eyebrow", "Client"), title, el("p", "muted small", [c.address, c.entity && `Contracting company: ${c.entity}`, `Owner: ${c.owner}`].filter(Boolean).join(" · ")));
-    const actions = el("div", "page-actions");
+    const [d, ag] = await Promise.all([api(`/api/clients/${id}/profile`), api(`/api/clients/${id}/agreements`)]);
+    const c = d.client, p = c.profile || {}, R = window.Records;
+    const wrap = el("div", "rc-wrap");
+    const head = el("div", "page-head"); const ht = el("div");
+    ht.append(el("p", "eyebrow", "Clients"), el("h1", "", "Client record"), el("p", "page-sub", "Everything for this client, from every company and every way it was signed."));
+    const back = el("div", "rc-actions"); back.append(button("← All clients", () => window.portalRoute("#/clients"))); head.append(ht, back); wrap.append(head);
+    const grid = el("div", "rc-profile"); const main = el("section", "panel rc-main"); const aside = el("aside", "panel rc-side");
+    const hero = el("div", "rc-hero"); const heroTop = el("div", "rc-hero-top"); const name = el("div");
+    const title = el("h2", "", c.name); if (c.test) title.append(testBadge("Test client"));
+    const since = c.created ? new Date(c.created * 1000).toLocaleDateString("en-US", {month: "long", year: "numeric"}) : "";
+    name.append(R.num(c.client_number, "lg"), title, el("p", "meta", [c.address, p.npi && `NPI ${p.npi}`, since && `Client since ${since}`, `Owner: ${c.owner}`].filter(Boolean).join(" · ")));
+    const actions = el("div", "rc-actions");
     if (d.can_edit) actions.append(button("Edit details", () => editClient(d)));
-    if (d.can_edit) actions.append(c.test ? button("Mark as real client", () => markClient(id, false), "button button-quiet test-toggle") : button("Mark as test client", () => markClient(id, true), "button button-quiet test-toggle"));
+    actions.append(button("+ Add a past agreement", () => R.addPast({id: c.id, client_number: c.client_number, name: c.name}, null, () => { state.tab = "agreements"; return profile(id); })));
     actions.append(button("Create agreement", () => window.openClientDraft(id)));
+    if (d.can_edit) actions.append(c.test ? button("Mark as real client", () => markClient(id, false), "button button-quiet test-toggle") : button("Mark as test client", () => markClient(id, true), "button button-quiet test-toggle"));
     state.entity = c.entity && config.entities.some(e => e.name === c.entity) ? c.entity : config.entities[0]?.name;
     actions.append(button("Send documents for signature", () => sendFor(id), "button button-primary"));
-    head.append(name, actions); box.append(head);
-    if (c.test) box.append(el("p", "notice notice-warning test-notice", "Test client: used only for practice runs. Left out of client counts, Home, Insights and reports. Mark as real client when real work starts."));
-    const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist"); tabs.style.marginTop = "16px";
+    heroTop.append(name, actions); hero.append(heroTop);
+    const chips = el("div", "rc-chips"); ag.companies.filter(x => x.linked).forEach(x => chips.append(R.co(x))); if (chips.childNodes.length) hero.append(chips);
+    main.append(hero);
+    const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist");
     const counts = d.counts, signed = counts.envelopes.completed || 0, waiting = (counts.envelopes.sent || 0) + (counts.envelopes.completing || 0);
-    [["overview", "Overview"], ["contacts", `Contacts (${d.contacts.length})`], ["documents", "Documents"], ["signatures", `Signatures${waiting ? ` (${waiting} waiting)` : ""}`],
-      ["agreements", `Agreements (${counts.contracts})`], ["activity", "Activity"]].forEach(([key, label]) => {
-      const t = button(label, () => { state.tab = key; return profile(id); }, ""); t.setAttribute("role", "tab"); t.setAttribute("aria-selected", String(state.tab === key)); tabs.append(t);
+    const baas = ag.items.filter(x => x.kind === "baa" && x.status === "signed").length;
+    [["overview", "Overview"], ["agreements", "Agreements", ag.items.length], ["baas", "Signed BAAs", baas], ["contacts", "Contacts", d.contacts.length], ["documents", "Documents"],
+      ["signatures", "Signatures", waiting ? `${waiting} waiting` : undefined], ["generated", "Generated", counts.contracts], ["activity", "Activity"]].forEach(([key, label, n]) => {
+      const t = button(label, () => { state.tab = key; return profile(id); }, ""); if (n !== undefined) t.append(el("em", "", n));
+      t.setAttribute("role", "tab"); t.setAttribute("aria-selected", String(state.tab === key)); tabs.append(t);
     });
-    box.append(tabs);
-    const body = el("div", "clients-body"); box.append(body);
-    if (state.tab === "overview") overview(body, d, signed, waiting);
+    main.append(tabs);
+    const body = el("div", "rc-body"); main.append(body);
+    if (c.test) body.append(el("p", "notice notice-warning test-notice", "Test client: used only for practice runs. Left out of client counts, the registers, Home, Insights and reports. Mark as real client when real work starts."));
+    const records = {client: {id: c.id, client_number: c.client_number, name: c.name}, reload: () => profile(id)};
+    if (state.tab === "agreements" || state.tab === "baas") {
+      if (!c.test) body.classList.add("flush");
+      R.agreementsTable(body, ag, records, state.tab === "baas" ? x => x.kind === "baa" && x.status === "signed" : null);
+    } else if (state.tab === "overview") overview(body, d, signed, waiting);
     else if (state.tab === "contacts") contacts(body, d);
     else if (state.tab === "documents") await documents(body, id);
     else if (state.tab === "signatures") await signatures(body, id);
-    else if (state.tab === "agreements") await agreements(body, id);
+    else if (state.tab === "generated") await agreements(body, id);
     else await activity(body, id);
+    R.sidePanel(aside, ag, c);
+    grid.append(main, aside); wrap.append(grid);
+    root().replaceChildren(wrap);
   }
 
   function overview(body, d, signed, waiting) {
     const c = d.client, p = c.profile || {};
     const tiles = el("div", "kpi-row kpi-4"); tiles.style.margin = "4px 0 16px";
-    [["Agreements generated", d.counts.contracts, "agreements"], ["Signed envelopes", signed, "signatures"], ["Waiting for signatures", waiting, "signatures"], ["Files on record", d.counts.files, "documents"]].forEach(([label, value, tab]) => {
+    [["Agreements generated", d.counts.contracts, "generated"], ["Signed envelopes", signed, "signatures"], ["Waiting for signatures", waiting, "signatures"], ["Files on record", d.counts.files, "documents"]].forEach(([label, value, tab]) => {
       const t = el("button", "kpi"); t.type = "button"; t.style.textAlign = "left"; t.append(el("span", "", label), el("strong", "", value)); t.addEventListener("click", () => { state.tab = tab; profile(c.id).catch(fail); }); tiles.append(t);
     });
     body.append(tiles);
@@ -288,7 +265,7 @@
       profileFields(form);
     }, "Create client", async form => {
       const d = await api("/api/clients/new", values(form));
-      state.client = d.id; state.tab = "overview"; ok("Client created."); await show();
+      state.tab = "agreements"; ok(`Client created: ${d.client_number || d.id}.`); window.portalRoute(`#/clients/${d.id}`);
     });
   }
 
@@ -331,6 +308,7 @@
     ok(`Imported ${d.clients} clients and ${d.contracts} contracts (${d.skipped} skipped).`); await show();
   }
 
-  window.clientsReady = c => { config = c; user = c.user; };
-  window.clientsShow = id => { if (id) { state.client = id; state.tab = "overview"; } return show().catch(fail); };
+  window.clientsReady = c => { config = c; user = c.user; if (window.Records) window.Records.config = c; };
+  // id: a client's id (its record), "import" (Import previous clients), "baa-register" (Signed BAA register), or nothing (the register)
+  window.clientsShow = id => { if (id !== state.client) state.tab = "agreements"; state.client = id || null; return show().catch(fail); };
 })();

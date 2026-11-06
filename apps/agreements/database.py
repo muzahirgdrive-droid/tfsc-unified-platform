@@ -27,6 +27,7 @@ clients=Table('clients',meta,Column('id',String(32),primary_key=True),
     Column('address',Text,nullable=False),Column('draft',JSON,nullable=False),Column('updated',Float,nullable=False),
     Column('profile',JSON,nullable=True),Column('created',Float,nullable=True),  # profile: phone, email, website, notes
     Column('test',Boolean,nullable=False,default=False,server_default=false()),  # practice client: kept out of counts and reports
+    Column('client_number',String(20),nullable=True),  # permanent register number, CL-0001 onward (client_numbers.py); never reused
     UniqueConstraint('owner_id','name_key',name='uq_client_owner_name'))
 contracts=Table('contracts',meta,Column('id',String(64),primary_key=True),
     Column('client_id',String(32),ForeignKey('clients.id'),nullable=False),
@@ -77,6 +78,7 @@ companies=Table('companies',meta,Column('key',String(40),primary_key=True),
     Column('services',JSON,nullable=False),Column('doc_types',JSON,nullable=False),Column('active',Boolean,nullable=False,default=True),
     Column('created',Float,nullable=False),Column('created_by',String(32),ForeignKey('users.id'),nullable=True),Column('updated',Float,nullable=False))
 Index('ix_client_owner_updated',clients.c.owner_id,clients.c.updated,clients.c.id)
+Index('ix_clients_client_number',clients.c.client_number,unique=True)
 Index('ix_contract_client_created',contracts.c.client_id,contracts.c.created,contracts.c.id)
 Index('ix_contract_owner_created',contracts.c.owner_id,contracts.c.created)
 Index('ix_audit_client_created',audit.c.client_id,audit.c.created,audit.c.id)

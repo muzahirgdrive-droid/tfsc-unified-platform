@@ -22,6 +22,7 @@ from fastapi import Body, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import and_, func, or_, select
 
+import client_numbers
 import database as db
 import esign
 import security as sec
@@ -66,6 +67,10 @@ ACTIONS = {
     'client.marked_test': 'Marked a client as a test client', 'client.marked_real': 'Marked a client as a real client',
     'contract.marked_test': 'Marked an agreement as a test', 'contract.marked_real': 'Marked an agreement as real',
     'esign.marked_test': 'Marked an envelope as a test', 'esign.marked_real': 'Marked an envelope as real',
+    'client.past_agreement_added': 'Added a past signed agreement', 'client.past_agreement_updated': 'Changed a past signed agreement',
+    'client.past_agreement_removed': 'Removed a past signed agreement', 'client.import_committed': 'Imported previous clients',
+    'client.import_cancelled': 'Cancelled an import of previous clients', 'client.baa_register_exported': 'Exported the Signed BAA register',
+    'client.baa_files_downloaded': 'Downloaded every signed BAA of a company',
 }
 # Audit entries written for something a signer did; the envelope audit trail already has them (with more detail).
 MIRRORED = ('esign.declined', 'esign.reassigned')
@@ -268,7 +273,7 @@ def insights(c, actor: dict, entity: str, months: int, tz_name: str) -> dict:
 # (key, label, type) — type: text | datetime | number
 DATASETS = {
     'agreement_log': {'label': 'Agreement log', 'admin': False, 'date': 'Sent',
-                      'columns': [('source', 'Source', 'text'), ('client', 'Client / Practice', 'text'),
+                      'columns': [('source', 'Source', 'text'), ('client', 'Client / Practice', 'text'), ('client_no', 'Client no.', 'text'),
                                   ('baa', 'BAA', 'bool'), ('sa', 'SA', 'bool'), ('nda', 'NDA', 'bool'), ('pa', 'PA', 'bool'),
                                   ('electronic', 'Electronic', 'bool'), ('executed', 'Executed', 'bool'),
                                   ('sent', 'Sent date', 'datetime'), ('sender', 'Sent by', 'text'), ('status', 'Status', 'text'),
@@ -276,32 +281,32 @@ DATASETS = {
                       'default': ['source', 'client', 'baa', 'sa', 'nda', 'pa', 'electronic', 'executed', 'sent', 'sender', 'status', 'completed']},
     'envelopes': {'label': 'Envelopes', 'admin': False, 'date': 'Sent (or created, for drafts)',
                   'columns': [('ref', 'Envelope ID', 'text'), ('subject', 'Subject', 'text'), ('company', 'Company', 'text'), ('client', 'Client', 'text'),
-                              ('sender', 'Sender', 'text'), ('status', 'Status', 'text'), ('created', 'Created', 'datetime'), ('sent', 'Sent', 'datetime'),
+                              ('client_no', 'Client no.', 'text'), ('sender', 'Sender', 'text'), ('status', 'Status', 'text'), ('created', 'Created', 'datetime'), ('sent', 'Sent', 'datetime'),
                               ('completed', 'Completed', 'datetime'), ('days_to_complete', 'Days to complete', 'number'), ('recipients', 'Recipients', 'text'),
                               ('progress', 'Signed', 'text'), ('waiting_on', 'Waiting on', 'text'), ('documents', 'Documents', 'text'),
                               ('expires', 'Expires', 'datetime'), ('last_change', 'Last change', 'datetime'), ('test', 'Test', 'bool')],
                   'default': ['ref', 'subject', 'company', 'client', 'sender', 'status', 'sent', 'completed', 'progress', 'waiting_on']},
     'recipients': {'label': 'Recipients', 'admin': False, 'date': 'Envelope sent',
                    'columns': [('ref', 'Envelope ID', 'text'), ('subject', 'Subject', 'text'), ('company', 'Company', 'text'), ('client', 'Client', 'text'),
-                               ('sender', 'Sender', 'text'), ('envelope_status', 'Envelope status', 'text'), ('name', 'Recipient', 'text'),
+                               ('client_no', 'Client no.', 'text'), ('sender', 'Sender', 'text'), ('envelope_status', 'Envelope status', 'text'), ('name', 'Recipient', 'text'),
                                ('email', 'Email', 'text'), ('role', 'Action', 'text'), ('order', 'Order', 'number'), ('status', 'Status', 'text'),
                                ('sent', 'Sent', 'datetime'), ('viewed', 'Viewed', 'datetime'), ('signed', 'Signed / done', 'datetime'),
                                ('declined_reason', 'Decline reason', 'text'), ('delivery', 'Email delivery', 'text'), ('reminders', 'Reminders', 'number'),
                                ('ip', 'IP address', 'text'), ('authentication', 'Authentication', 'text'), ('test', 'Test', 'bool')],
                    'default': ['ref', 'subject', 'client', 'name', 'email', 'role', 'status', 'sent', 'viewed', 'signed']},
     'agreements': {'label': 'Generated agreements', 'admin': False, 'date': 'Generated',
-                   'columns': [('contract', 'Agreement reference', 'text'), ('client', 'Client', 'text'), ('company', 'Company', 'text'),
+                   'columns': [('contract', 'Agreement reference', 'text'), ('client', 'Client', 'text'), ('client_no', 'Client no.', 'text'), ('company', 'Company', 'text'),
                                ('created', 'Generated', 'datetime'), ('created_by', 'Generated by', 'text'), ('documents', 'Documents', 'text'),
                                ('effective_date', 'Effective date', 'text'), ('governing_state', 'Governing law', 'text'), ('services', 'Services', 'text'),
                                ('signatory', 'Company signatory', 'text'), ('esign', 'Sent for signature', 'text'), ('signed', 'Signed', 'datetime'),
                                ('test', 'Test', 'bool')],
                    'default': ['contract', 'client', 'company', 'created', 'created_by', 'documents', 'effective_date', 'esign', 'signed']},
     'clients': {'label': 'Clients', 'admin': False, 'date': 'Client created',
-                'columns': [('client', 'Client', 'text'), ('address', 'Address', 'text'), ('phone', 'Phone', 'text'), ('email', 'Email', 'text'),
+                'columns': [('client_no', 'Client no.', 'text'), ('client', 'Client', 'text'), ('address', 'Address', 'text'), ('phone', 'Phone', 'text'), ('email', 'Email', 'text'),
                             ('owner', 'Owner', 'text'), ('created', 'Created', 'datetime'), ('updated', 'Updated', 'datetime'),
                             ('agreements', 'Agreements generated', 'number'), ('envelopes', 'Envelopes sent', 'number'), ('completed', 'Completed', 'number'),
                             ('waiting', 'Waiting for signature', 'number'), ('last_sent', 'Last sent', 'datetime'), ('test', 'Test client', 'bool')],
-                'default': ['client', 'owner', 'created', 'agreements', 'envelopes', 'completed', 'waiting', 'last_sent']},
+                'default': ['client_no', 'client', 'owner', 'created', 'agreements', 'envelopes', 'completed', 'waiting', 'last_sent']},
     'activity': {'label': 'User activity', 'admin': True, 'date': 'Time',
                  'columns': [('at', 'Time', 'datetime'), ('who', 'Who', 'text'), ('kind', 'Type', 'text'), ('action', 'Action', 'text'),
                              ('detail', 'Details', 'text'), ('client', 'Client', 'text'), ('ip', 'IP address', 'text'), ('browser', 'Browser', 'text')],
@@ -359,6 +364,11 @@ def _client_names(c, ids) -> dict:
     return dict(c.execute(select(db.clients.c.id, db.clients.c.name).where(db.clients.c.id.in_(ids or {''}))).all())
 
 
+def _client_numbers(c, ids) -> dict:
+    ids = {i for i in ids if i}
+    return dict(c.execute(select(db.clients.c.id, db.clients.c.client_number).where(db.clients.c.id.in_(ids or {''}), db.clients.c.client_number.isnot(None))).all())
+
+
 def _client_filter(column, f):
     if not f['client']:
         return []
@@ -386,13 +396,13 @@ def rows_envelopes(c, actor, f, tz):
         for d in c.execute(select(esign_documents.c.envelope_id, esign_documents.c.name).where(esign_documents.c.envelope_id.in_(part), esign_documents.c.source != 'attachment')
                            .order_by(esign_documents.c.position)):
             docs.setdefault(d[0], []).append(d[1])
-    owners, clients = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows])
+    owners, clients, numbers = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows]), _client_numbers(c, [r['client_id'] for r in rows])
     for r in rows:
         ps = [p for p in people.get(r['id'], []) if p['status'] not in esign.INACTIVE]
         signers = [p for p in ps if p['role'] in esign.SIGNING_ROLES] or [p for p in ps if p['role'] != 'cc']
         done = [p for p in signers if p['status'] in esign.DONE_STATUSES]
         waiting = [p['name'] or p['email'] for p in signers if p['status'] in esign.OPEN_STATUSES] if r['status'] == 'sent' else []
-        yield {'ref': r['ref'], 'subject': r['subject'], 'company': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''),
+        yield {'ref': r['ref'], 'subject': r['subject'], 'company': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''), 'client_no': numbers.get(r['client_id'], ''),
                'sender': owners.get(r['owner_id'], ''), 'status': STATUS_LABELS.get(r['status'], r['status']), 'created': r['created'], 'sent': r['sent_at'],
                'completed': r['completed_at'], 'days_to_complete': round((r['completed_at'] - r['sent_at']) / 86400, 1) if r['completed_at'] and r['sent_at'] else None,
                'recipients': ', '.join(f"{p['name'] or p['email']} ({ROLE_LABELS.get(p['role'], p['role']).lower()})" for p in ps),
@@ -417,10 +427,10 @@ def rows_agreement_log(c, actor, f, tz):
         part = ids[chunk:chunk + 900]
         for d in c.execute(select(esign_documents.c.envelope_id, esign_documents.c.agreement).where(esign_documents.c.envelope_id.in_(part), esign_documents.c.agreement.isnot(None))):
             agreements.setdefault(d[0], set()).add(d[1])
-    owners, clients = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows])
+    owners, clients, numbers = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows]), _client_numbers(c, [r['client_id'] for r in rows])
     for r in rows:
         kinds = agreements.get(r['id'], set())
-        yield {'source': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''),
+        yield {'source': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''), 'client_no': numbers.get(r['client_id'], ''),
                'baa': 'baa' in kinds, 'sa': 'services' in kinds, 'nda': 'nda' in kinds, 'pa': 'pa' in kinds,
                'electronic': r['sent_at'] is not None, 'executed': r['status'] == 'completed',
                'sent': r['sent_at'], 'sender': owners.get(r['owner_id'], ''), 'status': STATUS_LABELS.get(r['status'], r['status']),
@@ -438,9 +448,9 @@ def rows_recipients(c, actor, f, tz):
                                               envelopes.c.status.label('envelope_status'), envelopes.c.sent_at.label('envelope_sent'), envelopes.c.test.label('envelope_test'))
                                        .join(envelopes, envelopes.c.id == recipients.c.envelope_id).where(*cond)
                                        .order_by(envelopes.c.sent_at.desc(), recipients.c.routing_order).limit(EXPORT_LIMIT + 1)).mappings()]
-    owners, clients = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows])
+    owners, clients, numbers = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows]), _client_numbers(c, [r['client_id'] for r in rows])
     for r in rows:
-        yield {'ref': r['ref'], 'subject': r['subject'], 'company': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''),
+        yield {'ref': r['ref'], 'subject': r['subject'], 'company': get_entity(r['entity'])['short'], 'client': clients.get(r['client_id'], ''), 'client_no': numbers.get(r['client_id'], ''),
                'sender': owners.get(r['owner_id'], ''), 'envelope_status': STATUS_LABELS.get(r['envelope_status'], r['envelope_status']), 'name': r['name'],
                'email': r['email'], 'role': ROLE_LABELS.get(r['role'], r['role']), 'order': r['routing_order'], 'status': RECIPIENT_STATUS.get(r['status'], r['status']),
                'sent': r['sent_at'], 'viewed': r['delivered_at'], 'signed': r['signed_at'], 'declined_reason': r['decline_reason'] or '',
@@ -467,14 +477,14 @@ def rows_agreements(c, actor, f, tz):
                 envelopes.c.contract_id.in_(ids[chunk:chunk + 900]), envelopes.c.status != 'template', *real_only(envelopes.c.test, include))
                 .order_by(envelopes.c.created)).mappings():
             sent[e['contract_id']] = dict(e)
-    owners, clients = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows])
+    owners, clients, numbers = _owners(c, [r['owner_id'] for r in rows]), _client_names(c, [r['client_id'] for r in rows]), _client_numbers(c, [r['client_id'] for r in rows])
     for r in rows:
         p = r['payload'] or {}
         e = sent.get(r['id'])
         services = [s.get('name') or s.get('title') or s.get('id') for s in (p.get('services') or []) if isinstance(s, dict)]
         services += [s.get('name') for s in (p.get('custom_services') or []) if isinstance(s, dict) and s.get('name')]
         signer = p.get('company_signatory') or {}
-        yield {'contract': r['id'], 'client': clients.get(r['client_id'], ''), 'company': get_entity(r['entity'])['short'], 'created': r['created'],
+        yield {'contract': r['id'], 'client': clients.get(r['client_id'], ''), 'client_no': numbers.get(r['client_id'], ''), 'company': get_entity(r['entity'])['short'], 'created': r['created'],
                'created_by': 'Legacy import' if r['legacy'] else owners.get(r['owner_id'], ''),
                'documents': ', '.join(AGREEMENTS.get(x, x) for x in (p.get('document_types') or [])), 'effective_date': p.get('effective_date', ''),
                'governing_state': p.get('governing_state', ''), 'services': ', '.join(str(s) for s in services if s),
@@ -487,10 +497,10 @@ def rows_clients(c, actor, f, tz):
     include = f.get('include_test', False)
     cond = [sec.scope(actor, db.clients.c.owner_id), *_range(func.coalesce(db.clients.c.created, db.clients.c.updated), f), *real_only(db.clients.c.test, include)]
     if f['client']:
-        cond.append(func.lower(db.clients.c.name).contains(f['client'].lower(), autoescape=True))
+        cond.append(or_(func.lower(db.clients.c.name).contains(f['client'].lower(), autoescape=True), db.clients.c.client_number.in_(client_numbers.search_terms(f['client']))))
     if f['owner']:
         cond.append(db.clients.c.owner_id == f['owner'])
-    rows = [dict(r) for r in c.execute(select(db.clients.c.id, db.clients.c.name, db.clients.c.address, db.clients.c.owner_id, db.clients.c.created,
+    rows = [dict(r) for r in c.execute(select(db.clients.c.id, db.clients.c.client_number, db.clients.c.name, db.clients.c.address, db.clients.c.owner_id, db.clients.c.created,
                                               db.clients.c.updated, db.clients.c.profile, db.clients.c.test).where(*cond).order_by(db.clients.c.name).limit(EXPORT_LIMIT + 1)).mappings()]
     ids = [r['id'] for r in rows]
     agreements, stats = {}, {}
@@ -511,7 +521,7 @@ def rows_clients(c, actor, f, tz):
     owners = _owners(c, [r['owner_id'] for r in rows])
     for r in rows:
         p, s = r['profile'] or {}, stats.get(r['id'], {})
-        yield {'client': r['name'], 'address': r['address'], 'phone': p.get('phone', ''), 'email': p.get('email', ''), 'owner': owners.get(r['owner_id'], ''),
+        yield {'client_no': r['client_number'] or '', 'client': r['name'], 'address': r['address'], 'phone': p.get('phone', ''), 'email': p.get('email', ''), 'owner': owners.get(r['owner_id'], ''),
                'created': r['created'], 'updated': r['updated'], 'agreements': agreements.get(r['id'], 0), 'envelopes': s.get('envelopes', 0),
                'completed': s.get('completed', 0), 'waiting': s.get('waiting', 0), 'last_sent': s.get('last_sent'), 'test': bool(r['test']), '_link': {'client': r['id']}}
 

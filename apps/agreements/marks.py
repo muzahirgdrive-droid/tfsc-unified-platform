@@ -15,7 +15,7 @@ import io
 import database as db
 import security as sec
 from document_engine import TEST_WATERMARK
-from esign_db import envelopes
+from esign_db import client_agreements, envelopes
 from fastapi import HTTPException
 from sqlalchemy import and_, select, update
 
@@ -56,6 +56,8 @@ def set_client(c, actor, client_id: str, test: bool, why: str) -> bool:
     if not row or bool(row[0]) == test:
         return False
     c.execute(update(db.clients).where(db.clients.c.id == client_id).values(test=test))
+    # agreements signed before this portal belong to the client: they follow its mark
+    c.execute(update(client_agreements).where(client_agreements.c.client_id == client_id).values(test=test))
     db.log(c, actor, 'client.marked_test' if test else 'client.marked_real', client_id, {'client': row[1], 'reason': why})
     return True
 

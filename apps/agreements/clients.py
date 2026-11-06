@@ -20,12 +20,13 @@ from fastapi.responses import Response
 from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
+import client_numbers
 import database as db
 import esign
 import mailer
 import marks
 import security as sec
-from esign_db import client_contacts, client_files, envelopes, inbound, inbound_files, recipients
+from esign_db import client_agreements, client_contacts, client_files, envelopes, inbound, inbound_files, recipients
 from esign_db import documents as esign_documents
 
 CONTACT_ROLES = ('signatory', 'billing', 'compliance', 'other')
@@ -89,7 +90,8 @@ def ensure_client(c, actor: dict, name: str, entity: str, email: str = '', signa
     draft = {'client_name': name, 'address': '', 'entity': entity, 'client_email': email, 'client_signatory': signatory, 'id': cid}
     c.execute(db.clients.insert().values(id=cid, owner_id=actor['id'], name=name, name_key=name_key(name), address='', draft=draft, updated=t,
                                          profile={}, created=t))
-    db.log(c, actor, 'client.created', cid, {'entity': entity, 'source': 'bulk send'})
+    number = client_numbers.assign_one(c, cid)
+    db.log(c, actor, 'client.created', cid, {'entity': entity, 'source': 'bulk send', 'client_number': number})
     return cid
 
 
@@ -196,13 +198,14 @@ def library(c, actor: dict, client: dict) -> list[dict]:
                           'size': f['size'], 'created': f['received'], 'company': e['entity'], 'envelope': e['ref'], 'envelope_id': e['id'],
                           'from': f['from_addr'], 'scan': f['scan'], 'url': f"/api/esign/attachments/{f['id']}"})
     users = {}
+    past = set(c.execute(select(client_agreements.c.file_id).where(client_agreements.c.client_id == client['id'], client_agreements.c.file_id.isnot(None))).scalars())
     for f in c.execute(select(client_files.c.id, client_files.c.name, client_files.c.size, client_files.c.category, client_files.c.note, client_files.c.created,
                               client_files.c.scan, client_files.c.uploaded_by, client_files.c.sha256).where(client_files.c.client_id == client['id'])).mappings():
         if f['uploaded_by'] and f['uploaded_by'] not in users:
             users[f['uploaded_by']] = c.execute(select(db.users.c.name).where(db.users.c.id == f['uploaded_by'])).scalar() or ''
-        items.append({'id': f['id'], 'name': f['name'], 'group': 'Uploaded files', 'kind': f['name'].rsplit('.', 1)[-1].upper(), 'size': f['size'],
+        items.append({'id': f['id'], 'name': f['name'], 'group': 'Signed before this portal' if f['id'] in past else 'Uploaded files', 'kind': f['name'].rsplit('.', 1)[-1].upper(), 'size': f['size'],
                       'created': f['created'], 'category': f['category'], 'note': f['note'], 'scan': f['scan'], 'uploaded_by': users.get(f['uploaded_by'], ''),
-                      'url': f"/api/clients/files/{f['id']}", 'deletable': f['uploaded_by'] == actor['id'] or actor['role'] != 'user', 'sha256': f['sha256'],
+                      'url': f"/api/clients/files/{f['id']}", 'deletable': (f['uploaded_by'] == actor['id'] or actor['role'] != 'user') and f['id'] not in past, 'sha256': f['sha256'],
                       'can_send': f['name'].lower().rsplit('.', 1)[-1] in ('pdf', 'docx', 'doc', 'odt', 'rtf', 'txt', 'png', 'jpg', 'jpeg')})
     items.sort(key=lambda x: x.get('created') or 0, reverse=True)
     return items
@@ -265,8 +268,9 @@ def install(app) -> None:  # noqa: C901  (route table)
             draft = {'client_name': name, 'address': address, 'entity': entity, 'client_email': profile.get('email', ''), 'id': cid}
             c.execute(db.clients.insert().values(id=cid, owner_id=a['id'], name=name, name_key=name_key(name), address=address, draft=draft, updated=t,
                                                  profile=profile, created=t, test=payload.get('test') is True))
-            db.log(c, a, 'client.created', cid, {'entity': entity})
-            return {'id': cid}
+            number = client_numbers.assign_one(c, cid)
+            db.log(c, a, 'client.created', cid, {'entity': entity, 'client_number': number})
+            return {'id': cid, 'client_number': number}
 
     @app.get('/api/clients/{client_id}/profile')
     def api_profile(client_id: str, request: Request):
@@ -287,7 +291,10 @@ def install(app) -> None:  # noqa: C901  (route table)
                                                                                        sec.company_scope(a, db.contracts.c.entity))).scalar()
             files = c.execute(select(func.count()).select_from(client_files).where(client_files.c.client_id == client_id)).scalar()
             draft = client['draft'] or {}
-            return {'client': {'id': client['id'], 'name': client['name'], 'address': client['address'], 'owner': owner, 'created': client['created'],
+            if not client.get('client_number'):
+                client['client_number'] = client_numbers.assign_one(c, client_id)
+            return {'client': {'id': client['id'], 'client_number': client['client_number'] or '', 'name': client['name'], 'address': client['address'],
+                               'owner': owner, 'created': client['created'],
                                'updated': client['updated'], 'profile': client['profile'] or {}, 'entity': draft.get('entity', ''),
                                'signatory': draft.get('client_signatory', ''), 'signatory_title': draft.get('client_title', ''),
                                'signatory_email': draft.get('client_email', ''), 'test': bool(client.get('test'))},
@@ -397,6 +404,8 @@ def install(app) -> None:  # noqa: C901  (route table)
             row = file_for(c, a, file_id)
             if row['uploaded_by'] != a['id'] and a['role'] == 'user':
                 raise HTTPException(403, 'Only the person who uploaded this file or an administrator can remove it.')
+            if c.execute(select(client_agreements.c.id).where(client_agreements.c.file_id == file_id).limit(1)).first():
+                raise HTTPException(409, 'This file is the signed copy of a past agreement. Remove that agreement on the Agreements tab first.')
             c.execute(delete(client_files).where(client_files.c.id == file_id))
             db.log(c, a, 'client.file_removed', row['client_id'], {'document': row['name'], 'sha256': row['sha256']})
             return {'ok': True}

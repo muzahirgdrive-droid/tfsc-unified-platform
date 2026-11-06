@@ -284,3 +284,55 @@ client_files = Table(
     Column('created', Float, nullable=False),
 )
 Index('ix_client_files_client', client_files.c.client_id, client_files.c.created)
+
+# Agreements a client signed before this portal (returned by email, DocuSign, Jotform): the record and, when uploaded, the signed
+# copy (a client file, scanned like every upload). Dates are ISO dates (YYYY-MM-DD) as written on the agreement.
+client_agreements = Table(
+    'client_agreements', meta,
+    Column('id', String(32), primary_key=True),
+    Column('client_id', String(32), ForeignKey('clients.id'), nullable=False),
+    Column('entity', String(100), nullable=False),            # the company's legal name
+    Column('kind', String(20), nullable=False),               # baa | services | nda | other
+    Column('title', String(200), nullable=False),
+    Column('source', String(20), nullable=False),             # docusign | manual | jotform | other
+    Column('signed_on', String(10), nullable=True),
+    Column('effective_on', String(10), nullable=True),
+    Column('client_signer', String(200), nullable=False),
+    Column('company_signer', String(200), nullable=False),
+    Column('reference', String(120), nullable=False),         # DocuSign envelope ID, Jotform submission ID
+    Column('notes', Text, nullable=False),
+    Column('file_id', String(32), ForeignKey('client_files.id'), nullable=True),
+    Column('created', Float, nullable=False),
+    Column('created_by', String(32), ForeignKey('users.id'), nullable=True),
+    Column('updated', Float, nullable=False),
+    Column('test', Boolean, nullable=False, default=False, server_default=false()),
+)
+Index('ix_client_agreements_client', client_agreements.c.client_id, client_agreements.c.signed_on)
+Index('ix_client_agreements_file', client_agreements.c.file_id)
+
+# Import previous clients: a staging area per import, nothing reaches the client records until it is committed. Removed after
+# commit or cancel; forgotten imports expire after seven days.
+client_imports = Table(
+    'client_imports', meta,
+    Column('id', String(32), primary_key=True),
+    Column('owner_id', String(32), ForeignKey('users.id'), nullable=False, index=True),
+    Column('created', Float, nullable=False),
+    Column('updated', Float, nullable=False),
+    Column('expires', Float, nullable=False, index=True),
+    Column('sheet', JSON, nullable=True),                     # {name, headers, mapping, rows}
+    Column('choices', JSON, nullable=False),                  # item key -> {client_id | new | skip, name}
+)
+
+client_import_files = Table(
+    'client_import_files', meta,
+    Column('id', String(32), primary_key=True),
+    Column('import_id', String(32), ForeignKey('client_imports.id'), nullable=False, index=True),
+    Column('name', String(200), nullable=False),
+    Column('size', Integer, nullable=False),
+    Column('sha256', String(64), nullable=False),
+    Column('scan', String(20), nullable=False),
+    Column('pages', Integer, nullable=True),
+    Column('found', JSON, nullable=False),                    # what was read from the file (pdf_facts.read)
+    Column('body', LargeBinary, nullable=False),
+    Column('created', Float, nullable=False),
+)
