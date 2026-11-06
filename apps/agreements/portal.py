@@ -13,6 +13,7 @@ import server as legacy
 import crm_bridge
 import companies
 import marks
+import client_numbers
 from entities import ENTITIES
 
 VERSION='5.0.0'
@@ -44,7 +45,7 @@ async def boundary(request,call_next):
             return JSONResponse({'error':'Request origin was rejected.'},403)
         # File uploads (base64, up to 15 MB of file) are the only large bodies: documents for an envelope, files for a client
         # profile and attachments a signer adds while signing.
-        limit=21_000_000 if re.fullmatch(r'/api/esign/envelopes/[a-f0-9]{32}/documents|/api/clients/[a-f0-9]{32}/files|/sign/r/[a-f0-9]{32}/api/attachment',request.url.path) else 2_800_000
+        limit=21_000_000 if re.fullmatch(r'/api/esign/envelopes/[a-f0-9]{32}/documents|/api/clients/[a-f0-9]{32}/files|/sign/r/[a-f0-9]{32}/api/attachment|/api/client-imports/[a-f0-9]{32}/(files|sheet)',request.url.path) else 2_800_000
         try:
             if int(request.headers.get('content-length','0'))>limit:
                 return JSONResponse({'error':'Request is too large.'},413)
@@ -202,7 +203,7 @@ def save_draft(c,a,data,generating=False):
     data=dict(data,id=id)
     values=dict(name=data['client_name'],name_key=sec.digest(data['client_name'].strip().casefold()),address=data['address'],draft=data,updated=time.time())
     if row:c.execute(db.clients.update().where(db.clients.c.id==id).values(**values))
-    else:c.execute(db.clients.insert().values(id=id,owner_id=owner,test=data.get('test') is True,**values))
+    else:c.execute(db.clients.insert().values(id=id,owner_id=owner,test=data.get('test') is True,**values));client_numbers.assign_one(c,id)
     db.log(c,a,'client.updated' if row else 'client.created',id,{'entity':data['entity']}|({'test':True} if not row and data.get('test') is True else {}))
     if row and generating and data.get('test') is not True:marks.real_activity(c,a,id,'a real agreement was generated')
     return id
@@ -212,13 +213,18 @@ def list_clients(request:Request,q:str='',page:int=0):
     page=max(0,min(page,100000))
     with db.engine.connect() as c:
         a=sec.get_actor(request,c);condition=sec.scope(a,db.clients.c.owner_id)
-        if q:condition=and_(condition,func.lower(db.clients.c.name).contains(q[:200].lower(),autoescape=True))
-        rows=c.execute(select(db.clients.c.id,db.clients.c.name,db.clients.c.address,db.clients.c.updated,db.clients.c.test,db.users.c.name.label('owner')).join(db.users,db.users.c.id==db.clients.c.owner_id).where(condition).order_by(db.clients.c.updated.desc(),db.clients.c.id).limit(51).offset(page*50)).mappings().all()
-        return {'clients':[dict(id=r['id'],client_name=r['name'],address=r['address'],updated_at=r['updated'],owner=r['owner'],test=bool(r['test'])) for r in rows[:50]],'has_more':len(rows)>50,'page':page}
+        if client_numbers.missing(c):client_numbers.ensure_before_reading()
+        # a client number ("CL-0012", "cl-12", "12") finds that client as well as names containing the text
+        if q:condition=and_(condition,or_(func.lower(db.clients.c.name).contains(q[:200].lower(),autoescape=True),db.clients.c.client_number.in_(client_numbers.search_terms(q))))
+        rows=c.execute(select(db.clients.c.id,db.clients.c.name,db.clients.c.address,db.clients.c.updated,db.clients.c.test,db.clients.c.client_number,db.users.c.name.label('owner')).join(db.users,db.users.c.id==db.clients.c.owner_id).where(condition).order_by(db.clients.c.updated.desc(),db.clients.c.id).limit(51).offset(page*50)).mappings().all()
+        return {'clients':[dict(id=r['id'],client_name=r['name'],client_number=r['client_number'] or '',address=r['address'],updated_at=r['updated'],owner=r['owner'],test=bool(r['test'])) for r in rows[:50]],'has_more':len(rows)>50,'page':page}
 @app.get('/api/clients/{id}')
-def get_client(id:str,request:Request):
+def get_client(id:str,request:Request,entity:str=''):
     with db.engine.connect() as c:
-        a=sec.get_actor(request,c);r=client_allowed(c,a,id);d=dict(r['draft']);sec.ensure_company(a,d['entity']);return d
+        a=sec.get_actor(request,c);r=client_allowed(c,a,id);d=dict(r['draft'])
+        # entity: open the client for another company the person may use ("Send a BAA" from the Signed BAA register)
+        if entity:sec.ensure_company(a,entity);d['entity']=entity
+        sec.ensure_company(a,d.get('entity'));d.setdefault('client_name',r['name']);d.setdefault('address',r['address']);d['id']=r['id'];return d
 @app.post('/api/clients')
 def put_client(payload:dict,request:Request):
     with db.engine.begin() as c:
@@ -449,6 +455,10 @@ import esign
 esign.install(app)
 import clients
 clients.install(app)
+import client_records
+client_records.install(app)
+import client_import
+client_import.install(app)
 import esign_bulk
 esign_bulk.install(app)
 import company_admin
@@ -457,7 +467,7 @@ companies.install(app)
 import insights
 insights.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','resilient.js'}
-PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js'}
+PRIVATE={'app.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):
     if name in PRIVATE:

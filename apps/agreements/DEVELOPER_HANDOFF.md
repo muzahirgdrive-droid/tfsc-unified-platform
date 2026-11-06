@@ -1,3 +1,15 @@
+# Client database (November 6, 2026): client numbers, agreements from earlier systems, Signed BAA register
+
+| Module | What it adds |
+|---|---|
+| `migrations/versions/0008_client_records.py` | `clients.client_number` (unique, `LATER_COLUMNS`/`LATER_INDEXES` in `migrate.py`), backfilled `CL-0001`… by `created` (then `updated`, id); `client_agreements`; the import staging tables `client_imports`, `client_import_files`. Additive and idempotent (re-run after a rollback numbers only clients made meanwhile). |
+| `client_numbers.py` | `assign()` / `assign_one()` after every client insert (new client form, agreement form and generation, CRM bridge via `portal.save_draft`, bulk send, legacy import, import of previous clients); `ensure_client_numbers()` safety net before lists. Last number kept in `settings['client_numbers']`, so numbers are never reused; PostgreSQL serializes with an advisory lock. |
+| `client_records.py`, `records.js`, `records.css` | The clients register (`/api/client-records/register`, grouped queries, paged in memory), the client record's agreements from every source (`/api/clients/<id>/agreements`), past signed agreements (`/api/clients/<id>/past-agreements`, audit-logged; signed copy stored as a client file), the Signed BAA register with Excel/CSV export and the zip of signed copies. |
+| `pdf_facts.py` | Reads a signed PDF's text (pypdf): DocuSign envelope ID, Jotform submission, company, agreement, signed and effective dates, the client's signer. Suggestions only, marked "from file". |
+| `client_import.py` | Import previous clients (Admins and Super Admin): spreadsheet (.xlsx/.csv, template at `/api/client-imports/template.xlsx`) and PDFs into a staging area; matching by client number, DocuSign envelope, name in the file, file name; one-transaction commit; cancel; seven-day expiry. |
+
+Tests: `tests/test_client_records.py`.
+
 # Version 5 (October 24, 2026): company signatures, premium portal, reports and activity log
 
 The plan, mapping each request to a design: `ARCHITECTURE-V5.md`.

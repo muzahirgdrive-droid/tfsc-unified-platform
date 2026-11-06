@@ -538,7 +538,7 @@
     const first = el("option", "", "Select a saved client…");
     first.value = "";
     dropdown.replaceChildren(first);
-    (result.clients || []).forEach(client => { const option = el("option", "", client.client_name); option.value = client.id; dropdown.append(option); });
+    (result.clients || []).forEach(client => { const option = el("option", "", client.client_number ? `${client.client_number} · ${client.client_name}` : client.client_name); option.value = client.id; dropdown.append(option); });
     dropdown.value = selectId || state.clientId || "";
   }
 
@@ -776,6 +776,7 @@
     } catch (error) { announce(error.message, true); }
     finally { $("loading").hidden = true; }
   }
-  window.openClientDraft=async id=>{if(state.dirty&&!confirm("Open this client and replace unsaved changes?"))return;const d=await api(`/api/clients/${encodeURIComponent(id)}`);applyClient(d);bypassPicker=(state.config.entities||[]).some(e=>e.name===d.entity);if(bypassPicker)picked=d.entity;window.showBuilder?.();};
+  // opts.entity / opts.documents: open the client for that company with those agreements ticked ("Send a BAA" from the client records)
+  window.openClientDraft=async(id,opts={})=>{if(state.dirty&&!confirm("Open this client and replace unsaved changes?"))return;const d=await api(`/api/clients/${encodeURIComponent(id)}`+(opts.entity?`?entity=${encodeURIComponent(opts.entity)}`:''));if(opts.documents)d.document_types=opts.documents;applyClient(d);bypassPicker=(state.config.entities||[]).some(e=>e.name===d.entity);if(bypassPicker)picked=d.entity;window.showBuilder?.();};
   initialize();
 })();

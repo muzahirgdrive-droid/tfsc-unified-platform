@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy import select
 import database as db
 import server as old
+import client_numbers
 
 def import_existing(actor):
     counts={'clients':0,'contracts':0,'documents':0,'skipped':0};roots={db.OUTPUT};ids={}
@@ -16,7 +17,7 @@ def import_existing(actor):
             row=c.execute(select(db.clients).where(db.clients.c.owner_id==actor['id'],db.clients.c.name_key==key)).mappings().first()
             id=row['id'] if row else d.get('id') or db.uid();ids[key]=id
             if not row:
-                d['id']=id;c.execute(db.clients.insert().values(id=id,owner_id=actor['id'],name=d['client_name'],name_key=key,address=d['address'],draft=d,updated=file.stat().st_mtime));counts['clients']+=1
+                d['id']=id;c.execute(db.clients.insert().values(id=id,owner_id=actor['id'],name=d['client_name'],name_key=key,address=d['address'],draft=d,updated=file.stat().st_mtime));client_numbers.assign_one(c,id);counts['clients']+=1
                 db.log(c,None,'legacy.client_imported',id,{'source':'Local client draft','imported_by':actor['name']})
     for root in roots:
         if not root.is_dir():continue
@@ -39,7 +40,7 @@ def import_existing(actor):
                         existing=c.execute(select(db.clients).where(db.clients.c.owner_id==actor['id'],db.clients.c.name_key==key)).mappings().first()
                         id=existing['id'] if existing else db.uid()
                         if not existing:
-                            d['id']=id;c.execute(db.clients.insert().values(id=id,owner_id=actor['id'],name=d['client_name'],name_key=key,address=d.get('address',''),draft=d,updated=record.stat().st_mtime));counts['clients']+=1
+                            d['id']=id;c.execute(db.clients.insert().values(id=id,owner_id=actor['id'],name=d['client_name'],name_key=key,address=d.get('address',''),draft=d,updated=record.stat().st_mtime));client_numbers.assign_one(c,id);counts['clients']+=1
                         ids[key]=id
                     c.execute(db.contracts.insert().values(id=cid,client_id=id,owner_id=actor['id'],entity=d.get('entity','SCRIBE ALIGN LLC'),created=record.stat().st_mtime,payload=d,folder=str(record.parent.parent),version=d.get('template_version','legacy'),legacy=True))
                     for f in files:c.execute(db.documents.insert().values(**f))
