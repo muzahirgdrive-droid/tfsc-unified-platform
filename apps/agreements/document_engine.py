@@ -236,12 +236,18 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
         page_height=int(re.search(r'w:pgSz[^>]*w:h="(\d+)"',section).group(1))
         page_field='<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'+_run('1',size=18)+'<w:r><w:fldChar w:fldCharType="end"/></w:r>'
         total_field=page_field.replace(' PAGE ',' NUMPAGES ')
-        numbers='<w:p><w:pPr><w:framePr w:w="2500" w:h="260" w:hRule="atLeast" w:x="'+str(entity['left']+entity['width']-2500)+'" w:y="'+str(page_height-1500)+'" w:hAnchor="page" w:vAnchor="page" w:wrap="none"/><w:jc w:val="right"/></w:pPr>'+_run('Page ',size=18)+page_field+_run(' of ',size=18)+total_field+'</w:p>'
+        # An added company's bottom margin comes from its letterhead check (footer artwork + room for this line), so the
+        # counter sits just below the text, above the artwork. The three built-in letterheads keep their tested place.
+        custom=bool(entity.get('custom'))
+        counter_y=page_height-entity['bottom']+150 if custom else page_height-1500
+        numbers='<w:p><w:pPr><w:framePr w:w="2500" w:h="260" w:hRule="atLeast" w:x="'+str(entity['left']+entity['width']-2500)+'" w:y="'+str(counter_y)+'" w:hAnchor="page" w:vAnchor="page" w:wrap="none"/><w:jc w:val="right"/></w:pPr>'+_run('Page ',size=18)+page_field+_run(' of ',size=18)+total_field+'</w:p>'
         server_renderer=os.environ.get('TFSC_RENDERER')=='libreoffice'
         if server_renderer:
             # Writer ignores page-relative footer frames. A regular paragraph
-            # before the retained artwork keeps the counter in clear white space.
-            numbers=re.sub(r'<w:framePr[^>]*/>','<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>',numbers)
+            # before the retained artwork keeps the counter in clear white space;
+            # room after it lifts it above a tall footer (the footer grows upwards).
+            lift=max(0,entity['bottom']-1500) if custom else 0
+            numbers=re.sub(r'<w:framePr[^>]*/>',f'<w:spacing w:before="0" w:after="{lift}" w:line="240" w:lineRule="auto"/>',numbers)
         for name in list(parts):
             if re.fullmatch(r'word/footer\d+\.xml',name):
                 if server_renderer:

@@ -7,6 +7,7 @@ import security as sec
 import server as legacy
 import crm_bridge
 import companies
+import entities as entmod
 from entities import get_entity
 from document_engine import generate_docx,convert_to_pdf
 
@@ -40,6 +41,7 @@ def process(job):
             sec.ensure_company(actor,payload['entity'])
             crm_bridge.check_worker(c,job)
             db.log(c,actor,'contract.generation_started',job['client_id'],{'job_id':job['id']})
+            entmod.invalidate()   # company details edited a moment ago apply to this agreement (other processes cache them briefly)
             company=companies.profile(c,payload['entity'])
         root=Path(payload['output_root']).resolve()
         if not db.LOCAL and not root.is_relative_to(db.OUTPUT):raise ValueError('Output destination is outside managed storage.')

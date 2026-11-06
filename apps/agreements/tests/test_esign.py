@@ -17,6 +17,7 @@ from pypdf import PdfReader
 from sqlalchemy import select, update
 
 import database as db
+import entities
 import esign
 import esign_db as t
 import esign_pdf
@@ -61,6 +62,7 @@ class Base(unittest.TestCase):
         self.smtp.stop()
         db.engine.dispose()
         db.engine, db.DATA, db.OUTPUT = self.old
+        entities.invalidate()   # the companies of this test's database must not linger in the cache for the next test
         self.env.stop()
         self.tmp.cleanup()
 

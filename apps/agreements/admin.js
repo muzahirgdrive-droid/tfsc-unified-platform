@@ -93,7 +93,8 @@
     about.append(logo, el("h2", "", c.entity));
     about.append(el("p", "muted small", c.mailbox ? `Mailbox: ${c.mailbox}` : "No mailbox connected yet"));
     const name = input(c.signatory, "text", {maxLength: 150}), title = input(c.title, "text", {maxLength: 150});
-    about.append(field("Authorized signatory", name), field("Title", title, `Prints under the signature as “Title: …”. Default: ${c.default_signatory}, ${c.default_title}.`));
+    if (!c.signatory) about.append(el("p", "notice notice-warning", `Add who signs for ${c.short} (name and title) and select Save: agreements for ${c.short} can be generated once it is set.`));
+    about.append(field("Authorized signatory", name), field("Title", title, c.default_signatory ? `Prints under the signature as “Title: …”. Default: ${c.default_signatory}, ${c.default_title}.` : "Prints under the signature as “Title: …”."));
     about.append(el("p", "muted small company-address", c.address || ""));
     const row = el("div", "sig-tools"); row.style.marginTop = "6px";
     row.append(button("Edit company details", async () => { try { companyForm((await api(`/api/admin/companies/details/${encodeURIComponent(c.key)}`)).company); } catch (e) { fail(e); } }, "button button-quiet button-sm"));
@@ -196,11 +197,24 @@
     // Letterhead
     const lhNote = el("p", "field-note", editing ? "Leave empty to keep the current letterhead, or upload a new .docx to replace it." : "Upload the company letterhead (.docx). Keep the logo/artwork in the Word header or footer.");
     const lhInput = el("input"); lhInput.type = "file"; lhInput.accept = ".docx";
+    // The letterhead check: the letterhead is rendered on the server and its artwork measured, so the margins clear it.
+    const lhCheck = el("div", "lh-check"); lhCheck.hidden = true;
+    const checkRow = (ok, strong, rest) => { const r = el("div", `lh-check-row${ok ? " ok" : ""}`); r.append(el("span", "lh-check-ic", ok ? "✓" : "i")); const t = el("div"); t.append(el("b", "", strong), document.createTextNode(rest ? " " + rest : "")); r.append(t); return r; };
     lhInput.addEventListener("change", async () => { const f = lhInput.files[0]; if (!f) return;
+      lhNote.textContent = "Reading and checking the letterhead…"; lhCheck.hidden = true;
       try { st.letterhead = await readFile(f); const d = await api("/api/admin/companies/parse-letterhead", {letterhead: st.letterhead});
         ["top", "bottom", "left", "right"].forEach(k => { marginInputs[k].value = d.margins[k]; });
-        lhNote.textContent = `Letterhead read: ${d.page_width}in x ${d.page_height}in page, ${d.headers} header(s), ${d.footers} footer(s). Margins pre-filled — Preview a sample and raise the top margin if the text overlaps the logo.`;
-      } catch (e) { showError(e.message); } });
+        const c = d.check || {};
+        lhNote.textContent = `Letterhead read: ${d.page_width} × ${d.page_height} in page, ${d.headers} header(s), ${d.footers} footer(s).`;
+        lhCheck.replaceChildren(el("p", "lh-check-title", c.available ? "✓ Letterhead check: ready to use" : "Letterhead check"));
+        if (c.available) {
+          lhCheck.append(checkRow(true, `Header artwork ends ${c.header_in} in from the top.`, `The agreement text starts at ${d.margins.top} in, so the logo is never covered.`),
+            checkRow(true, `Footer artwork starts ${c.footer_in} in from the bottom.`, `The text ends ${d.margins.bottom} in from the bottom, and "Page X of Y" sits just above the footer.`),
+            checkRow(true, `Page size: ${c.page === "custom" ? `${c.page_in[0]} × ${c.page_in[1]} in` : c.page}.`, "Agreements keep the letterhead's page size."),
+            checkRow(false, "Margins are filled in below (Advanced).", "Change them only if you want a different look, then Preview a sample."));
+        } else lhCheck.append(checkRow(false, c.reason || "The letterhead margins are used.", "Preview a sample and raise the top margin if the text overlaps the logo."));
+        lhCheck.hidden = false;
+      } catch (e) { lhNote.textContent = ""; showError(e.message); } });
     const logoInput = el("input"); logoInput.type = "file"; logoInput.accept = "image/png,image/jpeg";
     const logoNow = el("div", "logo-now");
     if (editing && existing.logo) { const img = el("img"); img.alt = `${existing.short} logo`; img.src = existing.logo; logoNow.append(img, el("span", "small muted", "Current logo. Upload a new one to replace it.")); }
@@ -247,14 +261,14 @@
     column.append(
       panel("1", "IDENTITY", "Company name", grid2(field("Legal name *", name, editing ? "Fixed: it identifies the company on every agreement, envelope, mailbox and permission already in the system." : ""), field("Short name *", short, "How agreements refer to the company, e.g. (\"24-7 Consultancy\").")),
             grid2(field("Display name", display, "Shown on emails, the signing page and the company list."), field("Notice / reply-to email", email, "Printed as the company's notice email on agreements."))),
-      panel("2", "BRAND & LETTERHEAD", "Letterhead and logo", (() => { const w = el("div"); w.append(el("label", "", "Letterhead (.docx)"), lhInput, lhNote); return w; })(),
+      panel("2", "BRAND & LETTERHEAD", "Letterhead and logo", (() => { const w = el("div"); w.append(el("label", "", "Letterhead (.docx)"), lhInput, lhNote, lhCheck); return w; })(),
             grid2((() => { const w = el("div", "field"); w.append(el("label", "", editing ? "Company logo" : "Company logo (optional)"), logoNow, logoInput, el("p", "field-note", editing ? "PNG or JPEG." : "PNG or JPEG. A wordmark is generated if you skip it.")); return w; })(),
                   (() => { const w = el("div"); w.append(grid2(field("Brand colour", color), field("Accent colour", accent)), colourNote); return w; })())),
       panel("3", "LEGAL & SIGNATORY", "Address, governing law and signature", field("Registered / notice address *", address, "Printed as the company's address in every agreement generated from now on."),
             grid2(field("Governing law (US state) *", state, "Full state name, e.g. Delaware."), field("Time zone", tz, "e.g. America/New_York.")),
             grid2(field("Authorized signatory *", signatory), field("Title *", title)),
             (() => { const w = el("div", "field"); w.append(el("label", "", "Signature image (optional)"), sigInput, sigPreview); return w; })()),
-      ...(builtin ? [] : [(() => { const p = panel("4", "SERVICES THIS COMPANY OFFERS", "Services, scope & responsibilities", el("p", "section-description", "Each service contributes its own scope, responsibilities and exclusions to the Services Agreement."), servicesBox);
+      ...(builtin ? [] : [(() => { const p = panel("4", "SERVICES THIS COMPANY OFFERS", "Services, scope & responsibilities", el("p", "section-description", "Each service contributes its own scope, responsibilities and exclusions to the Services Agreement. Leave this empty to offer the standard service catalogue (the same services as 24-7 Consultancy)."), servicesBox);
                p.querySelector(".panel-body").append(button("+ Add a service", () => addService(), "button button-quiet add-custom")); return p; })(),
       panel("5", "DOCUMENTS", "Agreement types this company can produce", (() => { const w = el("div", "permission-options");
             [["baa", "Business Associate Agreement (BAA)"], ["services", "Services Agreement"], ["nda", "Mutual NDA"]].forEach(([k, label]) => { const l = el("label", "check-inline"); l.append(docCB[k], document.createTextNode(" " + label)); w.append(l); }); return w; })())]),

@@ -13,7 +13,8 @@ import server as legacy
 import crm_bridge
 import companies
 import marks
-from entities import ENTITIES
+import entities as entities_mod
+from entities import ENTITIES, get_entity
 
 VERSION='5.0.0'
 ORIGIN=os.getenv('TFSC_ORIGIN','http://127.0.0.1:8765').rstrip('/')
@@ -289,6 +290,11 @@ def generate(payload:dict,request:Request):
             if c.dialect.name=='postgresql':
                 c.execute(select(db.users.c.id).where(db.users.c.id==a['id']).with_for_update()).first()
             d=legacy.validate(payload);sec.ensure_company(a,d['entity'])
+            signer=companies.profile(c,d['entity'],with_image=False)
+            if not (signer['signatory'] or '').strip() or not (signer['title'] or '').strip():
+                entities_mod.invalidate();signer=companies.profile(c,d['entity'],with_image=False)   # set a moment ago in another process
+            if not (signer['signatory'] or '').strip() or not (signer['title'] or '').strip():
+                raise HTTPException(400,f"Add who signs for {get_entity(d['entity'])['short']} (name and title) in Admin › Company settings before generating agreements.")
             if a.get('services'):   # a user limited to certain services cannot put others on an agreement
                 blocked=[s['name'] for s in d.get('services',[]) if s['id'] not in a['services']]
                 if blocked:raise HTTPException(403,'You are not permitted to offer: '+', '.join(blocked)+'.')

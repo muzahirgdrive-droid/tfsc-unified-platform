@@ -307,10 +307,11 @@
     return `${moneyCents(priceCents(item.rate, item.quantity))} total`;
   }
   function entityState() { return (state.config?.entities || []).find(e => e.name === $("entity").value)?.governing_state || ""; }
-  // A custom company offers its own services; built-in companies use the standard catalogue.
+  // A custom company with its own services offers those; every other company (built-in, or custom with none of its own)
+  // offers the standard catalogue.
   window.setCompanyCatalog = function() {
     const entry = (state.config?.entities || []).find(e => e.name === $("entity").value);
-    const next = (entry && Array.isArray(entry.services)) ? entry.services : (state.config?.catalog || []);
+    const next = (entry && Array.isArray(entry.services) && entry.services.length) ? entry.services : (state.config?.catalog || []);
     state.catalog = next;
     for (const id of [...state.selected.keys()]) if (!next.some(s => s.id === id)) state.selected.delete(id);
     if ($("catalog-total")) $("catalog-total").textContent = String(next.length);
@@ -350,7 +351,7 @@
     if (!e) return;
     $("lock-logo").src = e.logo || ""; $("lock-logo").alt = e.short || e.name;
     $("lock-name").textContent = e.name;
-    $("lock-meta").textContent = `Authorized signatory: ${e.signatory}, ${e.title} · ${e.governing_state} law${e.address ? ` · ${e.address}` : ""}`;
+    $("lock-meta").textContent = (e.signatory ? `Authorized signatory: ${e.signatory}, ${e.title}` : "Signatory not set yet: a Super Admin adds it in Admin › Company settings before agreements can be generated") + ` · ${e.governing_state} law${e.address ? ` · ${e.address}` : ""}`;
     $("lock-meta").title = $("lock-meta").textContent; $("lock-name").title = e.name;
     $("change-company").hidden = entities().length < 2;
   }
@@ -365,9 +366,9 @@
     card.append(el("span", "cp-band"));
     const label = e.short || e.name, name = el("span", "cp-name", label); name.title = e.name;
     if (label.length > 20) name.classList.add("long");
-    const meta = el("span", "cp-meta", `${e.governing_state} law · ${e.signatory}`); meta.title = meta.textContent;
+    const meta = el("span", "cp-meta", `${e.governing_state} law · ${e.signatory || "Signatory not set"}`); meta.title = meta.textContent;
     b.append(card, name, meta);
-    b.setAttribute("aria-label", `${e.name}: ${e.governing_state} law, signed by ${e.signatory}`);
+    b.setAttribute("aria-label", `${e.name}: ${e.governing_state} law, ${e.signatory ? `signed by ${e.signatory}` : "signatory not set"}`);
     return b;
   }
   // The full-page "which company?" screen. Tiles size themselves to the number of companies and to the screen.

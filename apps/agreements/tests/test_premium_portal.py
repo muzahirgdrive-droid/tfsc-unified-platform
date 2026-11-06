@@ -92,7 +92,9 @@ class CompanySettings(Base):
         import re as re_
         self.login(self.super)
         sizes = {x['key']: (x['signature_scale'], x['default_signature_scale']) for x in self.api.get('/api/admin/companies').json()['companies']}
-        self.assertEqual(sizes, {'scribe': (0.6, 0.6), 'ehs': (0.6, 0.6), '24-7': (0.85, 0.85)}, 'Naeem Abbas 60 %, Danish Ather 85 %')
+        builtin = {k: v for k, v in sizes.items() if k in ('scribe', 'ehs', '24-7')}
+        self.assertEqual(builtin, {'scribe': (0.6, 0.6), 'ehs': (0.6, 0.6), '24-7': (0.85, 0.85)}, 'Naeem Abbas 60 %, Danish Ather 85 %')
+        self.assertTrue(all(v == (0.85, 0.85) for k, v in sizes.items() if k not in builtin), 'added companies start at 85 %')
         for bad in (1.5, 0.1, 'big', True):
             self.assertEqual(self.post('/api/admin/companies/scribe', {'signature_scale': bad}).status_code, 400, bad)
         r = self.post('/api/admin/companies/scribe', {'signature': signature_png('Naeem Abbas', (600, 400)), 'signature_kind': 'drawn'})

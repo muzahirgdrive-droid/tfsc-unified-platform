@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import os
 import re
 import time
 import zipfile
@@ -98,6 +99,62 @@ def parse_letterhead(raw: bytes) -> dict:
     return {'page_w': page_w, 'page_h': page_h, 'top': top, 'right': right, 'bottom': bottom, 'left': left,
             'width': width, 'sha256': hashlib.sha256(raw).hexdigest(), 'headers': len(headers), 'footers': len(footers),
             'bytes': raw}
+
+
+CLEAR_TOP_IN, CLEAR_BOTTOM_IN, MIN_SIDE_TWIPS = 0.32, 0.55, 1080   # gap below header art; gap above footer art (room for "Page X of Y")
+
+
+def letterhead_check(parsed: dict) -> dict:
+    """Render the letterhead as the server renders agreements (LibreOffice) and measure where its artwork ends at the
+    top and starts at the bottom, so the agreement text and the page number never sit on the logo or the footer.
+
+    Returns the measurements and the margins (twips) that clear them, or {'available': False, 'reason': ...} when the
+    letterhead cannot be rendered here; the letterhead's own margins are used then."""
+    import shutil
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    tool = shutil.which(os.environ.get('LIBREOFFICE_BIN', 'soffice')) or shutil.which('libreoffice')
+    if not tool or not shutil.which('pdftoppm'):
+        return {'available': False, 'reason': 'The letterhead check needs the server document renderer; the letterhead margins are used.'}
+    try:
+        from PIL import Image
+        with tempfile.TemporaryDirectory(prefix='tfsc-lhcheck-') as tmp:
+            folder = Path(tmp)
+            (folder / 'letterhead.docx').write_bytes(parsed['bytes'])
+            subprocess.run([tool, '-env:UserInstallation=' + (folder / 'profile').as_uri(), '--headless', '--convert-to', 'pdf', '--outdir', str(folder),
+                            str(folder / 'letterhead.docx')], capture_output=True, timeout=120, check=True)
+            subprocess.run(['pdftoppm', '-r', '100', '-png', '-f', '1', '-l', '1', str(folder / 'letterhead.pdf'), str(folder / 'page')],
+                           capture_output=True, timeout=60, check=True)
+            image = Image.open(next(folder.glob('page*.png'))).convert('L')
+            width, height = image.size
+            pixels = image.load()
+            inked = [any(pixels[x, y] < 235 for x in range(0, width, 2)) for y in range(height)]
+    except Exception:  # noqa: BLE001  (a letterhead that cannot be rendered here still uploads with its own margins)
+        return {'available': False, 'reason': 'The letterhead could not be measured; its own margins are used.'}
+    page_in = parsed['page_h'] / 1440
+    header_end = max((y for y in range(int(height * .3)) if inked[y]), default=-1)
+    footer_start = min((y for y in range(int(height * .7), height) if inked[y]), default=height)
+    header_in = round((header_end + 1) / height * page_in, 2)
+    footer_in = round((height - footer_start) / height * page_in, 2)
+    if header_in > 3 or footer_in > 3:          # a tinted page or full-page artwork: nothing sensible to measure
+        return {'available': False, 'reason': 'The letterhead artwork covers the page, so its own margins are used.'}
+    margins = {'top': max(parsed['top'], round((header_in + CLEAR_TOP_IN) * 1440)),
+               'bottom': max(parsed['bottom'], round((footer_in + CLEAR_BOTTOM_IN) * 1440)),
+               'left': max(parsed['left'], MIN_SIDE_TWIPS), 'right': max(parsed['right'], MIN_SIDE_TWIPS)}
+    size = 'US Letter' if abs(parsed['page_w'] - 12240) < 200 and abs(parsed['page_h'] - 15840) < 200 else \
+           'A4' if abs(parsed['page_w'] - 11906) < 200 and abs(parsed['page_h'] - 16838) < 200 else 'custom'
+    return {'available': True, 'header_in': header_in, 'footer_in': footer_in, 'page': size,
+            'page_in': [round(parsed['page_w'] / 1440, 2), round(page_in, 2)], 'margins': margins}
+
+
+def checked(parsed: dict) -> tuple[dict, dict]:
+    """The parsed letterhead with margins that clear its artwork (when it can be measured), and the check itself."""
+    check = letterhead_check(parsed)
+    if check.get('available'):
+        parsed = dict(parsed, **check['margins'])
+        parsed['width'] = parsed['page_w'] - parsed['left'] - parsed['right']
+    return parsed, check
 
 
 def _geometry(payload: dict, parsed: dict) -> dict:
@@ -292,6 +349,8 @@ def create_company(actor: dict, payload: dict) -> dict:
     if not payload.get('letterhead'):
         raise ValueError('Upload the company letterhead (.docx).')
     parsed = parse_letterhead(comp.decode_image(payload['letterhead']))
+    if not payload.get('margins'):
+        parsed, _ = checked(parsed)
     geometry = _geometry(payload, parsed)
     logo_bytes, logo_ext = (validate_logo(payload['logo']) if payload.get('logo') else make_logo(identity['short'], identity['color']))
     now = time.time()
@@ -324,6 +383,8 @@ def update_company(actor: dict, key: str, payload: dict) -> dict:
     values = dict(identity, updated=time.time())
     if payload.get('letterhead'):
         parsed = parse_letterhead(comp.decode_image(payload['letterhead']))
+        if not payload.get('margins'):
+            parsed, _ = checked(parsed)
         geometry = _geometry(payload, parsed)
         values.update(letterhead=parsed['bytes'], letterhead_sha256=parsed['sha256'], **{k: geometry[k] for k in ('width', 'top', 'bottom', 'left', 'right')})
     elif payload.get('margins'):
@@ -403,6 +464,8 @@ def update_builtin(actor: dict, key: str, payload: dict) -> dict:
         files['logo'] = logo
     if payload.get('letterhead'):
         parsed = parse_letterhead(comp.decode_image(payload['letterhead']))
+        if not payload.get('margins'):
+            parsed, _ = checked(parsed)
         value.update(letterhead_sha=parsed['sha256'], **_geometry(payload, parsed))
         files['letterhead'] = parsed['bytes']
     elif payload.get('margins'):
@@ -494,6 +557,8 @@ def preview_pdf(payload: dict) -> bytes:
     if not payload.get('letterhead'):
         raise ValueError('Upload the letterhead to preview a sample.')
     parsed = parse_letterhead(comp.decode_image(payload['letterhead']))
+    if not payload.get('margins'):
+        parsed, _ = checked(parsed)
     geometry = _geometry(payload, parsed)
     with tempfile.TemporaryDirectory(prefix='tfsc-preview-') as tmp:
         from pathlib import Path
@@ -526,10 +591,11 @@ def install(app) -> None:
     def api_parse_letterhead(request: Request, payload: dict = Body(...)):
         with db.engine.connect() as c:
             super_admin(request, c)
-        parsed = parse_letterhead(comp.decode_image(payload.get('letterhead')))
+        parsed, check = checked(parse_letterhead(comp.decode_image(payload.get('letterhead'))))
         return {'page_width': round(parsed['page_w'] / 1440, 2), 'page_height': round(parsed['page_h'] / 1440, 2),
                 'margins': {k: round(parsed[k] / 1440, 2) for k in ('top', 'bottom', 'left', 'right')},
-                'headers': parsed['headers'], 'footers': parsed['footers']}
+                'headers': parsed['headers'], 'footers': parsed['footers'],
+                'check': {k: v for k, v in check.items() if k != 'margins'}}
 
     @app.post('/api/admin/companies/preview')
     def api_preview(request: Request, payload: dict = Body(...)):

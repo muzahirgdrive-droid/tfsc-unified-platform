@@ -97,6 +97,22 @@ logo, letterhead (.docx) and page margins. Every agreement generated afterwards 
 email from here; agreements already generated or signed keep the details they were issued with. The legal name is
 fixed, because it identifies the company on every agreement, envelope, mailbox and user permission.
 
+**Five more companies** come with this release, each with its letterhead, logo, address and governing law: House of RCM,
+LLC (Austin, Texas law), Quantum Medical Services (Spokane, Washington law), MedEquity Solutions, Inc. (Rexburg, Idaho
+law), 3E Medical Billing, LLC (Round Lake, Illinois law) and Billing Nest, LLC (Laurel, Maryland law). They offer the
+standard service catalogue. **Before the first agreement for each of them**, open **Edit company details** on its card
+and enter the **Authorized signatory** and **Title** (and a signature under **Signature on agreements**); until then the
+company's tile says "Signatory not set" and generating for it explains what to add. A company you had already added
+by hand under the same legal name is left exactly as it is.
+
+**Letterhead check.** When you upload a letterhead (adding a company or changing one), the app lays out a page on it the
+way the server prints agreements and measures where the header artwork ends and the footer artwork starts. It then sets
+the margins so the agreement text and the "Page X of Y" line never sit on the logo or the footer, and shows what it
+measured (header, footer, page size, margins) under the upload. You can still adjust the margins under **Advanced**.
+
+An added company with no services of its own offers the standard service catalogue; add services to its card to offer
+only those instead.
+
 The same screen holds the workspace settings shown on every page and email: portal name, copyright holder (the
 "© year ... All rights reserved." line), the **Help email** (muzahir@scribealign.com) and the security line on the
 signing page.
