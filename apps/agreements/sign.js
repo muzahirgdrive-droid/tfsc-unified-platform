@@ -175,7 +175,8 @@
 
   function consentCard(state) {
     $("consent-title").textContent = state.subject || "Documents to review";
-    $("consent-from").textContent = `From ${state.sender} · ${state.company_display || state.company}`;
+    const company = state.company_display || state.company;
+    $("consent-from").textContent = state.sender === company ? `From ${company}` : `From ${state.sender} · ${company}`;
     const list = $("consent-docs"); list.replaceChildren();
     (state.documents || []).forEach(d => {
       const li = el("li"); const text = el("div"); text.append(el("span", "", shortDoc(d.name)), el("small", "", `${d.pages} page${d.pages === 1 ? "" : "s"}`));
@@ -198,7 +199,8 @@
   }
   function senderCard(state, signing) {
     $("sender-avatar").textContent = initialsOf(state.sender) || "·";
-    const line = $("sender-line"); line.replaceChildren(document.createTextNode(state.sender), el("span", "", ` · ${state.company_display || state.company}`));
+    const line = $("sender-line"); const from = state.company_display || state.company;
+    line.replaceChildren(document.createTextNode(state.sender), ...(state.sender === from ? [] : [el("span", "", ` · ${from}`)]));
     $("sender-text").textContent = state.message || `${state.subject}`;
     $("sender-note").textContent = state.recipient.note ? `Note for you: ${state.recipient.note}` : "";
     $("sender-note").hidden = !state.recipient.note;

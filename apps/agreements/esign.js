@@ -3,7 +3,8 @@
 (() => {
   const $ = id => document.getElementById(id);
   const root = () => $("esign-view");
-  const COLORS = ["#f5b400", "#2a8ff0", "#e5547a", "#2fae7f", "#8e6cf0", "#f0863c", "#3bb6c4", "#9a9a9a"];
+  // Each signer's colour while preparing: the first (usually the client) in the signing violet they will see, the second in green.
+  const COLORS = ["#4C2BD1", "#0F8A5F", "#1F6FD8", "#C2416B", "#B76E00", "#0E8C99", "#8A4FD6", "#64748B"];
   const STATUS = {draft: "Draft", sent: "Waiting for others", completing: "Finishing", completed: "Completed", declined: "Declined", voided: "Voided", expired: "Expired", template: "Template"};
   const TONE = {draft: "muted", sent: "info", completing: "info", completed: "success", declined: "danger", voided: "muted", expired: "warning", template: "neutral"};
   const R_STATUS = {created: "Waiting for their turn", sent: "Sent", delivered: "Viewed", signed: "Signed", completed: "Completed", declined: "Declined", auth_failed: "Locked: wrong access code",
@@ -881,10 +882,32 @@
       const tname = input(e.template_name, "text", {maxLength: 150}); tname.addEventListener("input", () => { e.template_name = tname.value; dirty(); });
       body.append(field("Template name", tname));
     }
-    const subject = input(e.subject, "text", {maxLength: 200, placeholder: "Please sign: Services Agreement"}); subject.addEventListener("input", () => { e.subject = subject.value; dirty(); });
+    const subject = input(e.subject, "text", {maxLength: 200, placeholder: "Please sign: Services Agreement"});
     const message = Object.assign(el("textarea"), {value: e.message, maxLength: 4000, rows: 5, placeholder: "Add a short note for the recipients"});
     message.addEventListener("input", () => { e.message = message.value; dirty(); });
-    body.append(field("Email subject", subject), field("Message", message, template ? "For bulk send, {{name}}, {{first_name}} and {{client}} are replaced with each recipient's details." : undefined));
+    const subjectField = field("Email subject", subject);
+    if (e.status === "draft") {
+      // The automatic subject names every document in the envelope and follows them; a subject the sender types is sent as typed.
+      const pill = el("span", "subject-pill"), note = el("div", "subject-note");
+      const paint = auto => {
+        pill.textContent = auto ? "Automatic" : "Yours"; pill.classList.toggle("yours", !auto);
+        note.replaceChildren(el("span", "subject-note-icon", auto ? "✓" : "✎"));
+        const text = el("div");
+        if (auto) text.append(el("strong", "", "Named from the documents in this envelope"), document.createTextNode(" and updated whenever you add, remove or reorder one. Type your own subject and it is sent exactly as you write it."));
+        else {
+          text.append(el("strong", "", "Your subject is sent exactly as you typed it."), document.createTextNode(" The reminders and the completed copy use it too. "));
+          const again = el("button", "link-button", "Use the automatic subject again"); again.type = "button";
+          again.addEventListener("click", () => { editor.subjectAutoAgain = true; save(false).catch(fail); });
+          text.append(again);
+        }
+        note.append(text);
+      };
+      paint(e.settings?.subject_auto !== false);
+      subjectField.querySelector("label")?.append(pill);
+      subjectField.append(note);
+      subject.addEventListener("input", () => { e.subject = subject.value; dirty(); paint(false); });
+    } else subject.addEventListener("input", () => { e.subject = subject.value; dirty(); });
+    body.append(subjectField, field("Message", message, template ? "For bulk send, {{name}}, {{first_name}} and {{client}} are replaced with each recipient's details." : undefined));
     return s;
   }
 
@@ -1116,6 +1139,7 @@
     place();
     if (f.w > 40) node.append(el("span", "kind-icon", ICON_TEXT[KINDS[f.kind][3]]));
     node.append(el("span", "esign-field-label", fieldText(f)));
+    if (f.required && !AUTO.includes(f.kind) && f.kind !== "note") { const req = el("span", "req", "*"); req.setAttribute("aria-hidden", "true"); node.append(req); }
     const handle = el("span", "esign-handle"); handle.setAttribute("aria-hidden", "true"); if (!locked) node.append(handle);
     node.setAttribute("aria-label", `${KINDS[f.kind][0]} for ${editor.recipients.find(r => r.key === f.recipient)?.name || "recipient"}`);
     node.title = `${KINDS[f.kind][0]} · ${editor.recipients.find(r => r.key === f.recipient)?.name || ""}${f.required ? " · required" : ""}`;
@@ -1269,6 +1293,7 @@
     const e = editor.e, stage = editor.stage, library = editor.library, active = editor.active;
     const body = {version: e.version, message: e.message, settings: e.settings, ...layoutBody()};
     if (e.status === "template") body.template_name = e.template_name; else { body.subject = e.subject; body.client_id = e.client_id || null; body.test = !!e.test; }
+    if (editor.subjectAutoAgain) { body.subject_auto = true; editor.subjectAutoAgain = false; }
     const saved = await api(`/api/esign/envelopes/${e.id}/draft`, body);
     const shows = new Map(editor.recipients.map(r => [r.key, r.show]));
     await openEditor(saved.id, saved, false, stage);

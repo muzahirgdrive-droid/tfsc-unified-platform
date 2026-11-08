@@ -264,8 +264,9 @@ def create(c, actor: dict, payload: dict) -> dict:
     signatory = (contract['payload'].get('client_signatory') if contract else '') or ''
     message = (f"Hello{' ' + signatory if signatory else ''},\n\nPlease review and sign the {'documents' if not titles else 'agreements' if len(titles) > 1 else 'agreement'} from "
                f"{entity['display'].rstrip('.')}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
-    c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(subject=clean(payload.get('subject') or subject, 'Subject', 200),
-                                                                               message=clean(payload.get('message') or message, 'Message', 4000)))
+    typed = clean(payload.get('subject'), 'Subject', 200)
+    c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(subject=typed or subject[:200], message=clean(payload.get('message') or message, 'Message', 4000),
+                                                                               settings=dict(envelope['settings'] or {}, subject_auto=not typed)))
     record(c, envelope['id'], 'created', actor['name'], detail={'documents': titles})
     db.log(c, actor, 'esign.created', client_id, {'envelope': envelope['ref'], 'contract_id': envelope['contract_id']})
     return envelope
@@ -329,12 +330,19 @@ def save_draft(c, actor: dict, envelope: dict, payload: dict) -> None:
     if envelope['status'] not in ('draft', 'template'):
         raise HTTPException(409, 'Only a draft can be edited. Use Correct for an envelope in progress.')
     values = {'updated': now(), 'version': envelope['version'] + 1}
-    if 'subject' in payload:
-        values['subject'] = clean(payload['subject'], 'Subject', 200)
+    subject_auto = None
+    if payload.get('subject_auto') is True and envelope['status'] == 'draft':
+        values['subject'], subject_auto = auto_subject(c, envelope), True
+    elif 'subject' in payload:
+        typed = clean(payload['subject'], 'Subject', 200)
+        if typed != (envelope['subject'] or ''):
+            values['subject'], subject_auto = typed, False
     if 'message' in payload:
         values['message'] = clean(payload['message'], 'Message', 4000)
     if 'settings' in payload:
         values['settings'] = settings_value(payload['settings'], envelope['settings'])
+    if subject_auto is not None:
+        values['settings'] = dict(values.get('settings') or envelope['settings'] or {}, subject_auto=subject_auto)
     if envelope['status'] == 'template' and 'template_name' in payload:
         values['template_name'] = clean(payload['template_name'], 'Template name', 150, True)
     if envelope['status'] == 'draft' and isinstance(payload.get('test'), bool) and payload['test'] != bool(envelope.get('test')):
@@ -595,7 +603,7 @@ def recipient_email(c, envelope: dict, r: dict, kind: str) -> None:
     owner = user_row(c, envelope['owner_id'])
     docs = [d['name'] for d in c.execute(select(documents.c.name).where(documents.c.envelope_id == envelope['id']).order_by(documents.c.position)).mappings()]
     ctx = dict(entity=entity, box=box, subject=envelope['subject'], message=envelope['message'], note=r['note'], role=r['role'], recipient_name=r['name'] or r['email'],
-               sender_name=owner['name'], sender_email=box['address'] or owner['email'], documents=docs, access_code=bool(r['access_code']),
+               sender_name=entity['display'], sender_email=box['address'] or owner['email'], documents=docs, access_code=bool(r['access_code']),
                expires=expires_label(envelope), url=sign_url(issue_token(c, r['id'])))
     subject, body, html_body = mailer.compose(kind, ctx)
     mailer.enqueue(c, envelope['entity'], kind, [r['email']], subject, body, html_body, envelope_id=envelope['id'], recipient_id=r['id'])
@@ -738,7 +746,7 @@ def _closing_emails(c, envelope: dict, kind: str, reason: str, exclude: str | No
         if r['id'] == exclude:
             continue
         subject, body, html_body = mailer.compose('voided' if kind == 'voided' else 'declined_info', dict(
-            entity=entity, box=box, subject=envelope['subject'], recipient_name=r['name'] or r['email'], reason=reason if kind == 'voided' else '', sender_name=owner['name']))
+            entity=entity, box=box, subject=envelope['subject'], recipient_name=r['name'] or r['email'], reason=reason if kind == 'voided' else '', sender_name=entity['display']))
         mailer.enqueue(c, envelope['entity'], kind, [r['email']], subject, body, html_body, envelope_id=envelope['id'], recipient_id=r['id'])
 
 
@@ -874,7 +882,8 @@ def correct_layout(c, actor: dict, envelope: dict, layout: dict, ip: str, ua: st
         changes['removed'].append(r['email'] or r['name'])
         if r['status'] in OPEN_STATUSES and r['email'] and r['role'] != 'in_person':
             subject, body, html_body = mailer.compose('removed', dict(entity=get_entity(envelope['entity']), box=mailer.load(c, envelope['entity']),
-                                                                     subject=envelope['subject'], recipient_name=r['name'] or r['email'], sender_name=owner['name']))
+                                                                     subject=envelope['subject'], recipient_name=r['name'] or r['email'],
+                                                                     sender_name=get_entity(envelope['entity'])['display']))
             mailer.enqueue(c, envelope['entity'], 'removed', [r['email']], subject, body, html_body, envelope_id=envelope['id'])
     for row, old in rows:
         if not old:
@@ -1064,7 +1073,7 @@ def signer_state(c, session: dict, r: dict, envelope: dict, request: Request) ->
     status = envelope['status']
     in_person = session['via'] == 'in_person'
     can_act = status == 'sent' and r['status'] in OPEN_STATUSES and r['role'] != 'cc' and (r['role'] != 'in_person' or in_person)
-    out = dict(subject=envelope['subject'], message=envelope['message'], ref=envelope['ref'], envelope_status=status, sender=owner['name'],
+    out = dict(subject=envelope['subject'], message=envelope['message'], ref=envelope['ref'], envelope_status=status, sender=get_entity(envelope['entity'])['display'],
                sender_email=box['address'] or owner['email'], company=entity['name'], company_short=entity['short'],
                brand=dict(logo=_brand_logo(entity), color=entity['color'], accent=entity['accent'], dark=entity.get('dark') or entity['color']),
                signature_ref=signature_id(envelope, r)[:16].upper(), fit=esign_pdf.fit_constants(),
@@ -1482,8 +1491,13 @@ def finalize(envelope_id: str) -> None:
         completed_event = build_event(c, envelope_id, 'completed', 'TFSC Agreements', at=t, detail={'documents': [{'name': d['name'], 'sha256': esign_pdf.sha256(finals[d['id']])} for d in docs]})
         trail = [dict(e) for e in c.execute(select(events).where(events.c.envelope_id == envelope_id).order_by(events.c.seq)).mappings()] + [completed_event]
         names = {r['id']: r['name'] for r in rs}
+        people = set(names.values())
+        team = set(c.execute(select(db.users.c.name)).scalars()) - people
         for e in trail:
             e['label'] = LABELS.get(e['kind'], e['kind']) + (f" ({names[e['recipient_id']]})" if e.get('recipient_id') in names and e['kind'] in ('routed',) else '')
+            if not e.get('recipient_id') and e.get('actor') in team:
+                e['actor'] = entity['display']
+        sender = {'name': entity['display'], 'email': box['address'] or sender['email']}
         cert = esign_pdf.certificate(dict(envelope, status='completed', completed_at=t), entity,
                                      [dict(d, final_sha256=esign_pdf.sha256(finals[d['id']])) for d in docs],
                                      [dict(r, signature_id=signers[r['id']]['signature_id']) for r in rs], trail, sender, ersd(entity, box['address']), mailer.origin())
@@ -1776,6 +1790,37 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = ''
 # ------------------------------------------------------------------ preparing a draft: suggested fields, the client's documents
 _SUGGESTED: dict = {}
 AGREEMENT_TITLES = {'baa': 'Business Associate Agreement', 'services': 'Services Agreement', 'nda': 'Mutual NDA'}
+
+
+def auto_subject(c, envelope: dict) -> str:
+    """The subject written from the envelope's documents: "Please sign: Business Associate Agreement and Services Agreement - Client"."""
+    titles = []
+    for name, agreement in c.execute(select(documents.c.name, documents.c.agreement).where(documents.c.envelope_id == envelope['id'],
+                                                                                          documents.c.source != 'attachment').order_by(documents.c.position)).all():
+        title = AGREEMENT_TITLES.get(agreement or '') or re.sub(r'\.pdf$', '', name or '', flags=re.I).strip()
+        if title and title not in titles:
+            titles.append(title)
+    listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else (titles[0] if titles else 'documents')
+    client = c.execute(select(db.clients.c.name).where(db.clients.c.id == envelope['client_id'])).scalar() if envelope.get('client_id') else ''
+    return (f'Please sign: {listed}' + (f' - {client}' if client else ''))[:200]
+
+
+def subject_is_auto(c, envelope: dict) -> bool:
+    """Whether the subject still follows the documents (it does until the sender types their own)."""
+    if envelope['status'] != 'draft':
+        return False
+    settings = envelope.get('settings') or {}
+    if 'subject_auto' in settings:
+        return settings['subject_auto'] is True
+    subject = (envelope.get('subject') or '').strip()     # a draft from before this setting: automatic if it reads as the automatic one
+    return not subject or subject.startswith('Please sign: documents') or subject == auto_subject(c, envelope)
+
+
+def follow_documents(c, envelope: dict, was_auto: bool) -> dict:
+    """After documents are added, removed or reordered: the automatic subject names them all; a typed subject stays."""
+    if not was_auto:
+        return {}
+    return {'subject': auto_subject(c, envelope), 'settings': dict(envelope.get('settings') or {}, subject_auto=True)}
 SENDABLE = ('.pdf', '.docx', '.doc', '.odt', '.rtf', '.txt', '.png', '.jpg', '.jpeg')
 
 
@@ -1913,16 +1958,9 @@ def install(app) -> None:  # noqa: C901  (route table)
                 raise HTTPException(409, 'Documents can be added only to a draft.')
             if source_id and c.execute(select(documents.c.id).where(documents.c.envelope_id == envelope_id, documents.c.source_document_id == source_id)).first():
                 raise HTTPException(409, 'This agreement is already in the envelope.')
+            was_auto = subject_is_auto(c, envelope)
             add_document(c, envelope, name, raw, kind, source_id, agreement)
-            values = {'updated': now(), 'version': envelope['version'] + 1}
-            if envelope['status'] == 'draft' and envelope['subject'].startswith('Please sign: documents'):
-                titles = [AGREEMENT_TITLES.get(r[0], '') for r in c.execute(select(documents.c.agreement).where(documents.c.envelope_id == envelope_id,
-                                                                                                              documents.c.source == 'generated').order_by(documents.c.position))]
-                titles = [x for x in titles if x]
-                if titles:
-                    listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else titles[0]
-                    client = c.execute(select(db.clients.c.name).where(db.clients.c.id == envelope['client_id'])).scalar() or ''
-                    values['subject'] = clean(f'Please sign: {listed}' + (f' - {client}' if client else ''), 'Subject', 200)
+            values = {'updated': now(), 'version': envelope['version'] + 1} | follow_documents(c, envelope, was_auto)
             c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(**values))
             db.log(c, a, 'esign.document_added', envelope['client_id'], {'envelope': envelope['ref'], 'document': name})
             return detail(c, a, get_envelope(c, a, envelope_id))
@@ -1974,8 +2012,9 @@ def install(app) -> None:  # noqa: C901  (route table)
             envelope = lock(c, envelope_id)
             if envelope['status'] not in ('draft', 'template'):
                 raise HTTPException(409, 'Documents can be added only to a draft.')
+            was_auto = subject_is_auto(c, envelope)
             add_document(c, envelope, name, pdf, 'upload')
-            c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(updated=now(), version=envelope['version'] + 1))
+            c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(updated=now(), version=envelope['version'] + 1, **follow_documents(c, envelope, was_auto)))
             return detail(c, a, get_envelope(c, a, envelope_id))
 
     @app.post('/api/esign/envelopes/{envelope_id}/documents/{document_id}/remove')
@@ -1986,12 +2025,13 @@ def install(app) -> None:  # noqa: C901  (route table)
             envelope = lock(c, envelope_id)
             if envelope['status'] not in ('draft', 'template'):
                 raise HTTPException(409, 'Documents can be removed only from a draft.')
+            was_auto = subject_is_auto(c, envelope)
             c.execute(delete(fields).where(fields.c.document_id == document_id, fields.c.envelope_id == envelope_id))
             if c.execute(delete(documents).where(documents.c.id == document_id, documents.c.envelope_id == envelope_id)).rowcount != 1:
                 raise HTTPException(404, 'Document not found.')
             for i, d in enumerate(c.execute(select(documents.c.id).where(documents.c.envelope_id == envelope_id).order_by(documents.c.position)).all()):
                 c.execute(update(documents).where(documents.c.id == d[0]).values(position=i))
-            c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(updated=now(), version=envelope['version'] + 1))
+            c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(updated=now(), version=envelope['version'] + 1, **follow_documents(c, envelope, was_auto)))
             return detail(c, a, get_envelope(c, a, envelope_id))
 
     def _doc_for_sender(c, a, document_id):
