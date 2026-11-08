@@ -28,7 +28,14 @@ clients=Table('clients',meta,Column('id',String(32),primary_key=True),
     Column('profile',JSON,nullable=True),Column('created',Float,nullable=True),  # profile: phone, email, website, notes
     Column('test',Boolean,nullable=False,default=False,server_default=false()),  # practice client: kept out of counts and reports
     Column('client_number',String(20),nullable=True),  # permanent register number, CL-0001 onward (client_numbers.py); never reused
+    # Trash: a Super Admin deleted the client; it can be restored for 30 days, then it is purged (details wiped, record kept
+    # hidden so its signed agreements stay tied to it and its number stays retired). client_trash.py
+    Column('deleted_at',Float,nullable=True),Column('deleted_by',String(32),nullable=True),Column('purged_at',Float,nullable=True),
     UniqueConstraint('owner_id','name_key',name='uq_client_owner_name'))
+# Every client number ever given, kept for good: a number is never changed, released or given to another client. The database
+# itself enforces it (triggers from migration 0011): changing a client's number, reusing one or deleting a row here is refused.
+client_number_registry=Table('client_number_registry',meta,Column('number',String(20),primary_key=True),
+    Column('client_id',String(32),nullable=False),Column('issued',Float,nullable=False))
 contracts=Table('contracts',meta,Column('id',String(64),primary_key=True),
     Column('client_id',String(32),ForeignKey('clients.id'),nullable=False),
     Column('owner_id',String(32),ForeignKey('users.id'),nullable=False),Column('entity',String(100),nullable=False),

@@ -1,8 +1,9 @@
 """Client numbers: every client gets a permanent number, CL-0001 onward (CL-10000 after CL-9999).
 
-A number is given once, when the client is created, and never changes or comes back, even if the client is renamed or
-removed: the last number given is kept in settings ("client_numbers"), and the next one is one more than both that and the
-highest number in use. Numbering is serialized: PostgreSQL takes a transaction-scoped advisory lock; on SQLite the caller's
+A number is given once, when the client is created, and never changes or comes back, even if the client is renamed, deleted
+or purged: the last number given is kept in settings ("client_numbers") and every number ever given is kept in
+client_number_registry; the next one is one more than all of these. The database refuses a changed or reused number itself
+(triggers from migration 0011). Numbering is serialized: PostgreSQL takes a transaction-scoped advisory lock; on SQLite the caller's
 transaction already holds the database's write lock (call these after the client row is written, or inside esign.write_tx()).
 
 ``ensure_client_numbers`` is the safety net: it numbers any client still without one (created by an older release running
@@ -39,10 +40,11 @@ def _last(c) -> tuple[int, bool]:
     stored = c.execute(select(db.settings.c.value).where(db.settings.c.key == COUNTER)).scalar()
     last = stored['last'] if isinstance(stored, dict) and isinstance(stored.get('last'), int) else 0
     # Numbers are CL- and digits, so among the longest ones the text order is the number order (CL-10000 > CL-9999).
-    longest = c.execute(select(func.max(func.length(db.clients.c.client_number)))).scalar()
-    if longest:
-        top = c.execute(select(func.max(db.clients.c.client_number)).where(func.length(db.clients.c.client_number) == longest)).scalar()
-        last = max(last, parse(top))
+    for column in (db.clients.c.client_number, db.client_number_registry.c.number):   # the registry keeps numbers of clients long gone
+        longest = c.execute(select(func.max(func.length(column)))).scalar()
+        if longest:
+            top = c.execute(select(func.max(column)).where(func.length(column) == longest)).scalar()
+            last = max(last, parse(top))
     return last, stored is not None
 
 

@@ -230,10 +230,10 @@ class Numbers(Records):
         self.assertEqual(client_numbers.format_number(7), 'CL-0007')
         self.assertEqual(client_numbers.format_number(10000), 'CL-10000')
         with db.engine.begin() as c:
-            a, b = self.client(self.u1, 'A'), self.client(self.u1, 'B')
-            c.execute(update(db.clients).where(db.clients.c.id == a).values(client_number='CL-9999'))
-            c.execute(update(db.clients).where(db.clients.c.id == b).values(client_number=None))
-            c.execute(update(db.settings).where(db.settings.c.key == 'client_numbers').values(value={'last': 2}))
+            # a client that already holds CL-9999 (written directly, as an import from another system might) and one without a number
+            a, b = db.uid(), db.uid()
+            c.execute(db.clients.insert().values(id=a, owner_id=self.u1['id'], name='A', name_key='ka', address='', draft={}, updated=1, client_number='CL-9999'))
+            c.execute(db.clients.insert().values(id=b, owner_id=self.u1['id'], name='B', name_key='kb', address='', draft={}, updated=2))
             client_numbers.ensure_client_numbers(c)
             self.assertEqual(c.execute(select(db.clients.c.client_number).where(db.clients.c.id == b)).scalar(), 'CL-10000')
             self.assertEqual(client_numbers.assign_one(c, b), 'CL-10000', 'a client keeps its number')

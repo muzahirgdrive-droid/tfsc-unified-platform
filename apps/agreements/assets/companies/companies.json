@@ -116,17 +116,22 @@
   "accent": "#7B86C8",
   "dark": "#0A1828",
   "letterhead": "billing_nest-letterhead.docx",
-  "letterhead_sha256": "b0dedfb1e6dc36d56ddd09bd99a72118a79406edcb7f286c7a211cb620d55911",
+  "letterhead_sha256": "847a0285724744ce5e9e8b8eee0b3cb28555a0963d61429eaa441e0617dfc321",
   "logo": "billing_nest-logo.png",
   "width": 10080,
   "top": 2491,
-  "bottom": 1901,
+  "bottom": 2174,
   "left": 1080,
   "right": 1080,
   "check": {
+   "available": true,
    "header_in": 1.41,
-   "footer_in": 0.77,
-   "page": "US Letter"
+   "footer_in": 0.96,
+   "page": "US Letter",
+   "page_in": [
+    8.5,
+    11.0
+   ]
   }
  }
 ]

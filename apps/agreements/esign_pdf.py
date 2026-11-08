@@ -428,7 +428,7 @@ def _bracket(c, x, y, h, tick=4.0):
 
 
 def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) -> bytes:
-    """Return the completed PDF: every field drawn on its page and the envelope ID at the top of each page.
+    """Return the completed PDF: every field drawn on its page and the envelope ID along the left margin of each page.
 
     fields: dicts with page, kind, x, y, w, h, value, recipient_id; signers: recipient_id -> {name, signature_png,
     initials_png, signature_id}.
@@ -447,9 +447,15 @@ def stamp(raw: bytes, ref: str, fields: list[dict], signers: dict[str, dict]) ->
         dw, dh = (height, width) if rotation in (90, 270) else (width, height)
         buffer = io.BytesIO()
         c = canvas.Canvas(buffer, pagesize=(dw, dh))
+        # The envelope ID runs up the left margin at mid-page: always on white paper, clear of any letterhead artwork at the
+        # top or bottom and of the agreement text.
+        c.saveState()
         c.setFillColor(MUTED)
         c.setFont(regular, 6.5)
-        c.drawString(14, dh - 11, _safe_text(f'TFSC Envelope ID: {ref}', regular))
+        c.translate(22, dh / 2)
+        c.rotate(90)
+        c.drawCentredString(0, 0, _safe_text(f'TFSC Envelope ID: {ref}', regular))
+        c.restoreState()
         page_fields = by_page.get(number, [])
         for f in page_fields:
             value = f.get('value')

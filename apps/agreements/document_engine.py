@@ -50,6 +50,45 @@ def _run(text, bold=False, size=None, color=None):
     return '<w:r><w:rPr>' + props + '</w:rPr>' + '<w:br/>'.join('<w:t xml:space="preserve">'+_escape(c)+'</w:t>' for c in chunks) + '</w:r>'
 
 
+# The running footer: the agreement's own typeface, one size and one quiet colour for every part of the line, so the page
+# number never prints larger or in another face than the words around it.
+FOOT_RPR='<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:color w:val="4A5361"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>'
+
+
+def _frun(text):
+    return '<w:r>'+FOOT_RPR+'<w:t xml:space="preserve">'+_escape(text)+'</w:t></w:r>'
+
+
+def _field(instr, shown):
+    # Every run of the field carries the footer formatting: Word and LibreOffice take the number's look from these runs.
+    return ('<w:r>'+FOOT_RPR+'<w:fldChar w:fldCharType="begin"/></w:r><w:r>'+FOOT_RPR+f'<w:instrText xml:space="preserve"> {instr} </w:instrText></w:r>'
+            '<w:r>'+FOOT_RPR+'<w:fldChar w:fldCharType="separate"/></w:r>'+_frun(shown)+'<w:r>'+FOOT_RPR+'<w:fldChar w:fldCharType="end"/></w:r>')
+
+
+def _strip_counter(xml: bytes) -> bytes:
+    """Remove a "Page X of Y" a letterhead brings in its footer: every agreement uses the one standard counter instead."""
+    text = xml.decode('utf-8')
+    start = re.search(r'<w:r>(?:(?!</w:r>).)*?<w:t[^>]*>\s*Page\s*</w:t>\s*</w:r>', text, re.S)
+    if not start or 'NUMPAGES' not in text[start.end():]:
+        return xml
+    end = re.compile(r'<w:fldChar w:fldCharType="end"/>\s*</w:r>').search(text, text.find('NUMPAGES', start.end()))
+    return (text[:start.start()] + text[end.end():]).encode('utf-8') if end else xml
+
+
+def _keep_artwork_in_place(xml: bytes, shift_twips: int) -> bytes:
+    """Artwork placed relative to the text margin moves when the margin is widened; move it back by the same amount so the
+    letterhead prints exactly as designed (a footer address must never be pushed off the page)."""
+    if not shift_twips:
+        return xml
+    return re.sub(rb'(<wp:positionH relativeFrom="(?:margin|column)">\s*<wp:posOffset>)(-?\d+)(</wp:posOffset>)',
+                  lambda m: m.group(1) + str(int(m.group(2)) - shift_twips * 635).encode() + m.group(3), xml)
+
+
+def running_title(blocks) -> str:
+    title = next((b.get('text', '') for b in blocks if b.get('type') == 'title'), '')
+    return ' '.join(w if w in ('NDA', 'BAA') else w.capitalize() if '-' not in w else '-'.join(x.capitalize() for x in w.split('-'))
+                    for w in title.split())
+
 def _p(text, style='SABody', *, keep=False, page_break=False, bold=False, align=None, bullet=False, number=None):
     props = f'<w:pStyle w:val="{style}"/>'
     if keep:
@@ -254,33 +293,44 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
         parts['[Content_Types].xml']=types
     xml=parts['word/document.xml'].decode('utf-8')
     section=re.search(r'<w:sectPr\b[^>]*>.*?</w:sectPr>',xml,re.S).group(0)
+    template_left=int(re.search(r'w:left="(\d+)"',section).group(1))
+    for name in list(parts):
+        if re.fullmatch(r'word/(header|footer)\d+\.xml',name):
+            parts[name]=_keep_artwork_in_place(parts[name],entity['left']-template_left)
     for margin in ('top','right','bottom','left'):
         section=re.sub(fr'w:{margin}="\d+"',f'w:{margin}="{entity[margin]}"',section)
     if data.get('test'):
         section=add_test_watermark(parts,section)
-    if entity['key']!='scribe':
-        page_height=int(re.search(r'w:pgSz[^>]*w:h="(\d+)"',section).group(1))
-        page_field='<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'+_run('1',size=18)+'<w:r><w:fldChar w:fldCharType="end"/></w:r>'
-        total_field=page_field.replace(' PAGE ',' NUMPAGES ')
-        # An added company's bottom margin comes from its letterhead check (footer artwork + room for this line), so the
-        # counter sits just below the text, above the artwork. The three built-in letterheads keep their tested place.
-        custom=bool(entity.get('custom'))
-        counter_y=page_height-entity['bottom']+150 if custom else page_height-1500
-        numbers='<w:p><w:pPr><w:framePr w:w="2500" w:h="260" w:hRule="atLeast" w:x="'+str(entity['left']+entity['width']-2500)+'" w:y="'+str(counter_y)+'" w:hAnchor="page" w:vAnchor="page" w:wrap="none"/><w:jc w:val="right"/></w:pPr>'+_run('Page ',size=18)+page_field+_run(' of ',size=18)+total_field+'</w:p>'
-        server_renderer=os.environ.get('TFSC_RENDERER')=='libreoffice'
-        if server_renderer:
-            # Writer ignores page-relative footer frames. A regular paragraph
-            # before the retained artwork keeps the counter in clear white space;
-            # room after it lifts it above a tall footer (the footer grows upwards).
-            lift=max(0,entity['bottom']-1500) if custom else 0
-            numbers=re.sub(r'<w:framePr[^>]*/>',f'<w:spacing w:before="0" w:after="{lift}" w:line="240" w:lineRule="auto"/>',numbers)
-        for name in list(parts):
-            if re.fullmatch(r'word/footer\d+\.xml',name):
-                if server_renderer:
-                    parts[name]=re.sub(rb'(<w:ftr\b[^>]*>)',lambda m:m[1]+numbers.encode(),parts[name],count=1)
-                else:parts[name]=parts[name].replace(b'</w:ftr>',numbers.encode()+b'</w:ftr>')
-            if entity['key']=='24-7' and re.fullmatch(r'word/header\d+\.xml',name):
-                parts[name]=parts[name].replace(b'<w:t>0</w:t>',b'<w:t></w:t>')
+    page_height=int(re.search(r'w:pgSz[^>]*w:h="(\d+)"',section).group(1))
+    # One running footer on every agreement and every letterhead: the agreement's name and reference in the middle, "Page X of
+    # Y" at the right margin, all in one style. A counter the letterhead brings is replaced by it.
+    for name in list(parts):
+        if re.fullmatch(r'word/footer\d+\.xml',name):
+            parts[name]=_strip_counter(parts[name])
+    title=running_title(blocks)
+    running=f'{title}  \u00b7  {contract_id}' if title else contract_id
+    tabs='<w:tabs><w:tab w:val="center" w:pos="'+str(entity['width']//2)+'"/><w:tab w:val="right" w:pos="'+str(entity['width'])+'"/></w:tabs>'
+    counter=_frun('\t'+running+'\t')+_frun('Page ')+_field('PAGE','1')+_frun(' of ')+_field('NUMPAGES','1')
+    # An added company's bottom margin comes from its letterhead check (footer artwork + room for this line), so the line sits
+    # just below the text, above the artwork. The three built-in letterheads keep their tested place.
+    custom=bool(entity.get('custom'))
+    counter_y=page_height-entity['bottom']+150 if custom else page_height-1500
+    numbers=('<w:p><w:pPr><w:framePr w:w="'+str(entity['width'])+'" w:h="260" w:hRule="atLeast" w:x="'+str(entity['left'])+'" w:y="'+str(counter_y)+
+             '" w:hAnchor="page" w:vAnchor="page" w:wrap="none"/>'+tabs+'<w:ind w:left="0" w:right="0"/><w:jc w:val="left"/></w:pPr>'+counter+'</w:p>')
+    server_renderer=os.environ.get('TFSC_RENDERER')=='libreoffice'
+    if server_renderer:
+        # Writer ignores page-relative footer frames. A regular paragraph
+        # before the retained artwork keeps the line in clear white space;
+        # room after it lifts it above a tall footer (the footer grows upwards).
+        lift=max(0,entity['bottom']-1500) if custom else 0
+        numbers=re.sub(r'<w:framePr[^>]*/>',f'<w:spacing w:before="0" w:after="{lift}" w:line="240" w:lineRule="auto"/>',numbers)
+    for name in list(parts):
+        if re.fullmatch(r'word/footer\d+\.xml',name):
+            if server_renderer:
+                parts[name]=re.sub(rb'(<w:ftr\b[^>]*>)',lambda m:m[1]+numbers.encode(),parts[name],count=1)
+            else:parts[name]=parts[name].replace(b'</w:ftr>',numbers.encode()+b'</w:ftr>')
+        if entity['key']=='24-7' and re.fullmatch(r'word/header\d+\.xml',name):
+            parts[name]=parts[name].replace(b'<w:t>0</w:t>',b'<w:t></w:t>')
     content=[]
     signature_count=0
     lists=[]            # (style, start) of each numbered list, in order
@@ -292,6 +342,11 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
             content.append(_p(text,'SATitle',keep=True))
         elif kind in ('h1','h2','h3'):
             content.append(_p(text,'SAHeading'+kind[-1],keep=True))
+        elif kind=='p' and text.startswith('Agreement reference:'):
+            # The reference line under the title: centred, small and quiet, ruled off from the body.
+            ref=text.replace('Agreement reference:','Agreement Reference').replace(' | Effective Date:','   \u00b7   Effective Date')
+            content.append('<w:p><w:pPr><w:pStyle w:val="SABody"/><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="6" w:color="C9D1DC"/></w:pBdr>'
+                           '<w:spacing w:before="0" w:after="200"/><w:jc w:val="center"/></w:pPr>'+_run(ref,size=19,color='4A5361')+'</w:p>')
         elif kind in ('p','bullet','number','lead'):
             number=None
             if kind=='number':
@@ -324,16 +379,17 @@ def generate_docx(blocks, data, contract_id, path, entity=None):
     xml=re.sub(r'<w:body>.*?</w:body>',lambda _: '<w:body>'+''.join(content)+section+'</w:body>',xml,flags=re.S)
     parts['word/document.xml']=xml.encode('utf-8')
     styles=[_style('SABody','Scribe Align Body'),
-            _style('SATitle','Scribe Align Title',32,True,ACCENT,after=160,align='center',keep=True),
+            _style('SATitle','Scribe Align Title',30,True,ACCENT,after=60,align='center',keep=True),
             _style('SAMeta','Scribe Align Reference',20,after=120,align='left'),
             _style('SATable','Scribe Align Table',21,after=40,align='left',line=250),
             _style('SASignature','Scribe Align Signature',22,after=140,align='left'),
             _style('SASpacer','Scribe Align Spacer',4,after=40,line=240)]
-    for level,size in ((1,32),(2,28),(3,26)):
-        styles.append(_style('SAHeading'+str(level),'Scribe Align Heading '+str(level),size,True,ACCENT,180 if level==1 else 120,80,'left',True,level-1))
+    # One typographic scale: 11 pt body, headings in proportion (14 / 12 / 11 pt), the role headings in dark slate.
+    for level,size,before,after,color in ((1,28,260,80,ACCENT),(2,24,180,60,ACCENT),(3,22,120,40,'1F2937')):
+        styles.append(_style('SAHeading'+str(level),'Scribe Align Heading '+str(level),size,True,color,before,after,'left',True,level-1))
     parts['word/styles.xml']=parts['word/styles.xml'].replace(b'</w:styles>',''.join(styles).encode()+b'</w:styles>')
     list_abstract,list_nums=_list_numbering(lists)
-    numbering='<w:abstractNum w:abstractNumId="9999"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="360"/></w:tabs><w:ind w:left="360" w:hanging="240"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/></w:rPr></w:lvl></w:abstractNum>'+list_abstract+'<w:num w:numId="9999"><w:abstractNumId w:val="9999"/></w:num>'+list_nums
+    numbering='<w:abstractNum w:abstractNumId="9999"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="432"/></w:tabs><w:ind w:left="432" w:hanging="252"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/></w:rPr></w:lvl></w:abstractNum>'+list_abstract+'<w:num w:numId="9999"><w:abstractNumId w:val="9999"/></w:num>'+list_nums
     if 'word/numbering.xml' in parts:
         parts['word/numbering.xml']=parts['word/numbering.xml'].replace(b'</w:numbering>',numbering.encode()+b'</w:numbering>')
     elif any(b.get('type') in ('bullet','number') for b in blocks):

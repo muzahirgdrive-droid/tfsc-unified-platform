@@ -22,7 +22,7 @@ BASELINE_TABLES = {'audit', 'clients', 'contracts', 'crm_account_links', 'crm_ac
                    'crm_provision_requests', 'agreement_reviews', 'documents', 'jobs', 'oidc_accounts', 'oidc_states', 'sessions', 'settings', 'tfsc_outbox',
                    'throttle', 'users'}
 # Columns that later migrations add to baseline tables: a pre-Alembic install gets them from those migrations.
-LATER_COLUMNS = {'clients': ('profile', 'created', 'test', 'client_number'), 'contracts': ('test',), 'audit': ('ip', 'user_agent'), 'users': ('services',)}
+LATER_COLUMNS = {'clients': ('profile', 'created', 'test', 'client_number', 'deleted_at', 'deleted_by', 'purged_at'), 'contracts': ('test',), 'audit': ('ip', 'user_agent'), 'users': ('services',)}
 LATER_INDEXES = {'audit': ('ix_audit_created', 'ix_audit_actor_created'), 'clients': ('ix_clients_client_number',)}
 
 
