@@ -743,7 +743,6 @@ def void(c, actor: dict, envelope: dict, reason: str, ip: str, ua: str) -> None:
 
 def _closing_emails(c, envelope: dict, kind: str, reason: str, exclude: str | None) -> None:
     entity, box = get_entity(envelope['entity']), mailer.load(c, envelope['entity'])
-    owner = user_row(c, envelope['owner_id'])
     for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'], recipients.c.status != 'created')).mappings():
         if r['id'] == exclude:
             continue
@@ -875,7 +874,6 @@ def correct_layout(c, actor: dict, envelope: dict, layout: dict, ip: str, ua: st
     removed = [r for rid, r in current.items() if rid not in seen]
     changes = {'added': [], 'removed': [], 'changed': []}
     c.execute(delete(fields).where(fields.c.envelope_id == envelope['id'], fields.c.recipient_id.notin_(locked or {''})))
-    owner = user_row(c, envelope['owner_id'])
     for r in removed:
         c.execute(delete(tokens).where(tokens.c.recipient_id == r['id']))
         c.execute(delete(sign_sessions).where(sign_sessions.c.recipient_id == r['id']))
