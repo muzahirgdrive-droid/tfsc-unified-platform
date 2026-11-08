@@ -434,8 +434,38 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
   release": the database changes were applied, and accounts, clients, envelopes, their histories and the signed PDFs
   were identical afterwards (the update took 30 seconds with the images built).
 
-**This update (November 2026), tested from this ZIP on the same Docker host**, over the release you have deployed
-(fea86f9) holding 7 clients, 5 completed envelopes and 3 envelopes left mid-way: one sent and not opened, one signed by
+**This update (November 8, 2026), tested from this ZIP on the same Docker host**, over the release you have deployed
+(the November 6 ZIP, e3f9c3a) holding 11 clients (CL-0001 to CL-0011), 8 completed envelopes and 3 envelopes left
+mid-way: one sent and not opened, one signed by the client and waiting for the company, one opened by the client
+(consent given, signature adopted) and left. The steps in "Updating to a new release" were followed exactly:
+- `backup` and `update` finished in 39 seconds; the database went from 0009 to 0011 and the pre-update copy was saved.
+- All 39 tables were identical row for row afterwards; one new table holds the 11 client numbers as permanent.
+- The three envelopes left mid-way kept the subjects they were sent with, were finished on the new version from the
+  links emailed before the update (the opened one remembered the consent) and completed; the signed copies and
+  Certificates of Completion of all 11 completed envelopes downloaded as PDFs.
+- Every client kept its number; the database refused to change a client number and to remove one from the record of
+  numbers given.
+- Billing Nest's letterhead was replaced by the corrected one. A Billing Nest BAA and Services Agreement generated on
+  the server show one footer in one font and size on every page ("Page 1 of 7" ... "Page 7 of 7") and the full Laurel,
+  Maryland address on every page.
+- A new Extended Health Services envelope: the subject read "Please Sign: Business Associate Agreement and Services
+  Agreement - Kilo Clinic", the email came from "Extended Health Services Inc." and said "Extended Health Services Inc.
+  sent you documents to review and sign", the signing page and the Certificate of Completion named the company, and
+  the preparer's own name appeared nowhere.
+- A client with signed agreements was deleted (the confirmation named it), waited in the Trash with 30 days left while
+  its signed envelope still opened under Agreements, and was restored with the same client number.
+- In a browser over HTTPS on the updated server (24 checks): the BAA / Services Agreement / NDA columns and the
+  filters, ticking clients and **Mark as test**, deleting two clients with the confirmation, the Trash, restoring with
+  the original number, a client's **More actions** (Cancel deletes nothing), the Signed agreements register's Services
+  tab, and a phone-sized screen with no sideways scrolling; no browser errors.
+- The same update was also run from the deployed release and from an older one (0007) against PostgreSQL 16 with
+  every envelope state, with the same result. The 254 automated tests passed. All 24 agreements (BAA, Services
+  Agreement and Mutual NDA for each of the eight companies) were checked page by page for the footer. In a browser:
+  the automatic subject naming both agreements, typing your own (**Yours**) and going back, the new field design
+  with the company's saved signature already on the agreement, and the editor on a phone-sized screen.
+
+**The November 6, 2026 update, tested from this ZIP's predecessor on the same Docker host**, over the release deployed
+then (fea86f9) holding 7 clients, 5 completed envelopes and 3 envelopes left mid-way: one sent and not opened, one signed by
 the client and waiting for the company, one opened by the client (consent given, signature adopted) and left. The steps
 in "Updating to a new release" were followed exactly (the old folder kept under a dated name):
 - `backup` and `update` finished in about a minute; the database went from 0007 to 0009 and the pre-update copy was
