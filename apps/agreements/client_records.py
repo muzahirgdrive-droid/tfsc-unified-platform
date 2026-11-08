@@ -591,7 +591,8 @@ def baa_register(c, actor: dict, company: str = '', q: str = '', status: str = '
         out.append({'id': r['id'], 'client_number': r['client_number'] or '', 'name': r['name'], 'address': r['address'], 'npi': (r['profile'] or {}).get('npi', ''),
                     'signed': bool(b), 'date': b['date'] if b else '', 'source': b['source'] if b else '', 'signed_by': d.get('signed_by', ''),
                     'effective_on': d.get('effective_on', ''), 'reference': d.get('reference', ''), 'files': d.get('files', []), 'envelope_id': d.get('envelope_id', ''),
-                    'client_id': r['id']})
+                    'client_id': r['id'], 'out': not b and facts[r['id']]['status'].get((company, kind)) == 'out',
+                    'sent': '' if b else facts[r['id']]['sent'].get((company, kind), '')})
     tab = next((t for t in tabs if t['name'] == company), None)
     return {'kind': kind, 'label': KINDS[kind], 'short': REGISTER_LABEL[kind], 'types': types, 'company': company, 'tabs': tabs, 'kpis': kpis,
             'counts': counts, 'rows': out, 'total': total, 'page': page if not everything else 0, 'page_size': PAGE,
@@ -643,7 +644,7 @@ def export_register(data: dict, fmt: str) -> tuple[bytes, str, str]:
     short = data.get('short', 'BAA')
     head = ['Client no.', 'Client', 'Company', f'{short} signed', 'Signed on', 'Signed through', 'Signed by', 'Effective date', 'Reference', 'Signed copy',
             'Address', 'NPI']
-    rows = [[r['client_number'], r['name'], data['company'], 'Yes' if r['signed'] else 'Not signed', r['date'], SOURCES.get(r['source'], ''), r['signed_by'],
+    rows = [[r['client_number'], r['name'], data['company'], 'Yes' if r['signed'] else 'Out for signature' if r.get('out') else 'Not signed', r['date'], SOURCES.get(r['source'], ''), r['signed_by'],
              r['effective_on'], r['reference'], ', '.join(f['name'] or '' for f in r['files']), r['address'], r['npi']] for r in data['rows']]
     stamp = dt.date.today().isoformat()
     filename = f"Signed {short} register - {company['short']} - {stamp}"

@@ -70,6 +70,9 @@
 .rc-baa.miss{color:var(--danger)}
 .rc-baa:before{content:"\2713  "}
 .rc-baa.miss:before{content:"! "}
+.rc-baa.out{color:#B54708}
+.rc-baa.out:before{content:"\25F7  "}
+.rc-sent{display:block;margin-top:2px;color:var(--muted,#64748B);font-size:12px}
 .rc-files{white-space:nowrap}
 .rc-files a,.rc-files .text-button{color:var(--primary);font-weight:600;font-size:13.5px;text-decoration:none;margin-right:10px;white-space:nowrap}
 .rc-files a:hover{text-decoration:underline}

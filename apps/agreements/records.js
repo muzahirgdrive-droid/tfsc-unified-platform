@@ -776,7 +776,10 @@
       const [t, tb] = table(["Client no.", "Client", `${short} signed`, "Signed through", "Signed by", "Effective", "File"]);
       d.rows.forEach(r => {
         const tr = el("tr");
-        const signedCell = el("td", "d"); signedCell.append(el("span", r.signed ? "rc-baa" : "rc-baa miss", r.signed ? (day(r.date) || "Date not recorded") : "Not signed"));
+        const signedCell = el("td", "d");
+        if (r.signed) signedCell.append(el("span", "rc-baa", day(r.date) || "Date not recorded"));
+        else if (r.out) signedCell.append(el("span", "rc-baa out", "Out for signature"), ...(r.sent ? [el("small", "rc-sent", `Sent ${day(r.sent)}`)] : []));
+        else signedCell.append(el("span", "rc-baa miss", "Not signed"));
         const through = cell(r.signed ? src(r.source) : d.kind === "baa" ? button("Send a BAA", () => sendBaa(r.id, d.company), "button button-quiet button-sm") : el("span", "muted", "—"));
         const files = el("td", "rc-files");
         if (r.signed) {
