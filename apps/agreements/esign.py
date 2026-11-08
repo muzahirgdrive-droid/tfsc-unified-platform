@@ -1209,8 +1209,18 @@ def date_signed(envelope: dict, at: float) -> str:
     return dt.datetime.fromtimestamp(at, zoneinfo.ZoneInfo(get_entity(envelope['entity'])['timezone'])).strftime('%m/%d/%Y')
 
 
+HONORIFICS = {'dr', 'mr', 'mrs', 'ms', 'miss', 'mx', 'prof'}
+CREDENTIALS = {'md', 'do', 'phd', 'np', 'pa', 'pa-c', 'dds', 'dmd', 'dpm', 'dc', 'od', 'rn', 'lcsw', 'psyd', 'jr', 'sr', 'ii', 'iii', 'iv', 'esq', 'cpa', 'mba'}
+
+
 def split_name(name: str) -> tuple[str, str]:
-    parts = (name or '').split()
+    """First and last name for the First name / Last name fields and greetings: "Dr. Rebecca Moore, MD" -> ("Rebecca", "Moore")."""
+    parts = (name or '').replace(',', ' ').split()
+    key = lambda w: w.strip('.').lower()
+    while len(parts) > 1 and key(parts[0]) in HONORIFICS:
+        parts = parts[1:]
+    while len(parts) > 1 and key(parts[-1]) in CREDENTIALS:
+        parts = parts[:-1]
     return (parts[0] if parts else ''), (parts[-1] if len(parts) > 1 else '')
 
 

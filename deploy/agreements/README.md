@@ -369,6 +369,10 @@ This update (November 8, 2026) also:
 - adds the agreement columns and filters, the bulk actions, Delete with the 30-day Trash, the Signed agreements
   register and the database guard on client numbers (step 7); every client number already given is recorded as
   permanent, and no client is deleted or changed by the update.
+- restores the look of the public Verify page (`/verify`), which lost its styling when the signing page was redesigned
+  (checking a file always worked); it now shows a clear green "Verified" or red "Not verified" result;
+- greets signers and fills the First name and Last name fields without titles or credentials ("Dr. Rebecca Moore, MD"
+  is Rebecca Moore); documents already signed are not changed.
 
 The November 6, 2026 update also:
 - gives every client already in the app a client number (CL-0001 onwards, oldest first); nothing else about the client

@@ -1,18 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="light"><title>Verify a signed document</title>
-<link rel="stylesheet" href="/sign.css"><script src="/verify.js" defer></script></head>
+<link rel="stylesheet" href="/verify.css"><script src="/verify.js" defer></script></head>
 <body>
-  <header class="sign-bar"><div class="sign-bar-inner"><div class="sign-brand"><img src="/assets/tfsc-logo.png" alt="TFSC"><div class="sign-brand-text"><strong>TFSC Agreements</strong><span>Document verification</span></div></div></div>
-    <div class="trust-strip"><span class="lock" aria-hidden="true"></span><strong>Secure document portal</strong><span>The file never leaves your computer</span></div></header>
+  <header class="vf-top"><div class="vf-top-in"><div class="vf-plate"><img src="/assets/tfsc-logo.png" alt="TFSC"></div><span class="vf-divider" aria-hidden="true"></span>
+    <div class="vf-title"><strong>TFSC Agreements</strong><small>Document verification</small></div></div></header>
+  <div class="vf-strip"><div class="vf-strip-in"><span class="lock" aria-hidden="true"></span><strong>Secure document portal</strong><span>The file never leaves your computer</span></div></div>
   <main>
-    <section class="notice-card">
+    <section class="vf-card">
+      <p class="vf-eyebrow">Check a signed document</p>
       <h1>Verify a completed document</h1>
       <p>Choose a completed PDF or Certificate of Completion. Its fingerprint (SHA-256) is calculated on your computer; the file itself is not uploaded.</p>
-      <p><input type="file" id="file" accept="application/pdf"></p>
-      <p id="result" role="status"></p>
+      <label class="vf-drop" for="file"><span class="vf-drop-icon" aria-hidden="true">&#10003;</span><strong>Choose the completed PDF</strong>
+        <span>A signed document or its Certificate of Completion, as it was emailed or downloaded</span><span class="vf-button">Choose file</span>
+        <input type="file" id="file" accept="application/pdf"></label>
+      <p class="vf-file" id="file-name"></p>
+      <div class="vf-result" id="result" role="status" aria-live="polite"></div>
+      <div class="vf-how"><strong>What a match means</strong>
+        <ul><li>Verified: the file is exactly the completed copy the portal issued, unchanged since signing.</li>
+          <li>Not verified: the file was changed after signing (even re-saved or printed to PDF), or it was not completed through TFSC Agreements.</li></ul></div>
     </section>
   </main>
-  <footer class="sign-footer"><span id="footer-copyright">© TFSC Agreements. All rights reserved.</span><span class="dot">·</span><span>Need help? Please email <a id="footer-help-email" href="mailto:muzahir@scribealign.com">muzahir@scribealign.com</a> with your concern.</span></footer>
+  <footer><span id="footer-copyright">© TFSC Agreements. All rights reserved.</span><span class="dot">·</span><span>Need help? Please email <a id="footer-help-email" href="mailto:muzahir@scribealign.com">muzahir@scribealign.com</a> with your concern.</span></footer>
 </body>
 </html>

@@ -76,7 +76,16 @@
     try { return new Intl.DateTimeFormat("en-US", {timeZone: S.state.timezone, month: "2-digit", day: "2-digit", year: "numeric"}).format(new Date()); }
     catch (_) { return new Date().toLocaleDateString("en-US"); }
   }
-  const nameParts = () => { const parts = (S.state.recipient.name || "").split(/\s+/).filter(Boolean); return [parts[0] || "", parts.length > 1 ? parts[parts.length - 1] : ""]; };
+  // "Dr. Rebecca Moore, MD" -> ["Rebecca", "Moore"]: titles and credentials are not names (the server splits the same way).
+  const HONORIFICS = ["dr", "mr", "mrs", "ms", "miss", "mx", "prof"];
+  const CREDENTIALS = ["md", "do", "phd", "np", "pa", "pa-c", "dds", "dmd", "dpm", "dc", "od", "rn", "lcsw", "psyd", "jr", "sr", "ii", "iii", "iv", "esq", "cpa", "mba"];
+  const nameParts = () => {
+    let parts = (S.state.recipient.name || "").replace(/,/g, " ").split(/\s+/).filter(Boolean);
+    const key = w => w.replace(/^\.+|\.+$/g, "").toLowerCase();
+    while (parts.length > 1 && HONORIFICS.includes(key(parts[0]))) parts = parts.slice(1);
+    while (parts.length > 1 && CREDENTIALS.includes(key(parts[parts.length - 1]))) parts = parts.slice(0, -1);
+    return [parts[0] || "", parts.length > 1 ? parts[parts.length - 1] : ""];
+  };
   function autoValue(f) {
     const [first, last] = nameParts();
     return {date_signed: f.value || dateToday(), name: S.state.recipient.name, first_name: first, last_name: last, email: S.state.recipient.email}[f.kind] || "";

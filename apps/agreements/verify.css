@@ -1,0 +1,58 @@
+/* The public page that checks a completed PDF or Certificate of Completion against the record (/verify).
+   Self-contained: it shares the signing page's look (header, trust strip, card) without depending on sign.css. */
+@font-face{font-family:Inter;src:url('/assets/fonts/Inter-var.woff2') format('woff2');font-weight:100 900;font-display:swap}
+:root{--brand:#1D4277;--brand-dark:#0B1F3D;--accent:#189BD2;--ink:#0F172A;--ink-2:#334155;--ink-3:#64748B;--line:#E2E6EE;--canvas:#E9ECF2;
+  --ok:#0F8A5F;--ok-soft:#E8F7EF;--bad:#B42318;--bad-soft:#FEF0EE;--ds:#4C2BD1}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{min-height:100vh;display:flex;flex-direction:column;background:var(--canvas);color:var(--ink);
+  font:15px/1.55 Inter,"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.vf-top{color:#fff;background:linear-gradient(100deg,var(--brand-dark) 0%,var(--brand) 64%,#3a5f93 100%);box-shadow:0 8px 24px rgba(11,31,61,.22);position:relative}
+.vf-top:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent 72%)}
+.vf-top-in{max-width:1100px;margin:0 auto;height:64px;display:flex;align-items:center;gap:14px;padding:0 20px}
+.vf-plate{background:#fff;border-radius:10px;padding:5px 10px;display:flex;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.18);flex:none}
+.vf-plate img{height:30px;width:auto;max-width:150px;display:block;object-fit:contain}
+.vf-divider{width:1px;height:30px;background:rgba(255,255,255,.2)}
+.vf-title strong{display:block;font-size:15.5px;font-weight:650;letter-spacing:-.01em}
+.vf-title small{display:block;font-size:12px;color:rgba(255,255,255,.74)}
+.vf-strip{background:#fff;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-3)}
+.vf-strip-in{max-width:1100px;margin:0 auto;padding:7px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.vf-strip strong{color:var(--ok);font-weight:650}
+.lock{display:inline-block;width:9px;height:10px;border:1.6px solid var(--ok);border-radius:2px;position:relative;top:1px;flex:none}
+.lock:before{content:"";position:absolute;left:1px;top:-6px;width:4px;height:5px;border:1.6px solid var(--ok);border-bottom:0;border-radius:4px 4px 0 0}
+main{flex:1;display:flex;justify-content:center;padding:48px 16px}
+.vf-card{width:100%;max-width:640px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.10);padding:30px 32px}
+.vf-eyebrow{margin:0 0 6px;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+h1{margin:0 0 10px;font-size:24px;line-height:1.25;letter-spacing:-.015em}
+.vf-card p{margin:0 0 14px;color:var(--ink-2)}
+.vf-drop{display:flex;flex-direction:column;align-items:center;gap:8px;margin:20px 0 6px;padding:26px 18px;border:2px dashed #C9D2E3;border-radius:14px;
+  background:#F7F9FC;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.vf-drop:hover,.vf-drop:focus-within{border-color:var(--brand);background:#F1F5FC}
+.vf-drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.vf-drop-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:#E6EDF9;color:var(--brand);font-size:22px;font-weight:700}
+.vf-drop strong{font-size:15px}
+.vf-drop span{font-size:13px;color:var(--ink-3)}
+.vf-button{display:inline-block;margin-top:4px;padding:8px 16px;border-radius:9px;background:var(--brand);color:#fff;font-weight:600;font-size:14px}
+.vf-file{margin:8px 0 0;font-size:13px;color:var(--ink-3);text-align:center;min-height:20px}
+.vf-result{margin-top:16px;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:#F8FAFC;color:var(--ink-2);font-size:14px;display:flex;gap:12px;align-items:flex-start}
+.vf-result:empty{display:none}
+.vf-result.ok{border-color:#BDE5CE;background:var(--ok-soft);color:#14532D}
+.vf-result.bad{border-color:#F5C2BC;background:var(--bad-soft);color:#7A1C12}
+.vf-result .vf-mark{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px;background:var(--ink-3)}
+.vf-result.ok .vf-mark{background:var(--ok)}
+.vf-result.bad .vf-mark{background:var(--bad)}
+.vf-result b{display:block;margin-bottom:2px;font-size:15px}
+.vf-how{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-3)}
+.vf-how ul{margin:6px 0 0;padding-left:18px}
+.vf-how li{margin:3px 0}
+footer{padding:18px 16px 26px;text-align:center;font-size:12.5px;color:var(--ink-3)}
+footer a{color:var(--ds)}
+footer .dot{margin:0 8px}
+@media (max-width:600px){
+  .vf-card{padding:22px 18px;border-radius:14px}
+  h1{font-size:21px}
+  main{padding:24px 12px}
+  .vf-title small{display:none}
+  footer .dot{display:none}
+  footer span{display:block;margin-top:4px}
+}

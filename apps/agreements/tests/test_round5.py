@@ -386,3 +386,13 @@ class BillingNestLetterhead(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NamesInGreetingsAndFields(unittest.TestCase):
+    def test_titles_and_credentials_are_not_names(self):
+        import esign
+        cases = {'Dr. Rebecca Moore': ('Rebecca', 'Moore'), 'Dr. Rebecca Moore, MD': ('Rebecca', 'Moore'), 'Mary Ann Lee': ('Mary', 'Lee'),
+                 'Prince': ('Prince', ''), 'Dr.': ('Dr.', ''), 'Ms Ana Ruiz Jr.': ('Ana', 'Ruiz'), '': ('', ''), 'Do Kim': ('Do', 'Kim')}
+        for name, want in cases.items():
+            self.assertEqual(esign.split_name(name), want, name)
+
