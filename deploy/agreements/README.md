@@ -163,10 +163,32 @@ upload the JSON key on the Company mailboxes screen.
 
 **Clients** is the register of every client you can see. Every client has a permanent **client number** (CL-0001,
 CL-0002, ...): clients already in the app when you update are numbered in the order they were created, every new client
-gets the next number, and a number is never given to anyone else, even after a client is deleted. Search by client
-number ("CL-0012", "cl-12" or "12"), name, NPI, email or address; filter by company, by where agreements were signed
-(this portal, DocuSign, manual email, Jotform) and by BAA signed or missing. The register shows each client's companies,
-the agreements on file, the date of its signed BAA and where it was signed.
+gets the next number, and a number never changes and is never given to anyone else, even after a client is deleted.
+The database itself enforces this (not only the screens): it refuses to change a client's number or to give a used
+number to another client, and keeps a permanent record of every number ever given. Search by client number
+("CL-0012", "cl-12" or "12"), name, NPI, email or address; filter by company, by where agreements were signed (this
+portal, DocuSign, manual email, Jotform) and by real or test clients.
+
+The register has one column per agreement: **BAA**, **Services Agreement** and **NDA**, each showing Signed (with the
+date), Out for signature, or Not signed. The buttons above it show **All**, **BAA + Services signed**, **Waiting**
+(out for signature), **No BAA** and **No Services**, with a count on each.
+
+**Several clients at once.** Tick clients (or the box in the header for the whole page) and a bar appears with
+**Mark as test**, **Mark as real**, **Export (.xlsx)**, **Export (.csv)** and, for a Super Admin, **Delete**.
+
+**Deleting a client (Super Admin only)**, from the bar above or from a client's record (**More actions > Delete
+client...**): a confirmation names every client and how many there are ("Delete 3 client records?") and says what
+happens; nothing is deleted until you confirm. A deleted client:
+- disappears from Clients, searches, Create agreement, the address book and the client reports, and goes to
+  **Clients > Trash** for 30 days;
+- can be restored from the Trash during those 30 days with everything as it was: the same client number, its
+  agreements, signed copies, contacts, files and history;
+- after 30 days is deleted permanently: its details, contacts and uploaded files are removed and its client number is
+  retired (never given to anyone else). **Signed agreements and their Certificates of Completion are kept** as legal
+  records (HIPAA asks for six years): the completed envelopes stay under **Agreements** with their signed copies;
+- does not affect anything already sent: an envelope out for signature when its client is deleted can still be signed
+  by the client and completes normally.
+Every delete, restore and permanent deletion is written to the activity log with who did it and when.
 
 **Agreements signed before this portal** (returned by email, signed in DocuSign or submitted through Jotform):
 - On a client's record, **Agreements** > **Add a past agreement**: choose the signed PDF. The app reads what the file
@@ -177,9 +199,10 @@ the agreements on file, the date of its signed BAA and where it was signed.
   client number, DocuSign envelope ID, the name in the file or the file name), shows what it will create or add, and
   nothing is saved until you press **Import**. New clients get the next client numbers.
 
-**Signed BAA register** (from the Clients page): one tab per company with every client's signed BAA, wherever it was
-signed, the coverage per company, and the clients still missing one. **Export register** (.xlsx or .csv) for an audit,
-or **Download all signed BAAs** as one .zip.
+**Signed agreements register** (from the Clients page): choose **BAA**, **Services Agreement** or **Mutual NDA**, then
+the company: every client's signed agreement of that kind, wherever it was signed, the coverage per company and the
+clients still missing one. **Export register** (.xlsx or .csv) for an audit, or download all the signed copies as one
+.zip. A client's record shows **Signed agreements by company** (BAA and Services Agreement for each company).
 
 A client's profile has:
 - **Overview**: address, phone, email, website, specialty, NPI, tax ID and notes (**Edit details**).
@@ -210,13 +233,22 @@ and downloaded each document, and when.
    message for that person; the bin removes them; **Add recipient** adds another. Turn on **Set signing order** to
    number the people (the same number means at the same time); without it everyone receives the email at once.
 3. **Fields** are placed for you: the signature, name, title and today's date on the signature block, required fields,
-   and initials on every page in a free spot near the bottom. Drag any field to move it, select it to change or delete
-   it, or drag new ones from the palette. **Auto-place fields** places them again; **Initials on every page** adds
-   initials for the selected person.
-4. **Options**: the documents **never expire** unless you choose an expiry; reminders; attaching the completed
+   and initials on every page in a free spot near the bottom. Each field is a soft tag in its signer's colour (the client
+   in violet, a second signer in green, then blue, rose...) with an icon for its kind and a red star when it is
+   required; the selected field turns solid. Drag any field to move it, select it to change or delete it, or drag new
+   ones from the palette. **Auto-place fields** places them again; **Initials on every page** adds initials for the
+   selected person. When the agreement was generated with the company's saved signature (the normal case), only the
+   client has fields: the company's signature, name, title and date are already printed on the agreement.
+4. **Email subject**: written for you from the documents, for example "Please Sign: Business Associate Agreement and
+   Services Agreement - Client name" (one agreement: only that one), marked **Automatic** and updated whenever you add
+   or remove a document. Type your own and it is marked **Yours** and sent exactly as you typed it, in the invitation,
+   the reminders and the completed copy; **Use the automatic subject again** goes back.
+   **Options**: the documents **never expire** unless you choose an expiry; reminders; attaching the completed
    documents to the final email; whether recipients may assign the documents to someone else. **Send**.
-5. The client receives an email in the company's colours from the company's compliance mailbox, with a **REVIEW
-   DOCUMENT** button. On the signing page they accept the electronic record disclosure, then **Start** takes them to the
+5. The client receives an email in the company's colours from the company's compliance mailbox, sent in the company's
+   registered name ("Extended Health Services Inc. sent you documents to review and sign"), never the name of the
+   person who prepared it; the signing page, the reminders and the Certificate of Completion name the company the same
+   way. The email has a **REVIEW DOCUMENTS** button (**REVIEW DOCUMENT** when there is one). On the signing page they accept the electronic record disclosure, then **Start** takes them to the
    initials on page 1, then page 2, 3 and so on, then the signature, then the title (today's date is already filled in).
    With two agreements in one envelope the title is copied into the second ("Copied from your ... · Edit") while the
    signature is still asked for on each agreement. Signatures carry a "Signed by:" bracket with an ID that is the same
@@ -325,7 +357,20 @@ Updating to version 5 also:
 - completes envelopes that were waiting only for someone who needed to view them;
 - keeps signature images installed with `./agreements.sh signatures` until you save one under Admin > Company settings.
 
-This update (November 2026) also:
+This update (November 8, 2026) also:
+- lays out every agreement the same way on every letterhead: one footer line in one font and size on every page
+  (the agreement's name and reference in the middle, "Page X of Y" on the right), and the letterhead's own artwork kept
+  exactly where its designer put it; agreements generated before the update are not changed;
+- replaces Billing Nest's letterhead with the corrected one (with its full Laurel, Maryland address); if you had
+  already uploaded a different Billing Nest letterhead yourself, yours is kept;
+- sends every email, signing page and certificate in the company's registered name (above);
+- writes the email subject from all the documents in the envelope and keeps a subject you typed (above); envelopes
+  already sent keep the subject they were sent with;
+- adds the agreement columns and filters, the bulk actions, Delete with the 30-day Trash, the Signed agreements
+  register and the database guard on client numbers (step 7); every client number already given is recorded as
+  permanent, and no client is deleted or changed by the update.
+
+The November 6, 2026 update also:
 - gives every client already in the app a client number (CL-0001 onwards, oldest first); nothing else about the client
   changes;
 - adds the five companies above (House of RCM, Quantum Medical Services, MedEquity Solutions, 3E Medical Billing and
