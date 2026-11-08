@@ -262,7 +262,7 @@ def create(c, actor: dict, payload: dict) -> dict:
         _client_signer(c, envelope, client)
     client_name = (client['name'] if client else '') or ''
     listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else (titles[0] if titles else 'documents')
-    subject = f'Please sign: {listed}' + (f' - {client_name}' if client_name else '')
+    subject = f'Please Sign: {listed}' + (f' - {client_name}' if client_name else '')
     signatory = (contract['payload'].get('client_signatory') if contract else '') or ''
     message = (f"Hello{' ' + signatory if signatory else ''},\n\nPlease review and sign the {'documents' if not titles else 'agreements' if len(titles) > 1 else 'agreement'} from "
                f"{entity['display'].rstrip('.')}. If you have any questions, reply to this email" + (f" or write to {box['address']}" if box['address'] else '') + '.')
@@ -1795,7 +1795,7 @@ AGREEMENT_TITLES = {'baa': 'Business Associate Agreement', 'services': 'Services
 
 
 def auto_subject(c, envelope: dict) -> str:
-    """The subject written from the envelope's documents: "Please sign: Business Associate Agreement and Services Agreement - Client"."""
+    """The subject written from the envelope's documents: "Please Sign: Business Associate Agreement and Services Agreement - Client"."""
     titles = []
     for name, agreement in c.execute(select(documents.c.name, documents.c.agreement).where(documents.c.envelope_id == envelope['id'],
                                                                                           documents.c.source != 'attachment').order_by(documents.c.position)).all():
@@ -1804,7 +1804,7 @@ def auto_subject(c, envelope: dict) -> str:
             titles.append(title)
     listed = ', '.join(titles[:-1]) + ' and ' + titles[-1] if len(titles) > 1 else (titles[0] if titles else 'documents')
     client = c.execute(select(db.clients.c.name).where(db.clients.c.id == envelope['client_id'])).scalar() if envelope.get('client_id') else ''
-    return (f'Please sign: {listed}' + (f' - {client}' if client else ''))[:200]
+    return (f'Please Sign: {listed}' + (f' - {client}' if client else ''))[:200]
 
 
 def subject_is_auto(c, envelope: dict) -> bool:
@@ -1815,7 +1815,7 @@ def subject_is_auto(c, envelope: dict) -> bool:
     if 'subject_auto' in settings:
         return settings['subject_auto'] is True
     subject = (envelope.get('subject') or '').strip()     # a draft from before this setting: automatic if it reads as the automatic one
-    return not subject or subject.startswith('Please sign: documents') or subject == auto_subject(c, envelope)
+    return not subject or subject.lower().startswith('please sign: documents') or subject.lower() == auto_subject(c, envelope).lower()
 
 
 def follow_documents(c, envelope: dict, was_auto: bool) -> dict:

@@ -882,7 +882,7 @@
       const tname = input(e.template_name, "text", {maxLength: 150}); tname.addEventListener("input", () => { e.template_name = tname.value; dirty(); });
       body.append(field("Template name", tname));
     }
-    const subject = input(e.subject, "text", {maxLength: 200, placeholder: "Please sign: Services Agreement"});
+    const subject = input(e.subject, "text", {maxLength: 200, placeholder: "Please Sign: Services Agreement"});
     const message = Object.assign(el("textarea"), {value: e.message, maxLength: 4000, rows: 5, placeholder: "Add a short note for the recipients"});
     message.addEventListener("input", () => { e.message = message.value; dirty(); });
     const subjectField = field("Email subject", subject);

@@ -429,8 +429,10 @@ def install(app) -> None:  # noqa: C901  (route table)
             row = file_for(c, a, file_id)
             client = client_for(c, a, row['client_id'])
             entity = payload.get('entity') or (client['draft'] or {}).get('entity') or (a['companies'][0] if a['companies'] else '')
-            envelope = esign.create(c, a, {'entity': entity, 'client_id': client['id'], 'subject': f"Please sign: {name[:-4]} - {client['name']}"[:200]})
+            envelope = esign.create(c, a, {'entity': entity, 'client_id': client['id']})
             esign.add_document(c, envelope, name, pdf, 'upload')
+            # the automatic subject names the document ("Please Sign: <document> - <client>") and follows any added later
+            c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(**esign.follow_documents(c, envelope, True)))
             return esign.detail(c, a, esign.get_envelope(c, a, envelope['id']))
 
     @app.get('/api/contacts')

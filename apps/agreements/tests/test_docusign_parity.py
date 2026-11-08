@@ -396,6 +396,8 @@ class Parity(Base):
         self.assertEqual(r.status_code, 200, r.text)
         env = r.json()
         self.assertEqual(env['client_id'], cid)
+        self.assertTrue(env['subject'].startswith('Please Sign: Insurance card - '), env['subject'])
+        self.assertIs(env['settings']['subject_auto'], True, 'the subject follows the documents until the sender types one')
         doc = env['documents'][0]['id']
         r = self.save(env, [{'key': 'a', 'role': 'signer', 'routing_order': 1, 'name': 'Pat Doctor', 'email': 'pat@riverbend.test'}],
                       [self.box(doc, recipient='a', kind='signature', w=170, h=40)])

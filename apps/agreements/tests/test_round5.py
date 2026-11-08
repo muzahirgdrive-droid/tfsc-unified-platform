@@ -266,9 +266,9 @@ class SubjectsAndSender(Records):
         baa = next(x for x in lib if x.get('agreement') == 'baa')
         services = next(x for x in lib if x.get('agreement') == 'services')
         d = self.post(f"/api/esign/envelopes/{env['id']}/library", {'source': baa['source'], 'id': baa['id']}).json()
-        self.assertTrue(d['subject'].startswith('Please sign: Business Associate Agreement - '))
+        self.assertTrue(d['subject'].startswith('Please Sign: Business Associate Agreement - '))
         d = self.post(f"/api/esign/envelopes/{env['id']}/library", {'source': services['source'], 'id': services['id']}).json()
-        self.assertTrue(d['subject'].startswith('Please sign: Business Associate Agreement and Services Agreement - '), d['subject'])
+        self.assertTrue(d['subject'].startswith('Please Sign: Business Associate Agreement and Services Agreement - '), d['subject'])
         self.assertIs(d['settings']['subject_auto'], True)
         # the sender types a subject: it is kept as typed, also when documents change
         d = self.post(f"/api/esign/envelopes/{env['id']}/draft", {'version': d['version'], 'subject': 'Our agreements for you'}).json()
@@ -279,7 +279,7 @@ class SubjectsAndSender(Records):
         self.assertEqual(d['subject'], 'Our agreements for you')
         # and back to the automatic subject
         d = self.post(f"/api/esign/envelopes/{env['id']}/draft", {'version': d['version'], 'subject': d['subject'], 'subject_auto': True}).json()
-        self.assertTrue(d['subject'].startswith('Please sign: Business Associate Agreement - '))
+        self.assertTrue(d['subject'].startswith('Please Sign: Business Associate Agreement - '))
 
     def test_recipients_hear_from_the_company_not_the_person(self):
         self.connect_mailbox()
