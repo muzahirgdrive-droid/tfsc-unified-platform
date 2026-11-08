@@ -438,7 +438,7 @@ Let's Encrypt), and a test mail server (GreenMail) played the part of the Google
 (the November 6 ZIP, e3f9c3a) holding 11 clients (CL-0001 to CL-0011), 8 completed envelopes and 3 envelopes left
 mid-way: one sent and not opened, one signed by the client and waiting for the company, one opened by the client
 (consent given, signature adopted) and left. The steps in "Updating to a new release" were followed exactly:
-- `backup` and `update` finished in 39 seconds; the database went from 0009 to 0011 and the pre-update copy was saved.
+- `backup` and `update` finished in 32 seconds; the database went from 0009 to 0011 and the pre-update copy was saved.
 - All 39 tables were identical row for row afterwards; one new table holds the 11 client numbers as permanent.
 - The three envelopes left mid-way kept the subjects they were sent with, were finished on the new version from the
   links emailed before the update (the opened one remembered the consent) and completed; the signed copies and
@@ -457,7 +457,11 @@ mid-way: one sent and not opened, one signed by the client and waiting for the c
 - In a browser over HTTPS on the updated server (24 checks): the BAA / Services Agreement / NDA columns and the
   filters, ticking clients and **Mark as test**, deleting two clients with the confirmation, the Trash, restoring with
   the original number, a client's **More actions** (Cancel deletes nothing), the Signed agreements register's Services
-  tab, and a phone-sized screen with no sideways scrolling; no browser errors.
+  tab (a client whose agreement is out reads "Out for signature" with the date sent), and a phone-sized screen with no
+  sideways scrolling; no browser errors.
+- "To restore the pre-update copy by hand" (above) was tested as written: it put the database back exactly as it was
+  before the update (all 39 tables identical), the previous release ran on it again, and the update was then repeated
+  from there with the same results (99 checks).
 - The same update was also run from the deployed release and from an older one (0007) against PostgreSQL 16 with
   every envelope state, with the same result. The 254 automated tests passed. All 24 agreements (BAA, Services
   Agreement and Mutual NDA for each of the eight companies) were checked page by page for the footer. In a browser:
