@@ -293,7 +293,8 @@ class SubjectsAndSender(Records):
         invite = self.smtp.to('jane@client.test')[-1]
         html = invite['msg'].get_body(preferencelist=('html',)).get_content()
         plain = invite['msg'].get_body(preferencelist=('plain',)).get_content()
-        self.assertIn('Scribe Align LLC sent you a document to review and sign.', plain)
+        self.assertIn('Scribe Align LLC sent you documents to review and sign.', plain)
+        self.assertIn('REVIEW DOCUMENTS', html)
         self.assertNotIn(self.u1['name'], plain + html)
         self.assertEqual(invite['msg']['Subject'], env['subject'])
         client, base, state = self.signer(self.smtp.link(invite))

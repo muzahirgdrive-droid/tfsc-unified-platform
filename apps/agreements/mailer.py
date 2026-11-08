@@ -645,8 +645,10 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
     if kind in ('invite', 'reminder', 'corrected', 'expiring', 'copy'):
         security = True
         action = {'signer': 'review and sign', 'viewer': 'review', 'cc': 'view'}.get(ctx['role'], 'review and sign')
-        headline = {'invite': f'{sender} sent you a document to {action}.', 'reminder': f'Reminder: {sender} sent you a document to {action}.',
-                    'corrected': f'{sender} updated a document for you to {action}.', 'expiring': f'A document waiting for you expires on {ctx.get("expires", "")}.',
+        what = 'documents' if len(docs) > 1 else 'a document'     # "sent you documents" when the envelope holds more than one
+        headline = {'invite': f'{sender} sent you {what} to {action}.', 'reminder': f'Reminder: {sender} sent you {what} to {action}.',
+                    'corrected': f'{sender} updated {what} for you to {action}.',
+                    'expiring': f'{"Documents" if len(docs) > 1 else "A document"} waiting for you {"expire" if len(docs) > 1 else "expires"} on {ctx.get("expires", "")}.',
                     'copy': f'{sender} sent you a copy of documents for your records.'}[kind]
         if kind == 'reminder':
             subject = 'Reminder: ' + subject
@@ -654,7 +656,8 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
             subject = 'Expiring soon: ' + subject
         elif kind == 'corrected':
             subject = 'Corrected: ' + subject
-        button = ({'signer': 'REVIEW DOCUMENT', 'viewer': 'REVIEW DOCUMENT', 'cc': 'VIEW DOCUMENTS', 'in_person': 'START IN-PERSON SIGNING'}.get(ctx['role'], 'REVIEW DOCUMENT'), ctx['url'])
+        review = 'REVIEW DOCUMENTS' if len(docs) > 1 else 'REVIEW DOCUMENT'
+        button = ({'signer': review, 'viewer': review, 'cc': 'VIEW DOCUMENTS', 'in_person': 'START IN-PERSON SIGNING'}.get(ctx['role'], review), ctx['url'])
         initials = ''.join(w[0] for w in str(sender).split()[:2]).upper() or '·'
         body = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;"><tr>'
                 f'<td width="44" valign="middle"><div style="width:38px;height:38px;border-radius:19px;background:{entity["color"]};color:#FFFFFF;font-family:Arial,sans-serif;'
