@@ -286,7 +286,7 @@ def defaults_of(actor: dict, session: dict) -> dict:
 def client_index(c, actor: dict) -> dict:
     rows = [dict(r) for r in c.execute(select(db.clients.c.id, db.clients.c.client_number, db.clients.c.name, db.clients.c.address, db.clients.c.profile,
                                               db.clients.c.test, db.clients.c.draft['entity'].as_string().label('draft_entity'))
-                                       .where(sec.scope(actor, db.clients.c.owner_id))).mappings()]
+                                       .where(sec.scope(actor, db.clients.c.owner_id), db.clients.c.deleted_at.is_(None))).mappings()]
     by_key: dict[str, list] = {}
     for r in rows:
         r['key'] = name_key(r['name'])

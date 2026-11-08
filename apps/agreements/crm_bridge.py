@@ -34,7 +34,7 @@ def current_actor(c,id):
   a['companies']=[v for v in a['companies'] if v in p['companies']]
  return a
 def require_reviewer(c,a,r):
- if a['role']=='user' or not c.execute(select(db.clients.c.id).where(db.clients.c.id==r['client_id'],sec.scope(a,db.clients.c.owner_id))).first():raise HTTPException(403,'An administrator within the client scope must review this request.')
+ if a['role']=='user' or not c.execute(select(db.clients.c.id).where(db.clients.c.id==r['client_id'],sec.scope(a,db.clients.c.owner_id),db.clients.c.deleted_at.is_(None))).first():raise HTTPException(403,'An administrator within the client scope must review this request.')
  sec.ensure_company(a,r['entity'])
  if a['id']==r['owner_id']:raise HTTPException(403,'A separate administrator must approve this request.')
 def check_approval(c,r,payload):

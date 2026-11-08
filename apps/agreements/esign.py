@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import and_, delete, func, or_, select, text, update
 
 import companies
+import client_trash
 import database as db
 import esign_pdf
 import mailer
@@ -229,6 +230,7 @@ def create(c, actor: dict, payload: dict) -> dict:
     client = None
     if client_id:
         client = c.execute(select(db.clients).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).mappings().first()
+        client_trash.refuse_if_trashed(client)
         if not client:
             raise HTTPException(404, 'Client not found.')
     entity = get_entity(entity_name)
@@ -351,7 +353,7 @@ def save_draft(c, actor: dict, envelope: dict, payload: dict) -> None:
         db.log(c, actor, 'esign.marked_test' if payload['test'] else 'esign.marked_real', envelope['client_id'], {'envelope': envelope['ref'], 'subject': envelope['subject']})
     if 'client_id' in payload and payload['client_id'] != envelope['client_id']:
         client_id = payload['client_id'] or None
-        if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).first():
+        if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id), db.clients.c.deleted_at.is_(None))).first():
             raise HTTPException(404, 'Client not found.')
         values['client_id'] = client_id
     if 'recipients' in payload:
@@ -2145,7 +2147,7 @@ def install(app) -> None:  # noqa: C901  (route table)
             source = get_envelope(c, a, envelope_id)
             template_name = clean(payload.get('template_name'), 'Template name', 150) or None
             client_id = payload.get('client_id') or None
-            if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(a, db.clients.c.owner_id))).first():
+            if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(a, db.clients.c.owner_id), db.clients.c.deleted_at.is_(None))).first():
                 raise HTTPException(404, 'Client not found.')
             target = copy(c, a, source, as_template=template_name, client_id=client_id if source['status'] == 'template' else None)
             db.log(c, a, 'esign.template_saved' if template_name else 'esign.copied', target['client_id'],

@@ -28,6 +28,7 @@ import zipfile
 import zoneinfo
 
 import client_numbers
+import client_trash
 import clients as client_profiles
 import database as db
 import esign
@@ -126,7 +127,7 @@ def _chunks(ids: list, size: int = 800):
 
 # ------------------------------------------------------------------ facts: what is on file for each visible client
 def visible_clients(actor: dict, test: str = 'real'):
-    cond = [sec.scope(actor, db.clients.c.owner_id)]
+    cond = [sec.scope(actor, db.clients.c.owner_id), client_trash.live()]
     if test == 'real':
         cond.append(db.clients.c.test.is_(False))
     elif test == 'test':
@@ -144,8 +145,8 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
                                               db.clients.c.draft['entity'].as_string().label('draft_entity'),
                                               db.clients.c.draft['client_email'].as_string().label('draft_email')).where(*cond)).mappings()]
     include_test = test != 'real'
-    facts = {r['id']: {'companies': [], 'status': {}, 'baa': {}, 'past_sources': [], 'first_past': None, 'last': 0.0, 'last_source': '', 'past': 0,
-                       'portal': False}
+    facts = {r['id']: {'companies': [], 'status': {}, 'baa': {}, 'signed': {}, 'sent': {}, 'past_sources': [], 'first_past': None, 'last': 0.0,
+                       'last_source': '', 'past': 0, 'portal': False}
              for r in rows}
     ids = list(facts)
 
@@ -163,12 +164,18 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
         if at and at > f['last']:
             f['last'], f['last_source'] = at, source
 
-    def baa(f, entity, day, source, at=None, ref=None):
-        current = f['baa'].get(entity)
-        candidate = {'date': day or '', 'source': source, 'at': at, 'ref': ref}
-        # the earliest signed BAA with this company (an unknown date sorts after known ones)
+    def signed(f, entity, kind, day, source, at=None, ref=None):
+        # the earliest signed agreement of this kind with this company (an unknown date sorts after known ones)
+        key = (entity, kind)
+        current = f['signed'].get(key)
         if not current or (day and (not current['date'] or day < current['date'])):
-            f['baa'][entity] = candidate
+            f['signed'][key] = {'date': day or '', 'source': source, 'at': at, 'ref': ref}
+        if kind == 'baa':
+            f['baa'][entity] = f['signed'][key]
+
+    def sent(f, entity, kind, day):
+        if day and day > f['sent'].get((entity, kind), ''):
+            f['sent'][(entity, kind)] = day
 
     for part in _chunks(ids):
         q = select(db.contracts.c.client_id, db.contracts.c.entity, db.contracts.c.created, db.documents.c.agreement).join(
@@ -183,7 +190,7 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
             mark(f, r['entity'], kind_of_document(r['agreement'], ''), 'generated')
             activity(f, r['created'], 'portal')
         q = select(envelopes.c.id, envelopes.c.client_id, envelopes.c.entity, envelopes.c.status, envelopes.c.completed_at, envelopes.c.updated,
-                   esign_documents.c.agreement, esign_documents.c.name).join(esign_documents, esign_documents.c.envelope_id == envelopes.c.id).where(
+                   envelopes.c.sent_at, esign_documents.c.agreement, esign_documents.c.name).join(esign_documents, esign_documents.c.envelope_id == envelopes.c.id).where(
             envelopes.c.client_id.in_(part), esign.visible(actor), envelopes.c.status.notin_(('template', 'draft')), esign_documents.c.source != 'attachment')
         if not include_test:
             q = q.where(envelopes.c.test.is_(False))
@@ -195,10 +202,10 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
             activity(f, r['updated'], 'portal')
             if r['status'] == DONE:
                 mark(f, r['entity'], kind, 'signed')
-                if kind == 'baa':
-                    baa(f, r['entity'], day_of(r['completed_at'], r['entity']), 'portal', r['completed_at'], r['id'])
+                signed(f, r['entity'], kind, day_of(r['completed_at'], r['entity']), 'portal', r['completed_at'], r['id'])
             elif r['status'] in OUT:
                 mark(f, r['entity'], kind, 'out')
+                sent(f, r['entity'], kind, day_of(r['sent_at'] or r['updated'], r['entity']))
         q = select(client_agreements.c.id, client_agreements.c.client_id, client_agreements.c.entity, client_agreements.c.kind, client_agreements.c.source,
                    client_agreements.c.signed_on, client_agreements.c.created).where(client_agreements.c.client_id.in_(part),
                                                                                      sec.company_scope(actor, client_agreements.c.entity))
@@ -214,8 +221,7 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
                 f['past_sources'].append(r['source'])
             if f['first_past'] is None:
                 f['first_past'] = r['source']
-            if r['kind'] == 'baa':
-                baa(f, r['entity'], r['signed_on'], r['source'], ref=r['id'])
+            signed(f, r['entity'], r['kind'], r['signed_on'], r['source'], ref=r['id'])
     for r in rows:
         f = facts[r['id']]
         if not f['last']:
@@ -252,7 +258,19 @@ def matches(r: dict, q: str) -> bool:
     return term in hay
 
 
-def register(c, actor: dict, q: str = '', company: str = '', source: str = '', baa: str = 'all', test: str = 'real', page: int = 0) -> dict:
+def agreement_view(f: dict, kind: str, company: str = '') -> dict:
+    """One agreement type for one client: signed (with the date it was signed), out for signature (with the date sent) or not signed."""
+    state = doc_states(f, company)[kind]
+    recs = [v for (e, k), v in f['signed'].items() if k == kind and (not company or e == company)]
+    first = min(recs, key=lambda x: (not x['date'], x['date'])) if recs else None
+    sent_on = max([d for (e, k), d in f['sent'].items() if k == kind and (not company or e == company)] or [''])
+    return {'state': state, 'date': first['date'] if first else '', 'source': first['source'] if first else '', 'sent': sent_on}
+
+
+SHOW = ('all', 'both', 'waiting', 'no_baa', 'no_services')
+
+
+def register(c, actor: dict, q: str = '', company: str = '', source: str = '', baa: str = 'all', test: str = 'real', page: int = 0, show: str = 'all') -> dict:
     rows, facts = gather(c, actor, test)
     total = len(rows)
     earlier = [r for r in rows if facts[r['id']]['past']]
@@ -260,22 +278,38 @@ def register(c, actor: dict, q: str = '', company: str = '', source: str = '', b
     for r in earlier:
         by_source[facts[r['id']]['first_past']] = by_source.get(facts[r['id']]['first_past'], 0) + 1
     covered = sum(1 for r in rows if facts[r['id']]['covered'])
+    services = sum(1 for r in rows if doc_states(facts[r['id']])['services'] == 'signed')
+    waiting = [r for r in rows if 'out' in doc_states(facts[r['id']]).values()]
     kpis = {'clients': total, 'earlier': len(earlier), 'portal_only': total - len(earlier), 'covered': covered, 'missing': total - covered,
-            'coverage': round(covered * 100 / total) if total else 0, 'earlier_by_source': by_source}
+            'coverage': round(covered * 100 / total) if total else 0, 'earlier_by_source': by_source,
+            'services_signed': services, 'services_coverage': round(services * 100 / total) if total else 0, 'waiting': len(waiting),
+            'waiting_names': [r['name'] for r in waiting[:3]]}
 
     def signed(r):
         f = facts[r['id']]
         return company in f['baa'] if company else f['covered']
 
+    def services_signed(r):
+        return doc_states(facts[r['id']], company)['services'] == 'signed'
+
+    def is_waiting(r):
+        return 'out' in doc_states(facts[r['id']], company).values()
+
+    tests = {'both': lambda r: signed(r) and services_signed(r), 'waiting': is_waiting, 'no_baa': lambda r: not signed(r),
+             'no_services': lambda r: not services_signed(r)}
     found = [r for r in rows if matches(r, q)
              and (not company or company in facts[r['id']]['companies'])
              and (not source or source in sources_of(facts[r['id']]))]
     counts = {'all': len(found), 'signed': sum(1 for r in found if signed(r))}
     counts['missing'] = counts['all'] - counts['signed']
+    for key, fn in tests.items():
+        counts[key] = sum(1 for r in found if fn(r))
     if baa == 'signed':
         found = [r for r in found if signed(r)]
     elif baa == 'missing':
         found = [r for r in found if not signed(r)]
+    if show in tests:
+        found = [r for r in found if tests[show](r)]
     exact = client_numbers.search_terms(q)
     found.sort(key=lambda r: (not (exact and r['client_number'] in exact), client_numbers.parse(r['client_number']) or 10 ** 9, r['name'].casefold()))
     page = max(0, min(int(page or 0), max(0, (len(found) - 1) // PAGE)))
@@ -288,12 +322,13 @@ def register(c, actor: dict, q: str = '', company: str = '', source: str = '', b
         p = r['profile'] or {}
         out.append({'id': r['id'], 'client_number': r['client_number'] or '', 'name': r['name'], 'place': place_of(r['address']), 'npi': p.get('npi', ''),
                     'test': bool(r['test']), 'companies': [company_view(e) | {'linked': e in f['companies']} for e in companies],
-                    'docs': doc_states(f, company), 'baa': first and {'date': first['date'], 'source': first['source'], 'company': company_view(first['entity'])['short']},
+                    'docs': doc_states(f, company), 'agreements': {k: agreement_view(f, k, company) for k in TAG_KINDS},
+                    'baa': first and {'date': first['date'], 'source': first['source'], 'company': company_view(first['entity'])['short']},
                     'baa_missing_for': missing_for if first else [], 'covered': signed(r),
                     'through': first['source'] if first else (f['last_source'] if f['companies'] else ''), 'last_activity': f['last']})
     return {'kpis': kpis, 'counts': counts, 'clients': out, 'total': len(found), 'page': page, 'page_size': PAGE,
             'companies': [company_view(n) for n in visible_companies(actor)], 'sources': SOURCES,
-            'can_import': actor['role'] != 'user'}
+            'can_import': actor['role'] != 'user', 'can_delete': actor['role'] == 'super_admin', 'trash': client_trash.count(c, actor)}
 
 
 def sources_of(f: dict) -> set[str]:
@@ -424,13 +459,16 @@ def client_agreement_list(c, actor: dict, client: dict) -> dict:
     items.sort(key=lambda x: (x['signed_on'] or day_of(x['created'], x['company']['name']) or '', x['created'] or 0), reverse=True)
     # signed BAA by company: every company this person works with, those with agreements first
     _, facts = gather(c, actor, 'all' if client.get('test') else 'real', [cid])
-    f = facts.get(cid) or {'companies': [], 'baa': {}, 'status': {}}
+    f = facts.get(cid) or {'companies': [], 'baa': {}, 'status': {}, 'signed': {}}
     names = list(dict.fromkeys(f['companies'] + visible_companies(actor)))
     panel = []
     for name in names:
         b = f['baa'].get(name)
+        sv = f['signed'].get((name, 'services'))
         panel.append(company_view(name) | {'linked': name in f['companies'], 'baa': b and {'date': b['date'], 'source': b['source']},
-                                           'out': f['status'].get((name, 'baa')) == 'out'})
+                                           'out': f['status'].get((name, 'baa')) == 'out',
+                                           'services': sv and {'date': sv['date'], 'source': sv['source']},
+                                           'services_out': f['status'].get((name, 'services')) == 'out'})
     return {'items': items, 'companies': panel, 'covered': bool(f.get('covered'))}
 
 
@@ -491,61 +529,80 @@ def read_file(c, client: dict, file_id: str) -> dict:
 
 
 # ------------------------------------------------------------------ the Signed BAA register
-def baa_register(c, actor: dict, company: str = '', q: str = '', status: str = 'all', page: int = 0, everything: bool = False) -> dict:
+REGISTER_LABEL = {'baa': 'BAA', 'services': 'Services Agreement', 'nda': 'Mutual NDA'}
+
+
+def baa_register(c, actor: dict, company: str = '', q: str = '', status: str = 'all', page: int = 0, everything: bool = False, kind: str = 'baa') -> dict:
+    """The signed agreements register for one agreement type (BAA, Services Agreement or Mutual NDA), one company at a time."""
+    kind = kind if kind in TAG_KINDS else 'baa'
     names = visible_companies(actor)
     if company and company not in names:
         raise HTTPException(403, 'You do not have permission for this contracting company.')
     rows, facts = gather(c, actor, 'real')
+
+    def has(r, name):
+        return (name, kind) in facts[r['id']]['signed']
+
+    def covered(r):
+        f = facts[r['id']]
+        return f['covered'] if kind == 'baa' else bool(f['companies']) and all((e, kind) in f['signed'] for e in f['companies'])
     tabs = []
     for name in names:
         linked = [r for r in rows if name in facts[r['id']]['companies']]
-        tabs.append(company_view(name) | {'total': len(linked), 'signed': sum(1 for r in linked if name in facts[r['id']]['baa'])})
+        tabs.append(company_view(name) | {'total': len(linked), 'signed': sum(1 for r in linked if has(r, name))})
     if not company:
         company = next((t['name'] for t in tabs if t['total']), names[0] if names else '')
     associated = [r for r in rows if facts[r['id']]['companies'] and any(e in names for e in facts[r['id']]['companies'])]
-    covered = sum(1 for r in associated if facts[r['id']]['covered'])
+    n_covered = sum(1 for r in associated if covered(r))
     portal = earlier = 0
     by_source = {s: 0 for s in PAST_SOURCES}
     for r in associated:
-        for b in facts[r['id']]['baa'].values():
+        for (e, k), b in facts[r['id']]['signed'].items():
+            if k != kind:
+                continue
             if b['source'] == 'portal':
                 portal += 1
             else:
                 earlier += 1
                 by_source[b['source']] = by_source.get(b['source'], 0) + 1
-    kpis = {'clients': len(associated), 'covered': covered, 'coverage': round(covered * 100 / len(associated)) if associated else 0,
-            'portal': portal, 'earlier': earlier, 'earlier_by_source': by_source, 'missing': len(associated) - covered}
+    kpis = {'clients': len(associated), 'covered': n_covered, 'coverage': round(n_covered * 100 / len(associated)) if associated else 0,
+            'portal': portal, 'earlier': earlier, 'earlier_by_source': by_source, 'missing': len(associated) - n_covered}
+    types = {}
+    for k in TAG_KINDS:
+        states = [doc_states(facts[r['id']])[k] for r in associated]
+        types[k] = {'label': KINDS[k], 'short': REGISTER_LABEL[k], 'signed': states.count('signed'), 'out': states.count('out'), 'total': len(associated)}
     linked = [r for r in rows if company in facts[r['id']]['companies'] and matches(r, q)]
-    counts = {'all': len(linked), 'signed': sum(1 for r in linked if company in facts[r['id']]['baa'])}
+    counts = {'all': len(linked), 'signed': sum(1 for r in linked if has(r, company))}
     counts['missing'] = counts['all'] - counts['signed']
     if status == 'signed':
-        linked = [r for r in linked if company in facts[r['id']]['baa']]
+        linked = [r for r in linked if has(r, company)]
     elif status == 'missing':
-        linked = [r for r in linked if company not in facts[r['id']]['baa']]
+        linked = [r for r in linked if not has(r, company)]
     linked.sort(key=lambda r: (client_numbers.parse(r['client_number']) or 10 ** 9, r['name'].casefold()))
     total = len(linked)
     if not everything:
         page = max(0, min(int(page or 0), max(0, (total - 1) // PAGE)))
         linked = linked[page * PAGE:(page + 1) * PAGE]
-    details = baa_details(c, actor, company, [r['id'] for r in linked if company in facts[r['id']]['baa']], facts)
+    details = signed_details(c, actor, company, kind, [r['id'] for r in linked if has(r, company)], facts)
     out = []
     for r in linked:
-        b = facts[r['id']]['baa'].get(company)
+        b = facts[r['id']]['signed'].get((company, kind))
         d = details.get(r['id'], {})
         out.append({'id': r['id'], 'client_number': r['client_number'] or '', 'name': r['name'], 'address': r['address'], 'npi': (r['profile'] or {}).get('npi', ''),
                     'signed': bool(b), 'date': b['date'] if b else '', 'source': b['source'] if b else '', 'signed_by': d.get('signed_by', ''),
                     'effective_on': d.get('effective_on', ''), 'reference': d.get('reference', ''), 'files': d.get('files', []), 'envelope_id': d.get('envelope_id', ''),
                     'client_id': r['id']})
     tab = next((t for t in tabs if t['name'] == company), None)
-    return {'company': company, 'tabs': tabs, 'kpis': kpis, 'counts': counts, 'rows': out, 'total': total, 'page': page if not everything else 0, 'page_size': PAGE,
+    return {'kind': kind, 'label': KINDS[kind], 'short': REGISTER_LABEL[kind], 'types': types, 'company': company, 'tabs': tabs, 'kpis': kpis,
+            'counts': counts, 'rows': out, 'total': total, 'page': page if not everything else 0, 'page_size': PAGE,
             'coverage': round(tab['signed'] * 100 / tab['total']) if tab and tab['total'] else 0}
 
 
-def baa_details(c, actor: dict, company: str, ids: list[str], facts: dict) -> dict:
-    """Signed by, effective date, reference and files of the BAA shown for each client."""
+def signed_details(c, actor: dict, company: str, kind: str, ids: list[str], facts: dict) -> dict:
+    """Signed by, effective date, reference and files of the agreement shown for each client."""
     out: dict[str, dict] = {}
-    portal = {cid: facts[cid]['baa'][company]['ref'] for cid in ids if facts[cid]['baa'][company]['source'] == 'portal'}
-    past = {cid: facts[cid]['baa'][company]['ref'] for cid in ids if facts[cid]['baa'][company]['source'] != 'portal'}
+    portal = {cid: facts[cid]['signed'][(company, kind)]['ref'] for cid in ids if facts[cid]['signed'][(company, kind)]['source'] == 'portal'}
+    past = {cid: facts[cid]['signed'][(company, kind)]['ref'] for cid in ids if facts[cid]['signed'][(company, kind)]['source'] != 'portal'}
     env_ids = list(portal.values())
     for part in _chunks(env_ids):
         envs = {r['id']: dict(r) for r in c.execute(select(envelopes.c.id, envelopes.c.ref, envelopes.c.contract_id, envelopes.c.client_id, envelopes.c.certificate_sha256)
@@ -557,11 +614,11 @@ def baa_details(c, actor: dict, company: str, ids: list[str], facts: dict) -> di
         for d in c.execute(select(esign_documents.c.id, esign_documents.c.envelope_id, esign_documents.c.name, esign_documents.c.agreement, esign_documents.c.final_sha256)
                            .where(esign_documents.c.envelope_id.in_(list(envs)), esign_documents.c.source != 'attachment')
                            .order_by(esign_documents.c.position)).mappings():
-            if kind_of_document(d['agreement'], d['name']) == 'baa' and d['final_sha256']:
+            if kind_of_document(d['agreement'], d['name']) == kind and d['final_sha256']:
                 docs.setdefault(d['envelope_id'], []).append(d)
         for e in envs.values():
             files = [{'kind': 'portal', 'id': d['id'], 'name': d['name'], 'url': f"/api/esign/documents/{d['id']}/file?final=1"} for d in docs.get(e['id'], [])]
-            out[e['client_id']] = {'signed_by': who.get(e['id'], {}).get('client', ''), 'effective_on': effective_of(payloads.get(e['contract_id']), 'baa'),
+            out[e['client_id']] = {'signed_by': who.get(e['id'], {}).get('client', ''), 'effective_on': effective_of(payloads.get(e['contract_id']), kind),
                                    'reference': e['ref'], 'files': files, 'envelope_id': e['id'], 'certificate': bool(e['certificate_sha256'])}
     for part in _chunks(list(past.values())):
         for r in c.execute(select(client_agreements.c.id, client_agreements.c.client_id, client_agreements.c.client_signer, client_agreements.c.effective_on,
@@ -572,6 +629,10 @@ def baa_details(c, actor: dict, company: str, ids: list[str], facts: dict) -> di
     return out
 
 
+def baa_details(c, actor: dict, company: str, ids: list[str], facts: dict) -> dict:
+    return signed_details(c, actor, company, 'baa', ids, facts)
+
+
 def safe_text(value) -> str:
     text = '' if value is None else str(value)
     return "'" + text if text[:1] in ('=', '+', '-', '@', '\t', '\r') else text
@@ -579,12 +640,13 @@ def safe_text(value) -> str:
 
 def export_register(data: dict, fmt: str) -> tuple[bytes, str, str]:
     company = company_view(data['company'])
-    head = ['Client no.', 'Client', 'Company', 'BAA signed', 'Signed on', 'Signed through', 'Signed by', 'Effective date', 'Reference', 'Signed copy',
+    short = data.get('short', 'BAA')
+    head = ['Client no.', 'Client', 'Company', f'{short} signed', 'Signed on', 'Signed through', 'Signed by', 'Effective date', 'Reference', 'Signed copy',
             'Address', 'NPI']
     rows = [[r['client_number'], r['name'], data['company'], 'Yes' if r['signed'] else 'Not signed', r['date'], SOURCES.get(r['source'], ''), r['signed_by'],
              r['effective_on'], r['reference'], ', '.join(f['name'] or '' for f in r['files']), r['address'], r['npi']] for r in data['rows']]
     stamp = dt.date.today().isoformat()
-    filename = f"Signed BAA register - {company['short']} - {stamp}"
+    filename = f"Signed {short} register - {company['short']} - {stamp}"
     if fmt == 'csv':
         out = io.StringIO()
         writer = csv.writer(out)
@@ -597,7 +659,7 @@ def export_register(data: dict, fmt: str) -> tuple[bytes, str, str]:
     from openpyxl.utils import get_column_letter
     wb = Workbook()
     ws = wb.active
-    ws.title = 'Signed BAA register'
+    ws.title = f'Signed {short} register'[:31]
     ws.append(head)
     for cell in ws[1]:
         cell.fill, cell.font = PatternFill('solid', fgColor='0B2545'), Font(bold=True, color='FFFFFF')
@@ -612,11 +674,50 @@ def export_register(data: dict, fmt: str) -> tuple[bytes, str, str]:
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = 'A2'
     info = wb.create_sheet('Report details')
-    for line in (('Report', 'Signed BAA register'), ('Company', data['company']), ('Prepared', dt.datetime.now().strftime('%Y-%m-%d %H:%M')),
+    for line in (('Report', f'Signed {short} register'), ('Company', data['company']), ('Prepared', dt.datetime.now().strftime('%Y-%m-%d %H:%M')),
                  ('Clients', data['total']), ('Signed', sum(1 for r in data['rows'] if r['signed'])), ('Test clients', 'Left out'),
                  ('Confidential', 'Contains client details. Store and share it securely.')):
         info.append(list(line))
     info.column_dimensions['A'].width, info.column_dimensions['B'].width = 16, 70
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename + '.xlsx'
+
+
+def export_clients(rows: list[dict], facts: dict, fmt: str) -> tuple[bytes, str, str]:
+    """The chosen clients from the register: number, name, companies and each agreement's status with its date."""
+    state = {'signed': 'Signed', 'out': 'Out for signature', 'none': 'Not signed'}
+    head = ['Client no.', 'Client', 'Companies', 'BAA', 'BAA date', 'Services Agreement', 'Services date', 'Mutual NDA', 'NDA date', 'Test client', 'Address', 'NPI']
+    data = []
+    for r in sorted(rows, key=lambda r: (client_numbers.parse(r['client_number']) or 10 ** 9, r['name'].casefold())):
+        f = facts[r['id']]
+        line = [r['client_number'] or '', r['name'], ', '.join(company_view(e)['short'] for e in f['companies'])]
+        for k in TAG_KINDS:
+            v = agreement_view(f, k)
+            line += [state[v['state']], v['date'] if v['state'] == 'signed' else v['sent']]
+        line += ['Yes' if r['test'] else '', r['address'] or '', (r['profile'] or {}).get('npi', '')]
+        data.append(line)
+    filename = f"Clients - {dt.date.today().isoformat()}"
+    if fmt == 'csv':
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(head)
+        for row in data:
+            writer.writerow([safe_text(v) for v in row])
+        return ('\ufeff' + out.getvalue()).encode('utf-8'), 'text/csv; charset=utf-8', filename + '.csv'
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Clients'
+    ws.append(head)
+    for cell in ws[1]:
+        cell.fill, cell.font = PatternFill('solid', fgColor='0B2545'), Font(bold=True, color='FFFFFF')
+    for row in data:
+        ws.append([str(v)[:32000] for v in row])
+        for i in range(len(row)):
+            ws.cell(row=ws.max_row, column=i + 1).data_type = 's'
+    ws.freeze_panes = 'A2'
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename + '.xlsx'
@@ -633,7 +734,7 @@ def write_zip(c, data: dict, path: str) -> int:
         for r in data['rows']:
             if not r['signed']:
                 continue
-            base = zip_name(f"{r['client_number']} {r['name']} - BAA - {r['date'] or 'date unknown'}")
+            base = zip_name(f"{r['client_number']} {r['name']} - {data.get('short', 'BAA')} - {r['date'] or 'date unknown'}")
             for i, f in enumerate(r['files']):
                 if f['kind'] == 'portal':
                     body = c.execute(select(esign_documents.c.final_pdf).where(esign_documents.c.id == f['id'])).scalar()
@@ -660,7 +761,7 @@ def install(app) -> None:
         return sec.get_actor(request, c)
 
     @app.get('/api/client-records/register')
-    def api_register(request: Request, q: str = '', company: str = '', source: str = '', baa: str = 'all', test: str = 'real', page: int = 0):
+    def api_register(request: Request, q: str = '', company: str = '', source: str = '', baa: str = 'all', test: str = 'real', page: int = 0, show: str = 'all'):
         with db.engine.connect() as c:
             a = actor_of(request, c)
             if client_numbers.missing(c):
@@ -668,34 +769,65 @@ def install(app) -> None:
             if company and company not in visible_companies(a):
                 raise HTTPException(403, 'You do not have permission for this contracting company.')
             return register(c, a, q[:200], company, source if source in SOURCES else '', baa if baa in ('signed', 'missing') else 'all',
-                            test if test in ('test', 'all') else 'real', page)
+                            test if test in ('test', 'all') else 'real', page, show if show in SHOW else 'all')
+
+    # ---- bulk actions on clients chosen in the register (each checked exactly as the single action is)
+    def chosen(payload) -> list[str]:
+        ids = payload.get('ids') if isinstance(payload, dict) else None
+        if not isinstance(ids, list) or not ids or len(ids) > 500 or not all(isinstance(x, str) and 0 < len(x) <= 64 for x in ids):
+            raise HTTPException(400, 'Choose between 1 and 500 clients.')
+        return list(dict.fromkeys(ids))
+
+    @app.post('/api/client-records/mark')
+    def api_bulk_mark(request: Request, payload: dict = Body(...)):
+        import marks
+        if not isinstance(payload.get('test'), bool):
+            raise HTTPException(400, 'Choose test or real.')
+        with esign.write_tx() as c:
+            a = actor_of(request, c)
+            results = [marks.mark_client(c, a, cid, payload['test']) for cid in chosen(payload)]
+            return {'changed': len(results), 'test': payload['test'], 'agreements': sum(r['agreements'] for r in results),
+                    'envelopes': sum(r['envelopes'] for r in results)}
+
+    @app.post('/api/client-records/export')
+    def api_bulk_export(request: Request, payload: dict = Body(...)):
+        with db.engine.begin() as c:
+            a = actor_of(request, c)
+            ids = chosen(payload)
+            rows, facts = gather(c, a, 'all', client_ids=ids)
+            if not rows:
+                raise HTTPException(404, 'These clients were not found.')
+            body, media, name = export_clients(rows, facts, 'csv' if payload.get('format') == 'csv' else 'xlsx')
+            db.log(c, a, 'client.register_exported', detail={'clients': len(rows), 'format': 'csv' if payload.get('format') == 'csv' else 'xlsx'})
+        return Response(body, media_type=media, headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @app.get('/api/client-records/baa-register')
-    def api_baa_register(request: Request, company: str = '', q: str = '', status: str = 'all', page: int = 0):
+    def api_baa_register(request: Request, company: str = '', q: str = '', status: str = 'all', page: int = 0, kind: str = 'baa'):
         with db.engine.connect() as c:
             a = actor_of(request, c)
             if client_numbers.missing(c):
                 client_numbers.ensure_before_reading()
-            return baa_register(c, a, company, q[:200], status if status in ('signed', 'missing') else 'all', page)
+            return baa_register(c, a, company, q[:200], status if status in ('signed', 'missing') else 'all', page, kind=kind)
 
     @app.get('/api/client-records/baa-register/export')
-    def api_baa_export(request: Request, company: str = '', format: str = 'xlsx', q: str = '', status: str = 'all'):
+    def api_baa_export(request: Request, company: str = '', format: str = 'xlsx', q: str = '', status: str = 'all', kind: str = 'baa'):
         with db.engine.begin() as c:
             a = actor_of(request, c)
             if not company:
                 raise HTTPException(400, 'Choose a company.')
-            data = baa_register(c, a, company, q[:200], status if status in ('signed', 'missing') else 'all', everything=True)
+            data = baa_register(c, a, company, q[:200], status if status in ('signed', 'missing') else 'all', everything=True, kind=kind)
             body, media, name = export_register(data, 'csv' if format == 'csv' else 'xlsx')
-            db.log(c, a, 'client.baa_register_exported', detail={'entity': company, 'rows': len(data['rows']), 'format': 'csv' if format == 'csv' else 'xlsx'})
+            db.log(c, a, 'client.baa_register_exported', detail={'entity': company, 'kind': data['kind'], 'rows': len(data['rows']),
+                                                                 'format': 'csv' if format == 'csv' else 'xlsx'})
         return Response(body, media_type=media, headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @app.get('/api/client-records/baa-register/files.zip')
-    def api_baa_zip(request: Request, company: str = ''):
+    def api_baa_zip(request: Request, company: str = '', kind: str = 'baa'):
         with db.engine.begin() as c:
             a = actor_of(request, c)
             if not company:
                 raise HTTPException(400, 'Choose a company.')
-            data = baa_register(c, a, company, '', 'signed', everything=True)
+            data = baa_register(c, a, company, '', 'signed', everything=True, kind=kind)
             fd, path = tempfile.mkstemp(prefix='baa-', suffix='.zip', dir=str(db.DATA))
             os.close(fd)
             try:
@@ -703,8 +835,9 @@ def install(app) -> None:
             except BaseException:
                 os.unlink(path)
                 raise
-            db.log(c, a, 'client.baa_files_downloaded', detail={'entity': company, 'files': count})
-        name = f"Signed BAAs - {company_view(company)['short']} - {dt.date.today().isoformat()}.zip".replace('"', '')
+            db.log(c, a, 'client.baa_files_downloaded', detail={'entity': company, 'kind': data['kind'], 'files': count})
+        plural = {'baa': 'BAAs', 'services': 'Services Agreements', 'nda': 'Mutual NDAs'}[data['kind']]
+        name = f"Signed {plural} - {company_view(company)['short']} - {dt.date.today().isoformat()}.zip".replace('"', '')
         return FileResponse(path, media_type='application/zip', filename=name, background=BackgroundTask(os.unlink, path))
 
     @app.get('/api/clients/{client_id}/agreements')

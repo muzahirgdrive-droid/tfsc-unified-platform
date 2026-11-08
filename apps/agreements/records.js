@@ -1,5 +1,6 @@
-/* Client records: the clients register (#/clients), the client record's agreements and "Signed BAA by company", "Add a past
-   signed agreement", "Import previous clients" (#/clients/import) and the Signed BAA register (#/clients/baa-register).
+/* Client records: the clients register (#/clients) with bulk actions, the Trash (#/clients/trash), the client record's agreements
+   and "Signed agreements by company", "Add a past signed agreement", "Import previous clients" (#/clients/import) and the Signed
+   agreements register (#/clients/baa-register: BAAs, Services Agreements and Mutual NDAs).
    Used by clients.js through window.Records. */
 "use strict";
 (() => {
@@ -79,25 +80,130 @@
   const sendBaa = (clientId, entity) => window.openClientDraft(clientId, {entity, documents: ["baa"]});
 
   // ------------------------------------------------------------------ the clients register
-  const reg = {q: "", company: "", source: "", baa: "all", test: "real", page: 0};
+  const reg = {q: "", company: "", source: "", baa: "all", show: "all", test: "real", page: 0};
+  const picked = new Map();          // client id -> {name, client_number}: the clients ticked for a bulk action
   let regTimer = null;
+  const STATE = {signed: ["ok", "✓", "Signed"], out: ["out", "◷", "Out for signature"], none: ["none", "–", "Not signed"]};
+  function agreementState(a, note) {
+    const [cls, icon, text] = STATE[a?.state || "none"];
+    const box = el("div", `rc-st ${cls}`); const b = el("b"); b.append(el("i", "", icon), document.createTextNode(text)); box.append(b);
+    if (a?.state === "signed") box.append(el("small", "", day(a.date) || "Date not recorded"));
+    if (a?.state === "out" && a.sent) box.append(el("small", "", `Sent ${day(a.sent)}`));
+    if (note) box.append(el("small", "warn", note));
+    return box;
+  }
+  function tick(checked, partial, label, onChange) {
+    const c = el("input"); c.type = "checkbox"; c.className = "rc-check"; c.checked = checked; c.indeterminate = !!partial; c.setAttribute("aria-label", label);
+    c.addEventListener("click", e => e.stopPropagation()); c.addEventListener("change", () => onChange(c.checked)); return c;
+  }
+
+  // One handler closes any open "More actions" menu when the person clicks elsewhere.
+  document.addEventListener("click", e => document.querySelectorAll(".rc-more .rc-menu").forEach(m => { if (!m.hidden && !m.parentElement.contains(e.target)) m.hidden = true; }));
+
+  // Bulk actions on the ticked clients. Add an entry here to offer another action; each is checked on the server as the single one is.
+  const BULK = [
+    {label: "Mark as test", run: ids => api("/api/client-records/mark", {ids, test: true}).then(r => `${plural(r.changed, "client")} marked as test.`)},
+    {label: "Mark as real", run: ids => api("/api/client-records/mark", {ids, test: false}).then(r => `${plural(r.changed, "client")} marked as real.`)},
+    {label: "Export (.xlsx)", run: ids => exportClients(ids, "xlsx")},
+    {label: "Export (.csv)", run: ids => exportClients(ids, "csv"), more: true},
+    {label: "Delete", danger: true, superAdmin: true, run: (ids, ctx) => confirmDelete(ids, ctx)},
+  ];
+  async function exportClients(ids, format) {
+    const r = await fetch("/api/client-records/export", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf()}, body: JSON.stringify({ids, format})});
+    if (!r.ok) { let d = {}; try { d = await r.json(); } catch (_) { /* empty */ } throw new Error(d.error || "The export failed."); }
+    const blob = await r.blob(); const a = el("a"); a.href = URL.createObjectURL(blob);
+    a.download = (/filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "") || [])[1] || `Clients.${format}`; document.body.append(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    return `${plural(ids.length, "client")} exported.`;
+  }
+  function bulkBar(ctx) {
+    document.querySelector(".rc-bulk")?.remove();
+    if (!picked.size) return;
+    const bar = el("div", "rc-bulk"); bar.setAttribute("role", "region"); bar.setAttribute("aria-label", "Bulk actions");
+    const count = el("span", "count"); count.append(el("em", "", picked.size), document.createTextNode(picked.size === 1 ? "client selected" : "clients selected"));
+    bar.append(count);
+    const run = async action => {
+      const ids = [...picked.keys()];
+      const message = await action.run(ids, ctx);
+      if (message) { if (action.label.startsWith("Mark")) picked.clear(); ok(message); await ctx.refresh(); }
+    };
+    const visible = BULK.filter(x => !x.superAdmin || ctx.user.role === "super_admin");
+    visible.filter(x => !x.more && !x.danger).forEach(x => bar.append(button(x.label, () => run(x), "")));
+    const extra = visible.filter(x => x.more);
+    if (extra.length) {
+      const wrap = el("span", "rc-more"); const toggle = button("More actions ▾", () => { menu.hidden = !menu.hidden; }, "");
+      const menu = el("div", "rc-menu up"); menu.hidden = true; extra.forEach(x => menu.append(button(x.label, () => { menu.hidden = true; return run(x); }, "")));
+      wrap.append(toggle, menu); bar.append(wrap);
+    }
+    const danger = visible.filter(x => x.danger);
+    if (danger.length) { bar.append(el("span", "sep")); danger.forEach(x => bar.append(button(x.label, () => run(x), "danger"))); }
+    const clear = button("×", () => { picked.clear(); return ctx.refresh(); }, "x"); clear.setAttribute("aria-label", "Clear the selection"); bar.append(clear);
+    document.body.append(bar);
+  }
+
+  // Delete clients (Super Admin): a confirmation that names them, then the Trash for 30 days.
+  async function confirmDelete(ids, ctx, after) {
+    const d = await api(`/api/client-records/delete-preview?ids=${encodeURIComponent(ids.join(","))}`);
+    const n = d.clients.length;
+    return new Promise(resolve => {
+      const box = el("dialog", "rc-dialog rc-confirm"); box.setAttribute("aria-labelledby", "rc-del-title");
+      const top = el("div", "rc-confirm-top"); const ic = el("span", "rc-confirm-ic", "🗑"); ic.setAttribute("aria-hidden", "true");
+      const t = el("div"); const h = el("h2", "", n === 1 ? "Delete this client record?" : `Delete ${n} client records?`); h.id = "rc-del-title";
+      t.append(h, el("p", "", n === 1 ? `Are you sure you want to delete ${d.clients[0].client_number} ${d.clients[0].name}?` : "Are you sure you want to delete the selected client records?"));
+      top.append(ic, t);
+      const body = el("div", "rc-confirm-body");
+      if (n > 1 || d.clients[0].companies.length) {
+        const list = el("ul", "rc-confirm-list");
+        d.clients.forEach(c => { const li = el("li"); li.append(num(c.client_number), el("span", "", c.name), el("small", "", c.companies.join(", "))); list.append(li); });
+        body.append(list);
+      }
+      const until = new Date(d.restorable_until * 1000).toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric"});
+      const info = el("div", "rc-note info"); const it = el("div");
+      it.append(el("b", "", n === 1 ? `It moves to the Trash for ${d.days} days.` : `They move to the Trash for ${d.days} days.`),
+        document.createTextNode(` A Super Admin can restore ${n === 1 ? "it" : "them"} until ${until}, exactly as now and with the same client number${n === 1 ? "" : "s"}. After that ${n === 1 ? "it is" : "they are"} deleted permanently; signed agreements and certificates are kept. Client numbers are never given to another client.`));
+      info.append(el("span", "", "ⓘ"), it); body.append(info);
+      d.clients.filter(c => c.waiting.length).forEach(c => {
+        const w = el("div", "rc-note warn"); const wt = el("div");
+        wt.append(el("b", "", `${c.name} has ${plural(c.waiting.length, "envelope")} out for signature.`),
+          document.createTextNode(" The signing links keep working; when signed, the signed copy is filed to the client and is there if you restore it."));
+        w.append(el("span", "", "⚠"), wt); body.append(w);
+      });
+      const foot = el("div", "rc-confirm-foot"); foot.append(el("small", "", "Only Super Admins can delete clients. Recorded in the activity log."));
+      const cancel = button("Cancel", () => { box.close(); }, "button button-quiet");
+      const go = button(n === 1 ? "Delete client" : `Delete ${n} clients`, async () => {
+        go.disabled = true;
+        try {
+          const r = await api("/api/client-records/delete", {ids: d.clients.map(c => c.id)});
+          box.close(); d.clients.forEach(c => picked.delete(c.id));
+          ok(`${n === 1 ? `${d.clients[0].client_number} ${d.clients[0].name} was` : `${plural(r.deleted, "client")} were`} moved to the Trash. Restore from Clients › Trash within ${d.days} days.`);
+          if (after) await after(); else if (ctx) await ctx.refresh();
+          resolve(null);
+        } catch (e) { go.disabled = false; fail(e); }
+      }, "button button-danger");
+      foot.append(cancel, go); box.append(top, body, foot);
+      box.addEventListener("close", () => { box.remove(); resolve(null); });
+      document.body.append(box); box.showModal(); cancel.focus();
+    });
+  }
+
   async function register(view, ctx) {
-    const qs = new URLSearchParams({q: reg.q, company: reg.company, source: reg.source, baa: reg.baa, test: reg.test, page: reg.page});
+    const qs = new URLSearchParams({q: reg.q, company: reg.company, source: reg.source, baa: reg.baa, show: reg.show, test: reg.test, page: reg.page});
     const d = await api(`/api/client-records/register?${qs}`);
     reg.page = d.page;
     const wrap = el("div", "rc-wrap");
     const k = d.kpis;
+    const trash = d.can_delete ? button("Trash", () => window.portalRoute("#/clients/trash"), "button button-quiet rc-trash-button") : null;
+    if (trash) trash.append(el("em", "", d.trash));
     wrap.append(head("Your records", "Clients", "Every client in one register, each with a permanent client number. Agreements signed in this portal, in DocuSign, by email or through Jotform are all kept on the client's record.", [
       ctx.user.role === "super_admin" && ctx.config.local ? button("Import existing local contracts", ctx.importLegacy) : null,
       d.can_import ? button("Import previous clients", () => window.portalRoute("#/clients/import")) : null,
-      button("Signed BAA register", () => window.portalRoute("#/clients/baa-register")),
+      button("Signed agreements register", () => window.portalRoute("#/clients/baa-register")), trash,
       button("New client", ctx.newClient, "button button-primary")]));
     const kpis = el("div", "rc-kpis");
-    const bySource = Object.entries(k.earlier_by_source).filter(([, n]) => n).map(([s, n]) => `${SOURCES[s]} ${n}`).join(" · ");
     kpis.append(kpi("Clients", k.clients, `${k.portal_only} portal only · ${k.earlier} with earlier records`),
-      kpi("Signed BAAs on file", k.covered, `${k.coverage} % of clients covered`, "good"),
-      kpi("Clients missing a signed BAA", k.missing, k.missing ? "Send one from the Signed BAA register" : "Every client is covered", k.missing ? "warn" : ""),
-      kpi("From earlier systems", k.earlier, bySource || "DocuSign, manual (email) and Jotform"));
+      kpi("Signed BAAs", k.covered, `${k.coverage} % of clients · ${k.missing} missing`, "good"),
+      kpi("Signed Services Agreements", k.services_signed, `${k.services_coverage} % of clients · ${k.clients - k.services_signed} without one`, "good"),
+      kpi("Out for signature", k.waiting, k.waiting ? `${k.waiting_names.join(" · ")}${k.waiting > k.waiting_names.length ? " and more" : ""} waiting` : "Nothing waiting", k.waiting ? "warn" : ""));
     wrap.append(kpis);
     const panel = el("section", "panel table-card");
     const filters = el("form", "rc-filters"); filters.setAttribute("role", "search");
@@ -110,27 +216,42 @@
     source.addEventListener("change", () => { reg.source = source.value; reg.page = 0; ctx.refresh(); });
     const test = selectOf([["real", "Real clients"], ["test", "Test clients"], ["all", "Real and test clients"]], reg.test, "Real or test clients");
     test.addEventListener("change", () => { reg.test = test.value; reg.page = 0; ctx.refresh(); });
-    filters.append(q, company, source, test, seg([["all", "All", d.counts.all], ["signed", "BAA signed", d.counts.signed], ["missing", "BAA missing", d.counts.missing]], reg.baa,
-      key => { reg.baa = key; reg.page = 0; ctx.refresh(); }, "Signed BAA"));
+    filters.append(q, company, source, test, seg([["all", "All", d.counts.all], ["both", "BAA + Services signed", d.counts.both], ["waiting", "Waiting", d.counts.waiting],
+      ["no_baa", "No BAA", d.counts.no_baa], ["no_services", "No Services", d.counts.no_services]], reg.show,
+      key => { reg.show = key; reg.baa = "all"; reg.page = 0; ctx.refresh(); }, "Signed agreements"));
     panel.append(filters);
     const body = el("div", "panel-body");
-    if (!d.clients.length) body.append(el("p", "rc-empty", reg.q || reg.company || reg.source || reg.baa !== "all" ? "No clients match these filters." : "No clients yet. Create one, generate an agreement or import previous clients."));
+    if (!d.clients.length) body.append(el("p", "rc-empty", reg.q || reg.company || reg.source || reg.show !== "all" ? "No clients match these filters." : "No clients yet. Create one, generate an agreement or import previous clients."));
     else {
-      const [t, tb] = table(["Client no.", "Client", "Companies", "Agreements on file", "Signed BAA", "Signed through", "Last activity"]);
+      const [t, tb] = table(["", "Client no.", "Client", "Companies", "BAA", "Services Agreement", "NDA", "Signed through", "Last activity"]);
+      const onPage = d.clients.map(c => c.id), chosen = onPage.filter(id => picked.has(id)).length;
+      const headCell = t.querySelector("thead th"); headCell.className = "rc-c";
+      headCell.append(tick(chosen === onPage.length, chosen > 0 && chosen < onPage.length, "Select every client on this page", on => {
+        d.clients.forEach(c => on ? picked.set(c.id, {name: c.name, client_number: c.client_number}) : picked.delete(c.id)); register(view, ctx).catch(fail);
+      }));
       d.clients.forEach(c => {
-        const tr = el("tr"); if (c.test) tr.classList.add("row-test");
+        const tr = el("tr"); if (c.test) tr.classList.add("row-test"); if (picked.has(c.id)) tr.classList.add("rc-picked");
+        const box = el("td", "rc-c"); box.append(tick(picked.has(c.id), false, `Select ${c.name}`, on => {
+          if (on) picked.set(c.id, {name: c.name, client_number: c.client_number}); else picked.delete(c.id);
+          tr.classList.toggle("rc-picked", on); bulkBar(ctx);
+          const all = t.querySelector("thead .rc-check"), n = onPage.filter(id => picked.has(id)).length; all.checked = n === onPage.length; all.indeterminate = n > 0 && n < onPage.length;
+        }));
         const who = cell(strongSmall(c.name, [c.place, c.npi && `NPI ${c.npi}`].filter(Boolean).join(" · ")));
         if (c.test) who.querySelector("strong").append(testBadge("Test client"));
         const companies = cell(); c.companies.forEach(x => companies.append(co(x, !x.linked)));
         if (!c.companies.length) companies.append(el("span", "muted", "—"));
-        const baa = cell(); baa.className = "d";
-        if (c.baa) { baa.append(el("span", "rc-baa", `Signed ${day(c.baa.date) || "(date not recorded)"}`)); if (c.baa_missing_for.length) baa.append(el("small", "", `Missing for ${c.baa_missing_for.join(", ")}`)); }
-        else baa.append(el("span", "rc-baa miss", "Missing"));
+        const ag = c.agreements || {};
+        const baaNote = c.baa_missing_for.length ? `Missing for ${c.baa_missing_for.join(", ")}` : "";
         const last = el("td", "d", dayTs(c.last_activity));
-        tr.append(cell(num(c.client_number)), who, companies, cell(docTags(c.docs)), baa, cell(c.through ? src(c.through) : el("span", "muted", "—")), last);
+        tr.append(box, cell(num(c.client_number)), who, companies, cell(agreementState(ag.baa, baaNote)), cell(agreementState(ag.services)), cell(agreementState(ag.nda)),
+          cell(c.through ? src(c.through) : el("span", "muted", "—")), last);
         rowLink(tr, () => ctx.openClient(c.id)); tb.append(tr);
       });
       body.append(t);
+      const legend = el("div", "rc-legend");
+      [["ok", "Signed (date signed)"], ["out", "Out for signature (date sent)"], ["none", "Not signed"]].forEach(([cls, text]) => { const s = el("span"); s.append(el("i", cls), document.createTextNode(text)); legend.append(s); });
+      legend.append(el("span", "rc-legend-note", "A client who works with two companies shows the BAA still missing for either one."));
+      body.append(legend);
     }
     panel.append(body);
     const pager = el("div", "rc-pager");
@@ -138,17 +259,61 @@
     const nav = el("span"); const prev = button("Previous", () => { reg.page--; return ctx.refresh(); }, "button button-quiet button-sm"); prev.disabled = d.page === 0;
     const next = button("Next", () => { reg.page++; return ctx.refresh(); }, "button button-quiet button-sm"); next.disabled = to >= d.total; nav.append(prev, next);
     pager.append(el("span", "", `${from}–${to} of ${plural(d.total, "client")} · numbers are permanent and never reused`), nav);
-    panel.append(pager); wrap.append(panel);
-    const jobs = el("details", "card clients-jobs"); jobs.style.padding = "12px 14px"; jobs.append(el("summary", "", "Recent agreement generations"));
-    jobs.addEventListener("toggle", async () => {
-      if (!jobs.open || jobs.dataset.loaded) return; jobs.dataset.loaded = "1";
-      const j = await api("/api/jobs");
-      jobs.append(...(j.jobs.length ? j.jobs.map(x => el("p", "muted small", `${new Date(x.created * 1000).toLocaleString()} · ${x.state}${x.error ? ` · ${x.error}` : ""}`)) : [el("p", "muted small", "No recent generations.")]));
-    });
-    wrap.append(jobs);
+    panel.append(pager);
+    wrap.append(panel);
     view.replaceChildren(wrap);
-    return {focusSearch: () => { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }};
+    bulkBar(ctx);
+    return {focusSearch: () => { const n = view.querySelector('input[type="search"]'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }};
   }
+
+  // ------------------------------------------------------------------ the Trash (Super Admin)
+  const trashPicked = new Set();
+  async function trashPage(view) {
+    const d = await api("/api/client-records/trash");
+    const wrap = el("div", "rc-wrap");
+    const restoreSome = async ids => {
+      const r = await api("/api/client-records/restore", {ids});
+      ids.forEach(id => trashPicked.delete(id));
+      ok(r.restored === 1 ? `Restored ${r.clients[0].client_number} ${r.clients[0].name} with its original client number. Its agreements, signed copies and history are all back.`
+        : `Restored ${plural(r.restored, "client")} with their original client numbers.`);
+      await trashPage(view);
+    };
+    const restoreSel = button(trashPicked.size ? `Restore selected (${trashPicked.size})` : "Restore selected", () => restoreSome([...trashPicked]), "button button-primary");
+    restoreSel.disabled = !trashPicked.size;
+    wrap.append(head("Clients", "Trash", `Deleted clients stay here for ${d.days} days. Restore one and it goes back to the Clients register exactly as it was, with its original client number. After ${d.days} days it is deleted permanently, and its client number is retired: never given to anyone else.`,
+      [button("← All clients", () => window.portalRoute("#/clients")), restoreSel]));
+    const kpis = el("div", "rc-kpis");
+    const next = d.next_purge;
+    kpis.append(kpi("In the Trash", d.clients.length, "Deleted by a Super Admin"),
+      kpi("Deleted permanently next", next ? new Date(next.purge_at * 1000).toLocaleDateString("en-US", {month: "short", day: "numeric"}) : "—", next ? `${next.client_number} ${next.name}` : "Nothing waiting", next && next.days_left <= 7 ? "warn" : ""),
+      kpi("Restored this month", d.restored_this_month, "With their original numbers"), kpi("Retired client numbers", d.retired_numbers, "Never reused"));
+    wrap.append(kpis);
+    const panel = el("section", "panel table-card"); const body = el("div", "panel-body");
+    if (!d.clients.length) body.append(el("p", "rc-empty", "The Trash is empty."));
+    else {
+      const [t, tb] = table(["", "Client no.", "Client", "Companies", "Deleted", "Deleted by", "Restorable for", ""]);
+      const ids = d.clients.map(c => c.id), chosen = ids.filter(id => trashPicked.has(id)).length;
+      const hc = t.querySelector("thead th"); hc.className = "rc-c";
+      hc.append(tick(chosen === ids.length, chosen > 0 && chosen < ids.length, "Select every client in the Trash", on => { ids.forEach(id => on ? trashPicked.add(id) : trashPicked.delete(id)); trashPage(view).catch(fail); }));
+      d.clients.forEach(c => {
+        const tr = el("tr"); if (trashPicked.has(c.id)) tr.classList.add("rc-picked");
+        const box = el("td", "rc-c"); box.append(tick(trashPicked.has(c.id), false, `Select ${c.name}`, on => { if (on) trashPicked.add(c.id); else trashPicked.delete(c.id); trashPage(view).catch(fail); }));
+        const left = el("div", `rc-days${c.days_left <= 7 ? " low" : ""}`); const bar = el("span", "rc-bar"); const fill = el("i"); fill.style.width = `${Math.max(3, c.days_left / d.days * 100)}%`; bar.append(fill);
+        left.append(el("b", "", plural(c.days_left, "day") + " left"), bar, el("small", "", `Deleted permanently on ${new Date(c.purge_at * 1000).toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric"})}`));
+        const companies = cell(); c.companies.forEach(x => companies.append(el("span", "rc-co plain", x))); if (!c.companies.length) companies.append(el("span", "muted", "—"));
+        tr.append(box, cell(num(c.client_number)), cell(strongSmall(c.name, place(c.address))), companies, el("td", "d", dayTs(c.deleted_at)), el("td", "", c.deleted_by || "—"),
+          cell(left), cell(button("Restore", () => restoreSome([c.id]), "button button-quiet button-sm")));
+        tb.append(tr);
+      });
+      body.append(t);
+    }
+    const note = el("div", "rc-note info"); const nt = el("div");
+    nt.append(el("b", "", "What permanent deletion removes: "), document.createTextNode("the client's record, contacts, notes, saved form and the files the team uploaded to it. "),
+      el("b", "", "What is kept: "), document.createTextNode("signed agreements and their Certificates of Completion, and agreements signed before this portal, because they are legal records (HIPAA asks for six years); they stay findable in Agreements by envelope ID. The activity log keeps who deleted and restored what. The client number stays retired."));
+    note.append(el("span", "", "ⓘ"), nt); body.append(note);
+    panel.append(body); wrap.append(panel); view.replaceChildren(wrap);
+  }
+  function place(address) { const parts = (address || "").split(",").map(x => x.trim()).filter(Boolean); return parts.length > 1 ? parts.slice(-2).join(", ").replace(/\s+\d{5}(-\d{4})?$/, "") : (parts[0] || ""); }
 
   // ------------------------------------------------------------------ the client record: agreements and signed BAA by company
   function itemSub(x) {
@@ -194,13 +359,20 @@
     body.append(t);
   }
   function sidePanel(aside, d, client) {
-    aside.append(el("h3", "", "Signed BAA by company"));
+    aside.append(el("h3", "", "Signed agreements by company"));
     d.companies.forEach(c => {
       const row = el("div", "rc-cov"); const left = el("div"); left.append(co(c));
-      if (c.baa) { left.append(el("small", "", [SOURCES[c.baa.source], day(c.baa.date)].filter(Boolean).join(" · "))); row.append(left, el("span", "ok", "✓ On file")); }
-      else if (c.out) { left.append(el("small", "", "Sent for signature")); row.append(left, el("span", "wait", "Waiting")); }
-      else if (c.linked) { left.append(el("small", "", "No signed BAA yet")); row.append(left, button("Send a BAA", () => sendBaa(client.id, c.name), "button button-quiet button-sm")); }
-      else { left.append(el("small", "", "No agreement with this company")); row.append(left, el("span", "muted", "—")); }
+      const line = (label, signed, out) => {
+        const s = el("small", signed ? "rc-line ok" : out ? "rc-line wait" : "rc-line");
+        s.textContent = signed ? `✓ ${label} · ${[SOURCES[signed.source], day(signed.date)].filter(Boolean).join(" · ")}` : out ? `◷ ${label} · out for signature` : `– ${label} · not signed`;
+        return s;
+      };
+      if (c.linked || c.baa || c.services) {
+        left.append(line("BAA", c.baa, c.out), line("Services Agreement", c.services, c.services_out));
+        if (c.baa) row.append(left, el("span", "ok", "✓ On file"));
+        else if (c.out) row.append(left, el("span", "wait", "Waiting"));
+        else row.append(left, button("Send a BAA", () => sendBaa(client.id, c.name), "button button-quiet button-sm"));
+      } else { left.append(el("small", "", "No agreement with this company")); row.append(left, el("span", "muted", "—")); }
       aside.append(row);
     });
     const note = el("div", "rc-callout"); const text = el("div"); text.append(el("b", "", `Client number ${client.client_number || ""}`),
@@ -317,7 +489,7 @@
     const foot = el("div", "rc-dialog-foot"); const note = el("span", "rc-note");
     function summary() {
       const s = pills.querySelector("input:checked")?.value || "manual";
-      note.textContent = [`Saved to ${client.client_number || "the client's record"}`, kind.value === "baa" ? "shows in the Signed BAA register" : "",
+      note.textContent = [`Saved to ${client.client_number || "the client's record"}`, ["baa", "services", "nda"].includes(kind.value) ? "shows in the Signed agreements register" : "",
         `listed as "Signed through ${SOURCES[s]}"`].filter(Boolean).join(" · ");
     }
     const actions = el("div", "rc-actions"); const cancel = el("button", "button button-quiet", "Cancel"); cancel.type = "button"; cancel.addEventListener("click", () => box.close());
@@ -546,33 +718,42 @@
   function importDone() {
     const r = imp.result || {}; const panel = el("section", "panel rc-done");
     panel.append(el("h2", "", "Import finished"), el("p", "", `${plural(r.clients_created || 0, "new client")} created, ${plural(r.agreements || 0, "agreement")} and ${plural(r.files || 0, "signed copy", "signed copies")} saved to the client records.${r.details_filled ? ` Missing details filled in for ${plural(r.details_filled, "existing client")}.` : ""}`));
-    const a = el("div", "rc-actions"); a.append(button("Open the clients register", () => window.portalRoute("#/clients"), "button button-primary"), button("Signed BAA register", () => window.portalRoute("#/clients/baa-register")));
+    const a = el("div", "rc-actions"); a.append(button("Open the clients register", () => window.portalRoute("#/clients"), "button button-primary"), button("Signed agreements register", () => window.portalRoute("#/clients/baa-register")));
     panel.append(a); return panel;
   }
 
-  // ------------------------------------------------------------------ the Signed BAA register
-  const baa = {company: "", q: "", status: "all", page: 0};
+  // ------------------------------------------------------------------ the Signed agreements register (BAA, Services Agreement, Mutual NDA)
+  const baa = {kind: "baa", company: "", q: "", status: "all", page: 0};
   let baaTimer = null;
   async function baaRegister(view) {
-    const qs = new URLSearchParams({company: baa.company, q: baa.q, status: baa.status, page: baa.page});
+    const qs = new URLSearchParams({kind: baa.kind, company: baa.company, q: baa.q, status: baa.status, page: baa.page});
     const d = await api(`/api/client-records/baa-register?${qs}`);
+    const short = d.short, plural_ = {baa: "BAAs", services: "Services Agreements", nda: "Mutual NDAs"}[d.kind];
     baa.company = d.company; baa.page = d.page;
     const wrap = el("div", "rc-wrap");
     const tab = d.tabs.find(t => t.name === d.company) || {short: "", signed: 0, total: 0};
-    const exportUrl = format => `/api/client-records/baa-register/export?${new URLSearchParams({company: d.company, format, q: baa.q, status: baa.status})}`;
+    const exportUrl = format => `/api/client-records/baa-register/export?${new URLSearchParams({kind: d.kind, company: d.company, format, q: baa.q, status: baa.status})}`;
     const xlsx = link(exportUrl("xlsx"), "Export register (.xlsx)"); xlsx.className = "button button-quiet";
     const csv = link(exportUrl("csv"), "Export (.csv)"); csv.className = "button button-quiet";
-    const zip = link(`/api/client-records/baa-register/files.zip?${new URLSearchParams({company: d.company})}`, "Download all signed BAAs (.zip)"); zip.className = "button button-primary";
-    if (!tab.signed) { zip.removeAttribute("href"); zip.setAttribute("aria-disabled", "true"); zip.classList.add("is-disabled"); zip.title = "No signed BAA for this company yet"; }
+    const zip = link(`/api/client-records/baa-register/files.zip?${new URLSearchParams({kind: d.kind, company: d.company})}`, `Download all signed ${plural_} (.zip)`); zip.className = "button button-primary";
+    if (!tab.signed) { zip.removeAttribute("href"); zip.setAttribute("aria-disabled", "true"); zip.classList.add("is-disabled"); zip.title = `No signed ${short} for this company yet`; }
     if (!d.company) [xlsx, csv].forEach(a => a.removeAttribute("href"));
-    wrap.append(head("Clients", "Signed BAA register", "Every signed Business Associate Agreement, for every company and client, wherever it was signed. Export it for an audit or download every signed copy at once.",
+    wrap.append(head("Clients", "Signed agreements register", "Every signed agreement for every company and client, wherever it was signed: Business Associate Agreements, Services Agreements and Mutual NDAs. Choose the agreement, then the company. Export it for an audit or download the signed copies at once.",
       [button("← All clients", () => window.portalRoute("#/clients")), xlsx, csv, zip]));
     const k = d.kpis; const kpis = el("div", "rc-kpis");
     const by = Object.entries(k.earlier_by_source).filter(([, n]) => n).map(([s, n]) => `${SOURCES[s]} ${n}`).join(" · ");
-    kpis.append(kpi("BAA coverage", `${k.coverage} %`, `${k.covered} of ${plural(k.clients, "client")}`, "good"), kpi("Signed in this portal", k.portal, "with Certificates of Completion"),
+    kpis.append(kpi(`${short} coverage`, `${k.coverage} %`, `${k.covered} of ${plural(k.clients, "client")}`, "good"), kpi("Signed in this portal", k.portal, "with Certificates of Completion"),
       kpi("From earlier systems", k.earlier, by || "DocuSign, manual (email) and Jotform"), kpi("Not signed yet", k.missing, "clients listed under \"Not signed\"", k.missing ? "warn" : ""));
     wrap.append(kpis);
     const panel = el("section", "panel table-card");
+    const types = el("div", "rc-types"); types.setAttribute("role", "group"); types.setAttribute("aria-label", "Agreement");
+    Object.entries(d.types).forEach(([key, t]) => {
+      const b = el("button", "rc-type"); b.type = "button"; b.setAttribute("aria-pressed", String(key === d.kind));
+      b.append(document.createTextNode({baa: "Business Associate Agreements", services: "Services Agreements", nda: "Mutual NDAs"}[key]),
+        el("em", "", t.out ? `${t.signed} of ${t.total} · ${t.out} out` : `${t.signed} of ${t.total}`));
+      b.addEventListener("click", () => { baa.kind = key; baa.page = 0; baa.status = "all"; baaRegister(view).catch(fail); }); types.append(b);
+    });
+    panel.append(types);
     const tabs = el("div", "rc-cotabs"); tabs.setAttribute("role", "group"); tabs.setAttribute("aria-label", "Company");
     d.tabs.forEach(t => {
       const b = el("button", "rc-cotab"); b.type = "button"; b.setAttribute("aria-pressed", String(t.name === d.company)); const dot = el("i");
@@ -592,11 +773,11 @@
     const body = el("div", "panel-body");
     if (!d.rows.length) body.append(el("p", "rc-empty", d.tabs.length ? (baa.q || baa.status !== "all" ? "No clients match." : "No clients with this company yet.") : "You are not assigned to a company."));
     else {
-      const [t, tb] = table(["Client no.", "Client", "BAA signed", "Signed through", "Signed by", "Effective", "File"]);
+      const [t, tb] = table(["Client no.", "Client", `${short} signed`, "Signed through", "Signed by", "Effective", "File"]);
       d.rows.forEach(r => {
         const tr = el("tr");
         const signedCell = el("td", "d"); signedCell.append(el("span", r.signed ? "rc-baa" : "rc-baa miss", r.signed ? (day(r.date) || "Date not recorded") : "Not signed"));
-        const through = cell(r.signed ? src(r.source) : button("Send a BAA", () => sendBaa(r.id, d.company), "button button-quiet button-sm"));
+        const through = cell(r.signed ? src(r.source) : d.kind === "baa" ? button("Send a BAA", () => sendBaa(r.id, d.company), "button button-quiet button-sm") : el("span", "muted", "—"));
         const files = el("td", "rc-files");
         if (r.signed) {
           files.append(button("Open", () => r.envelope_id ? window.esignOpen(r.envelope_id) : window.portalRoute(`#/clients/${r.id}`), "text-button"));
@@ -616,6 +797,6 @@
     wrap.append(panel); view.replaceChildren(wrap);
   }
 
-  window.Records = {register, agreementsTable, sidePanel, addPast, importPage, baaRegister, num, co, src, day, config: null,
-    resetRegister: () => Object.assign(reg, {q: "", company: "", source: "", baa: "all", test: "real", page: 0})};
+  window.Records = {register, agreementsTable, sidePanel, addPast, importPage, baaRegister, trashPage, confirmDelete, exportClients, num, co, src, day, config: null,
+    resetRegister: () => Object.assign(reg, {q: "", company: "", source: "", baa: "all", show: "all", test: "real", page: 0})};
 })();

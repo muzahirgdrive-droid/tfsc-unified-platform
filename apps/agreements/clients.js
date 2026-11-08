@@ -72,6 +72,10 @@
     const view = root();
     if (state.client === "import") { window.portalMark?.("#/clients/import"); return window.Records.importPage(view); }
     if (state.client === "baa-register") { window.portalMark?.("#/clients/baa-register"); return window.Records.baaRegister(view); }
+    if (state.client === "trash") {
+      if (user.role !== "super_admin") return window.portalRoute("#/clients");
+      window.portalMark?.("#/clients/trash"); return window.Records.trashPage(view);
+    }
     if (state.client) { window.portalMark?.(`#/clients/${state.client}`); return profile(state.client); }
     window.portalMark?.("#/clients");
     await window.Records.register(view, ctx);
@@ -97,13 +101,24 @@
     if (d.can_edit) actions.append(c.test ? button("Mark as real client", () => markClient(id, false), "button button-quiet test-toggle") : button("Mark as test client", () => markClient(id, true), "button button-quiet test-toggle"));
     state.entity = c.entity && config.entities.some(e => e.name === c.entity) ? c.entity : config.entities[0]?.name;
     actions.append(button("Send documents for signature", () => sendFor(id), "button button-primary"));
+    // More actions: room for actions used less often; Delete (Super Admin) moves the client to the Trash for 30 days.
+    const more = el("span", "rc-more"); const menu = el("div", "rc-menu"); menu.hidden = true;
+    const toggle = button("More actions ▾", () => { menu.hidden = !menu.hidden; }); toggle.setAttribute("aria-haspopup", "true");
+    menu.append(button("Copy client number", async () => { menu.hidden = true; try { await navigator.clipboard.writeText(c.client_number || ""); ok(`Copied ${c.client_number}.`); } catch (_) { ok(c.client_number || ""); } }, ""),
+      button("Export client record (.xlsx)", () => { menu.hidden = true; return R.exportClients([id], "xlsx").then(ok); }, ""));
+    if (user.role === "super_admin") {
+      menu.append(el("hr"));
+      const del = button("Delete client…", () => { menu.hidden = true; return R.confirmDelete([id], null, () => window.portalRoute("#/clients")); }, "danger");
+      del.append(el("small", "", "Super Admin")); menu.append(del);
+    }
+    more.append(toggle, menu); actions.append(more);
     heroTop.append(name, actions); hero.append(heroTop);
     const chips = el("div", "rc-chips"); ag.companies.filter(x => x.linked).forEach(x => chips.append(R.co(x))); if (chips.childNodes.length) hero.append(chips);
     main.append(hero);
     const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist");
     const counts = d.counts, signed = counts.envelopes.completed || 0, waiting = (counts.envelopes.sent || 0) + (counts.envelopes.completing || 0);
-    const baas = ag.items.filter(x => x.kind === "baa" && x.status === "signed").length;
-    [["overview", "Overview"], ["agreements", "Agreements", ag.items.length], ["baas", "Signed BAAs", baas], ["contacts", "Contacts", d.contacts.length], ["documents", "Documents"],
+    const baas = ag.items.filter(x => ["baa", "services", "nda"].includes(x.kind) && x.status === "signed").length;
+    [["overview", "Overview"], ["agreements", "Agreements", ag.items.length], ["baas", "Signed agreements", baas], ["contacts", "Contacts", d.contacts.length], ["documents", "Documents"],
       ["signatures", "Signatures", waiting ? `${waiting} waiting` : undefined], ["generated", "Generated", counts.contracts], ["activity", "Activity"]].forEach(([key, label, n]) => {
       const t = button(label, () => { state.tab = key; return profile(id); }, ""); if (n !== undefined) t.append(el("em", "", n));
       t.setAttribute("role", "tab"); t.setAttribute("aria-selected", String(state.tab === key)); tabs.append(t);
@@ -114,7 +129,7 @@
     const records = {client: {id: c.id, client_number: c.client_number, name: c.name}, reload: () => profile(id)};
     if (state.tab === "agreements" || state.tab === "baas") {
       if (!c.test) body.classList.add("flush");
-      R.agreementsTable(body, ag, records, state.tab === "baas" ? x => x.kind === "baa" && x.status === "signed" : null);
+      R.agreementsTable(body, ag, records, state.tab === "baas" ? x => ["baa", "services", "nda"].includes(x.kind) && x.status === "signed" : null);
     } else if (state.tab === "overview") overview(body, d, signed, waiting);
     else if (state.tab === "contacts") contacts(body, d);
     else if (state.tab === "documents") await documents(body, id);
@@ -309,6 +324,7 @@
   }
 
   window.clientsReady = c => { config = c; user = c.user; if (window.Records) window.Records.config = c; };
-  // id: a client's id (its record), "import" (Import previous clients), "baa-register" (Signed BAA register), or nothing (the register)
+  // id: a client's id (its record), "import" (Import previous clients), "baa-register" (Signed agreements register), "trash" (the
+  // Trash, Super Admin), or nothing (the register)
   window.clientsShow = id => { if (id !== state.client) state.tab = "agreements"; state.client = id || null; return show().catch(fail); };
 })();

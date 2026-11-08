@@ -14,6 +14,7 @@ import crm_bridge
 import companies
 import marks
 import client_numbers
+import client_trash
 import entities as entities_mod
 from entities import ENTITIES, get_entity
 
@@ -191,6 +192,7 @@ def config(request:Request):
 def client_allowed(c,a,id):
     row=c.execute(select(db.clients).where(db.clients.c.id==id,sec.scope(a,db.clients.c.owner_id))).mappings().first()
     if not row:raise HTTPException(404,'Client not found.')
+    client_trash.refuse_if_trashed(row)
     return row
 def save_draft(c,a,data,generating=False):
     # Test agreements: a client first saved by a test run is a test client; a real generation makes it a real client.
@@ -213,7 +215,7 @@ def save_draft(c,a,data,generating=False):
 def list_clients(request:Request,q:str='',page:int=0):
     page=max(0,min(page,100000))
     with db.engine.connect() as c:
-        a=sec.get_actor(request,c);condition=sec.scope(a,db.clients.c.owner_id)
+        a=sec.get_actor(request,c);condition=and_(sec.scope(a,db.clients.c.owner_id),client_trash.live())
         if client_numbers.missing(c):client_numbers.ensure_before_reading()
         # a client number ("CL-0012", "cl-12", "12") finds that client as well as names containing the text
         if q:condition=and_(condition,or_(func.lower(db.clients.c.name).contains(q[:200].lower(),autoescape=True),db.clients.c.client_number.in_(client_numbers.search_terms(q))))
@@ -463,6 +465,7 @@ import clients
 clients.install(app)
 import client_records
 client_records.install(app)
+client_trash.install(app)
 import client_import
 client_import.install(app)
 import esign_bulk

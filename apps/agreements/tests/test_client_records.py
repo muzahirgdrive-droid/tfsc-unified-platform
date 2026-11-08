@@ -363,7 +363,9 @@ class Register(Records):
         self.assertEqual((m['baa'], m['docs']['baa'], m['covered']), (None, 'out', False))
         # u1 only sees Scribe Align: the EHS agreement on the partial client is not theirs to see
         self.assertTrue(rows['Partial Clinic']['covered'])
-        self.assertEqual(self.register(baa='missing')['counts'], {'all': 4, 'signed': 3, 'missing': 1})
+        counts = self.register(baa='missing')['counts']
+        self.assertEqual({k: counts[k] for k in ('all', 'signed', 'missing')}, {'all': 4, 'signed': 3, 'missing': 1})
+        self.assertEqual(counts['no_baa'], 1)
         self.assertEqual([r['name'] for r in self.register(baa='missing')['clients']], ['Missing Clinic'])
         self.assertEqual(len(self.register(baa='signed')['clients']), 3)
         self.assertEqual(sorted(r['name'] for r in self.register(source='jotform')['clients']), ['Past Signed Clinic'])
@@ -378,7 +380,7 @@ class Register(Records):
         self.assertEqual(rows['Partial Clinic']['baa']['date'], '2021-09-30')
         ehs = self.register(company=EHS)
         self.assertEqual([r['name'] for r in ehs['clients']], ['Partial Clinic'])
-        self.assertEqual(ehs['counts'], {'all': 1, 'signed': 0, 'missing': 1})
+        self.assertEqual({k: ehs['counts'][k] for k in ('all', 'signed', 'missing')}, {'all': 1, 'signed': 0, 'missing': 1})
         # a test client marked real brings its past agreements into the register
         self.assertEqual(self.post(f'/api/clients/{self.test_client}/test', {'test': False}).status_code, 200)
         rows = {r['name']: r for r in self.register()['clients']}

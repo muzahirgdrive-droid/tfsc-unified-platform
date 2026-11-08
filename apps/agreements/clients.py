@@ -21,6 +21,7 @@ from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 import client_numbers
+import client_trash
 import database as db
 import esign
 import mailer
@@ -54,15 +55,20 @@ def visible_client(c, actor: dict, name: str):
 
     Admins and the Super Admin work on their team's clients; looking only at the actor's own clients would create a second
     profile for the same clinic and split its agreements, contacts and files between the two."""
-    return c.execute(select(db.clients.c.id, db.clients.c.owner_id)
-                     .where(sec.scope(actor, db.clients.c.owner_id), db.clients.c.name_key == name_key(name))
-                     .order_by(case((db.clients.c.owner_id == actor['id'], 0), else_=1), db.clients.c.updated.desc()).limit(1)).first()
+    row = c.execute(select(db.clients.c.id, db.clients.c.owner_id)
+                    .where(sec.scope(actor, db.clients.c.owner_id), db.clients.c.name_key == name_key(name), client_trash.live())
+                    .order_by(case((db.clients.c.owner_id == actor['id'], 0), else_=1), db.clients.c.updated.desc()).limit(1)).first()
+    if not row:
+        # the actor's own client with this name is in the Trash: say so instead of creating a second one (names are unique)
+        client_trash.refuse_if_trashed(client_trash.trashed_with_name(c, actor['id'], name_key(name)))
+    return row
 
 
 def client_for(c, actor: dict, client_id: str) -> dict:
     row = c.execute(select(db.clients).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).mappings().first()
     if not row:
         raise HTTPException(404, 'Client not found.')
+    client_trash.refuse_if_trashed(row)
     return dict(row)
 
 
@@ -435,7 +441,7 @@ def install(app) -> None:  # noqa: C901  (route table)
             return {'contacts': []}
         with db.engine.connect() as c:
             a = actor_of(request, c)
-            visible_clients = select(db.clients.c.id).where(sec.scope(a, db.clients.c.owner_id))
+            visible_clients = select(db.clients.c.id).where(sec.scope(a, db.clients.c.owner_id), client_trash.live())
             match = or_(func.lower(client_contacts.c.name).contains(term, autoescape=True), func.lower(client_contacts.c.email).contains(term, autoescape=True))
             out, seen = [], set()
             for r in c.execute(select(client_contacts.c.name, client_contacts.c.email, client_contacts.c.title, db.clients.c.name.label('client'))

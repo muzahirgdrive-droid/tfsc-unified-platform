@@ -141,7 +141,7 @@ def mark_envelopes(c, actor: dict, ids: list[str], test: bool) -> int:
 
 def mark_client(c, actor: dict, client_id: str, test: bool) -> dict:
     """Marking a client as a test also marks its agreements and envelopes; marking it real changes only the client."""
-    row = c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).first()
+    row = c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id), db.clients.c.deleted_at.is_(None))).first()
     if not row:
         raise HTTPException(404, 'Client not found.')
     contracts, sent = 0, 0

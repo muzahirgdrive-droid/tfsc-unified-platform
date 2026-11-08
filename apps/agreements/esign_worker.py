@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 
+import client_trash
 import esign
 import mailer
 
@@ -13,7 +14,8 @@ def tick(state: dict) -> int:
     """One pass. Each part is independent, so a failing mailbox never stops completion or reminders."""
     done = 0
     now = time.time()
-    for name, every, job in (('mail', 0, mailer.dispatch_once), ('complete', 0, esign.complete_due), ('sweep', 60, esign.sweep), ('inbox', 30, mailer.poll_inboxes)):
+    for name, every, job in (('mail', 0, mailer.dispatch_once), ('complete', 0, esign.complete_due), ('sweep', 60, esign.sweep), ('inbox', 30, mailer.poll_inboxes),
+                            ('trash', 3600, client_trash.purge_once)):
         if every and now - state.get(name, 0) < every:
             continue
         state[name] = now

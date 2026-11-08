@@ -27,7 +27,7 @@
   if(top==='templates')return go('esign','templates',()=>window.esignShowList?.('templates'));
   if(top==='envelope'&&/^[a-f0-9]{32}$/.test(a))return go('esign','agreements',()=>window.esignOpen?.(a));
   if(top==='send')return go('esign','agreements',()=>window.esignStart?.());
-  if(top==='clients')return go('history','clients',()=>window.clientsShow?.(/^[a-f0-9]{32}$|^import$|^baa-register$/.test(a)?a:undefined));
+  if(top==='clients')return go('history','clients',()=>window.clientsShow?.(/^[a-f0-9]{32}$|^import$|^baa-register$|^trash$/.test(a)?a:undefined));
   if(top==='create'){const from=document.body.dataset.view;return go('builder','create',()=>window.createEnter?.(from));}
   if(top==='reports')return go('reports','reports',()=>window.reportsShow?.(a||'insights'));
   if(top==='activity'&&user.role!=='user')return go('activity','activity',()=>window.activityShow?.());

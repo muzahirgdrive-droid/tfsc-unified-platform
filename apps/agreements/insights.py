@@ -495,7 +495,8 @@ def rows_agreements(c, actor, f, tz):
 
 def rows_clients(c, actor, f, tz):
     include = f.get('include_test', False)
-    cond = [sec.scope(actor, db.clients.c.owner_id), *_range(func.coalesce(db.clients.c.created, db.clients.c.updated), f), *real_only(db.clients.c.test, include)]
+    cond = [sec.scope(actor, db.clients.c.owner_id), db.clients.c.deleted_at.is_(None), *_range(func.coalesce(db.clients.c.created, db.clients.c.updated), f),
+            *real_only(db.clients.c.test, include)]
     if f['client']:
         cond.append(or_(func.lower(db.clients.c.name).contains(f['client'].lower(), autoescape=True), db.clients.c.client_number.in_(client_numbers.search_terms(f['client']))))
     if f['owner']:
