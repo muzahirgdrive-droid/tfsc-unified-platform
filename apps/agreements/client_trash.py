@@ -70,11 +70,20 @@ def _ids(payload) -> list[str]:
 
 
 def _companies(c, ids: list[str]) -> dict[str, list[str]]:
+    """The companies each client works with: from its agreements (generated, sent, signed before the portal), else its saved form."""
     from entities import ENTITIES
     out: dict[str, list[str]] = {i: [] for i in ids}
-    for cid, entity in c.execute(select(db.contracts.c.client_id, db.contracts.c.entity).where(db.contracts.c.client_id.in_(ids or [''])).distinct()).all():
+    if not ids:
+        return out
+    pairs = set(c.execute(select(db.contracts.c.client_id, db.contracts.c.entity).where(db.contracts.c.client_id.in_(ids))).all())
+    pairs |= set(c.execute(select(envelopes.c.client_id, envelopes.c.entity).where(envelopes.c.client_id.in_(ids), envelopes.c.status != 'template')).all())
+    pairs |= set(c.execute(select(client_agreements.c.client_id, client_agreements.c.entity).where(client_agreements.c.client_id.in_(ids))).all())
+    for cid, draft in c.execute(select(db.clients.c.id, db.clients.c.draft).where(db.clients.c.id.in_(ids))).all():
+        if not any(p[0] == cid for p in pairs) and isinstance(draft, dict) and draft.get('entity'):
+            pairs.add((cid, draft['entity']))
+    for cid, entity in sorted(pairs, key=lambda x: (x[0], x[1] or '')):
         short = ENTITIES[entity]['short'] if entity in ENTITIES else entity
-        if short not in out[cid]:
+        if short and short not in out[cid]:
             out[cid].append(short)
     return out
 
@@ -140,8 +149,9 @@ def trash(c, actor: dict) -> dict:
     month = time.strftime('%Y-%m', time.gmtime(t))
     restored = c.execute(select(func.count()).select_from(db.audit).where(db.audit.c.action == 'client.restored',
                                                                          db.audit.c.created >= time.mktime(time.strptime(month + '-01', '%Y-%m-%d')))).scalar()
+    # retired: numbers whose client is gone for good (purged, or removed before numbers were kept); clients in the Trash keep theirs
     retired = c.execute(select(func.count()).select_from(db.client_number_registry).where(
-        db.client_number_registry.c.client_id.notin_(select(db.clients.c.id).where(live(), db.clients.c.client_number.isnot(None))))).scalar()
+        db.client_number_registry.c.client_id.notin_(select(db.clients.c.id).where(db.clients.c.purged_at.is_(None))))).scalar()
     return {'clients': out, 'days': RETENTION_DAYS, 'restored_this_month': restored, 'retired_numbers': retired,
             'next_purge': out[-1] if out else None}
 

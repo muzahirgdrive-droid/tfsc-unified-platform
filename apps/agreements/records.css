@@ -304,3 +304,5 @@
 .rc-type[aria-pressed="true"]{border-color:#1F55D6;background:#EEF4FF;color:#1F3A9E}.rc-type[aria-pressed="true"] em{background:#1F55D6;color:#fff}
 .rc-cov small.rc-line{display:block;color:#94A3B8}.rc-cov small.rc-line.ok{color:#0F7A4F}.rc-cov small.rc-line.wait{color:#9A5B00}
 @media (max-width:760px){.rc-bulk{left:12px;right:12px;transform:none;bottom:12px}.rc-legend .rc-legend-note{margin-left:0}}
+.rc-confirm-foot .button-danger{background:#D92D20;border-color:#D92D20;color:#fff}.rc-confirm-foot .button-danger:hover{background:#B42318;border-color:#B42318}
+.rc-confirm-foot .button-danger:disabled{opacity:.6}
