@@ -397,8 +397,24 @@ class Lifecycle(Base):
                                                               'fields': [dict(f, recipient=f['recipient_id']) for f in env['fields']]})
         self.post(f"/api/esign/envelopes/{env['id']}/send")
         self.assertTrue(self.api.get(f"/api/esign/envelopes/{env['id']}").json()['chain_ok'])
+        # the database itself refuses a change to the history ...
+        from sqlalchemy.exc import DBAPIError
+        with self.assertRaises(DBAPIError):
+            with db.engine.begin() as c:
+                c.execute(update(t.events).where(t.events.c.envelope_id == env['id'], t.events.c.kind == 'sent').values(actor='Someone else'))
+        with self.assertRaises(DBAPIError):
+            with db.engine.begin() as c:
+                c.execute(t.events.delete().where(t.events.c.envelope_id == env['id'], t.events.c.kind == 'sent'))
+        self.assertTrue(self.api.get(f"/api/esign/envelopes/{env['id']}").json()['chain_ok'])
+        # ... and a change made by someone who can remove that protection is still detected
         with db.engine.begin() as c:
+            if c.dialect.name == 'postgresql':
+                c.exec_driver_sql('ALTER TABLE esign_events DISABLE TRIGGER trg_esign_events_keep')
+            else:
+                c.exec_driver_sql('DROP TRIGGER trg_esign_events_no_update')
             c.execute(update(t.events).where(t.events.c.envelope_id == env['id'], t.events.c.kind == 'sent').values(actor='Someone else'))
+            if c.dialect.name == 'postgresql':
+                c.exec_driver_sql('ALTER TABLE esign_events ENABLE TRIGGER trg_esign_events_keep')
         self.assertFalse(self.api.get(f"/api/esign/envelopes/{env['id']}").json()['chain_ok'])
 
     def test_template_copy_keeps_layout_without_signing_data(self):
@@ -691,9 +707,16 @@ class Mail(Base):
         with db.engine.connect() as c:
             state = c.execute(select(t.outbox.c.state, t.outbox.c.attempts, t.outbox.c.next_attempt).where(t.outbox.c.id == row['id'])).one()
             error = c.execute(select(t.mailboxes.c.smtp_error)).scalar()
-        self.assertEqual(state[0], 'queued')
-        self.assertGreater(state[2], time.time() + 60)
+        # the mailbox is paused and the email keeps its place in the queue: a wrong password is not the email's fault
+        self.assertEqual((state[0], state[1]), ('queued', 0))
         self.assertIn('app password', error)
+        with db.engine.connect() as c:
+            paused = c.execute(select(t.mailboxes.c.pause_kind, t.mailboxes.c.paused_until)).one()
+        self.assertEqual(paused[0], 'auth')
+        self.assertGreater(paused[1], time.time() + 60)
+        logins = len(self.smtp.logins)
+        mailer.dispatch_once()
+        self.assertEqual(len(self.smtp.logins), logins, 'no further sign-in attempts while paused')
         self.login(self.super)
         result = self.post('/api/esign/mailboxes/0/test', {'what': 'send', 'to': 'me@scribealign.test'}).json()
         self.assertFalse(result['ok'])

@@ -50,11 +50,19 @@ DEFAULT_NOTIFY = list(NOTIFY_EVENTS)
 DEFAULT_ADDRESSES = {'SCRIBE ALIGN LLC': 'compliance@scribealign.com', 'EXTENDED HEALTH SERVICES INC.': 'compliance@extendedhealthservices.us',
                      '24-7 CONSULTANCY LLC': 'compliance@24-7consultancyllc.com'}
 MAX_ATTEMPTS = 10
+SMTP_TIMEOUT = float(os.getenv('TFSC_SMTP_TIMEOUT', '20'))
+# Google Workspace allows 2,000 messages per mailbox per day; stopping a little earlier keeps the mailbox out of trouble.
+DAILY_CAP = int(os.getenv('TFSC_MAIL_DAILY_CAP', '1800'))
+LANE_BATCH = 25               # emails per mailbox per pass, over one connection
 ATTACHMENT_LIMIT = 18_000_000
 
 
 class MailboxNotReady(Exception):
     pass
+
+
+class ScannerUnavailable(Exception):
+    """The virus scanner cannot be reached: nothing that needs scanning is read or dropped until it is back."""
 
 
 def valid_email(value: str) -> str:
@@ -74,7 +82,8 @@ def defaults(entity_name: str) -> dict:
     address = DEFAULT_ADDRESSES.get(entity_name, '')
     return dict(entity=entity_name, address=address, display_name=entity['display'], mode='off', auth='password', login=address,
                 secret=None, sa_key=None, imap_enabled=True, signer_email='', notify=DEFAULT_NOTIFY, imap_uidvalidity=None, imap_last_uid=None,
-                imap_last_poll=None, imap_error=None, imap_lease=None, smtp_error=None, last_test={}, updated=0.0, updated_by=None, **GOOGLE)
+                imap_last_poll=None, imap_error=None, imap_lease=None, smtp_error=None, last_test={}, updated=0.0, updated_by=None,
+                paused_until=None, pause_kind=None, pause_reason=None, pause_count=0, sent_day=None, sent_count=0, **GOOGLE)
 
 
 def load(c, entity_name: str) -> dict:
@@ -88,6 +97,8 @@ def public(box: dict, full: bool) -> dict:
     out['index'] = list(ENTITIES).index(box['entity'])
     out['short'] = get_entity(box['entity'])['short']
     out['ready'] = ready(box)
+    paused = bool(box.get('paused_until') and box['paused_until'] > time.time())
+    out['paused'] = {'until': box['paused_until'], 'kind': box.get('pause_kind') or '', 'reason': box.get('pause_reason') or ''} if paused else None
     if full:
         out.update({k: box[k] for k in ('auth', 'login', 'smtp_host', 'smtp_port', 'smtp_security', 'imap_host', 'imap_port', 'imap_security', 'signer_email', 'notify')})
         out['has_secret'] = bool(box.get('secret'))
@@ -120,6 +131,21 @@ def _plain_host_allowed(host: str) -> bool:
         return address.is_loopback or address.is_private
     except ValueError:
         return False
+
+
+def refuse_internal_host(host: str) -> None:
+    """A hosted installation connects only to mail servers on the internet, never to machines of its own private network
+    (set TFSC_MAIL_PRIVATE_HOSTS=true for a test mail server beside the application)."""
+    if db.LOCAL or os.getenv('TFSC_MAIL_PRIVATE_HOSTS', 'false') == 'true':
+        return
+    try:
+        found = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except OSError:
+        return          # does not resolve: the connection itself will report it
+    for raw in found:
+        address = ipaddress.ip_address(raw.split('%')[0])
+        if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved or address.is_multicast or address.is_unspecified:
+            raise ValueError('Enter the public mail server of the mailbox provider (for Google: smtp.gmail.com and imap.gmail.com).')
 
 
 def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
@@ -186,7 +212,10 @@ def save(c, actor: dict, entity_name: str, payload: dict) -> dict:
         raise ValueError('Enter the address that receives replies.')
     if box['address'] != previous['address'] or box['login'] != previous['login'] or not box['imap_enabled'] or box['mode'] != previous['mode']:
         box['imap_uidvalidity'] = box['imap_last_uid'] = box['imap_last_poll'] = None
-    box.update(updated=time.time(), updated_by=actor['id'], smtp_error=None, imap_error=None)
+    for key in ('smtp_host', 'imap_host'):
+        if box['mode'] == 'mailbox' and box[key]:
+            refuse_internal_host(box[key])
+    box.update(updated=time.time(), updated_by=actor['id'], smtp_error=None, imap_error=None, paused_until=None, pause_kind=None, pause_reason=None, pause_count=0)
     values = {k: v for k, v in box.items() if k in mailboxes.c}
     if c.execute(select(mailboxes.c.entity).where(mailboxes.c.entity == entity_name)).first():
         c.execute(update(mailboxes).where(mailboxes.c.entity == entity_name).values(**values))
@@ -276,10 +305,12 @@ def _smtp_session(box: dict):
         host, port, security = box['smtp_host'], box['smtp_port'], box['smtp_security']
         user, auth = box['login'] or box['address'], box['auth']
         password = secretbox.open_(box['secret'], 'smtp:' + box['entity']) if auth == 'password' else ''
+    if box['mode'] != 'relay':
+        refuse_internal_host(host)
     if security == 'ssl':
-        smtp = smtplib.SMTP_SSL(host, port, timeout=30, context=_context())
+        smtp = smtplib.SMTP_SSL(host, port, timeout=SMTP_TIMEOUT, context=_context())
     else:
-        smtp = smtplib.SMTP(host, port, timeout=30)
+        smtp = smtplib.SMTP(host, port, timeout=SMTP_TIMEOUT)
         if security == 'starttls':
             smtp.starttls(context=_context())
     try:
@@ -330,12 +361,18 @@ def build_message(box: dict, row: dict, attachments: list[tuple[str, bytes]]) ->
     return msg
 
 
+def _send_over(smtp, msg: EmailMessage, rcpts: list[str]) -> dict:
+    """Send on an open connection. Returns the addresses the server refused (when at least one was accepted)."""
+    refused = smtp.send_message(msg, to_addrs=rcpts)
+    if refused and len(refused) == len(rcpts):
+        raise smtplib.SMTPRecipientsRefused(refused)
+    return refused or {}
+
+
 def deliver(box: dict, msg: EmailMessage, rcpts: list[str]) -> None:
     smtp = _smtp_session(box)
     try:
-        refused = smtp.send_message(msg, to_addrs=rcpts)
-        if refused and len(refused) == len(rcpts):
-            raise smtplib.SMTPRecipientsRefused(refused)
+        _send_over(smtp, msg, rcpts)
     finally:
         try:
             smtp.quit()
@@ -393,28 +430,78 @@ def enqueue(c, entity_name: str, kind: str, to: list[str], subject: str, text: s
     return oid
 
 
+def _reply_text(exc: Exception) -> str:
+    raw = getattr(exc, 'smtp_error', b'')
+    return (raw.decode(errors='replace') if isinstance(raw, bytes) else str(raw or ''))[:300]
+
+
+def _quota(exc: Exception) -> bool:
+    """The mail server says "not now": a daily or hourly sending limit, or too many connections. The mailbox waits; no email is lost."""
+    if not isinstance(exc, smtplib.SMTPResponseException) or isinstance(exc, smtplib.SMTPAuthenticationError):
+        return False
+    text = _reply_text(exc).lower()
+    if 'size' in text or 'too large' in text or 'too big' in text:
+        return False            # this one message is too large: waiting does not help
+    if exc.smtp_code in (421, 450, 451, 452):
+        return True
+    return bool(re.search(r'5\.4\.5|4\.7\.\d|\brate\b|rate.?limit|sending limit|quota|too many|try again later|temporarily (deferred|blocked)|throttl', text))
+
+
+def _auth_problem(exc: Exception) -> bool:
+    return isinstance(exc, smtplib.SMTPAuthenticationError) or (isinstance(exc, MailboxNotReady) and 'sign-in' in str(exc))
+
+
+def _connection_problem(exc: Exception) -> bool:
+    """The mail server could not be reached or dropped the connection (as opposed to answering with a refusal)."""
+    if isinstance(exc, (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, smtplib.SMTPHeloError)):
+        return True
+    if isinstance(exc, smtplib.SMTPException):
+        return False
+    return isinstance(exc, OSError)        # timeouts, refused connections, unknown server names, TLS failures
+
+
 def _permanent(exc: Exception) -> bool:
     if isinstance(exc, smtplib.SMTPRecipientsRefused):
         return all(code >= 500 for code, _ in exc.recipients.values())
     if isinstance(exc, smtplib.SMTPResponseException):
-        return exc.smtp_code >= 500 and not isinstance(exc, smtplib.SMTPAuthenticationError)
+        return exc.smtp_code >= 500 and not isinstance(exc, smtplib.SMTPAuthenticationError) and not _quota(exc)
     return False
 
 
 def _describe(exc: Exception) -> str:
+    """What went wrong, in words a person can act on. The technical detail goes to the server log, not to the screen."""
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return 'The mail server rejected the sign-in. Check the app password (Google: 16-character app password with 2-Step Verification on).'
     if isinstance(exc, smtplib.SMTPRecipientsRefused):
         return 'The mail server refused the recipient: ' + '; '.join(f'{k} ({v[0]} {v[1].decode(errors="replace")[:120]})' for k, v in exc.recipients.items())
+    if _quota(exc):
+        text = _reply_text(exc)
+        if re.search(r'5\.4\.5|daily', text, re.I):
+            return 'The mailbox reached its daily sending limit. Sending resumes automatically; nothing is lost.'
+        return 'The mail server asked to slow down. Sending resumes automatically; nothing is lost.'
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return f'The mail server refused the message ({exc.smtp_code}): {_reply_text(exc)}'
     if isinstance(exc, imaplib.IMAP4.error):
         detail = str(exc)
         detail = detail[2:-1] if detail.startswith(("b'", 'b"')) else detail
         return 'The mail server refused the request: ' + detail[:300]
+    if isinstance(exc, ScannerUnavailable):
+        return str(exc)
     if isinstance(exc, (socket.timeout, TimeoutError)):
         return 'The mail server did not respond in time.'
-    if isinstance(exc, (OSError, smtplib.SMTPException, MailboxNotReady, ValueError)):
+    if isinstance(exc, ConnectionRefusedError):
+        return 'The mail server refused the connection. Check the server name and port.'
+    if isinstance(exc, socket.gaierror):
+        return 'The mail server name could not be found. Check the server name.'
+    if isinstance(exc, ssl.SSLError):
+        return 'A secure connection to the mail server could not be made. Check the port and the connection security.'
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        return 'The mail server closed the connection.'
+    if isinstance(exc, (MailboxNotReady, ValueError)):
         return str(exc)[:500] or exc.__class__.__name__
-    return exc.__class__.__name__
+    if isinstance(exc, (OSError, smtplib.SMTPException)):
+        return 'The mail server could not be reached.'
+    return 'An unexpected problem stopped this (details are in the server log).'
 
 
 def attachment_bytes(c, refs: list[dict]) -> list[tuple[str, bytes]]:
@@ -432,55 +519,179 @@ def attachment_bytes(c, refs: list[dict]) -> list[tuple[str, bytes]]:
     return out
 
 
-def dispatch_once(limit: int = 20) -> int:
-    """Send due emails. Returns how many were attempted."""
+def dispatch_once(limit: int = LANE_BATCH) -> int:
+    """Send due emails. Returns how many were handled.
+
+    Each company mailbox is a lane of its own: one connection per lane per pass, lanes side by side. A mailbox that is
+    paused (sign-in refused, sending limit reached, server unreachable) keeps its queue untouched and never holds up the
+    others. An email is only ever given up on for a reason that concerns that email itself (the address does not exist,
+    the message was refused), never because the mailbox had a bad hour.
+    """
     now = time.time()
     with db.engine.begin() as c:
-        c.execute(update(outbox).where(outbox.c.state == 'sending', outbox.c.lease_until < now).values(state='queued'))
-        q = select(outbox).where(outbox.c.state == 'queued', outbox.c.next_attempt <= now).order_by(outbox.c.next_attempt).limit(limit)
-        if db.engine.dialect.name == 'postgresql':
-            q = q.with_for_update(skip_locked=True)
-        rows = [dict(r) for r in c.execute(q).mappings()]
-        for r in rows:
-            c.execute(update(outbox).where(outbox.c.id == r['id']).values(state='sending', lease_until=now + 300))
-    for r in rows:
-        _send_one(r)
-    return len(rows)
+        # an email whose sending was cut off (a restart) goes back in line; that try counts
+        c.execute(update(outbox).where(outbox.c.state == 'sending', outbox.c.lease_until < now).values(state='queued', attempts=outbox.c.attempts + 1))
+        paused = {r[0] for r in c.execute(select(mailboxes.c.entity).where(mailboxes.c.paused_until > now))}
+        due = [r[0] for r in c.execute(select(outbox.c.entity).where(outbox.c.state == 'queued', outbox.c.next_attempt <= now).distinct())]
+        lanes = {}
+        for entity in due:
+            if entity in paused:
+                continue
+            q = select(outbox).where(outbox.c.state == 'queued', outbox.c.next_attempt <= now, outbox.c.entity == entity).order_by(outbox.c.next_attempt, outbox.c.created).limit(limit)
+            if db.engine.dialect.name == 'postgresql':
+                q = q.with_for_update(skip_locked=True)
+            rows = [dict(r) for r in c.execute(q).mappings()]
+            if rows:
+                c.execute(update(outbox).where(outbox.c.id.in_([r['id'] for r in rows])).values(state='sending', lease_until=now + 600))
+                lanes[entity] = rows
+    if len(lanes) == 1:
+        for entity, rows in lanes.items():
+            _send_lane(entity, rows)
+    elif lanes:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(6, len(lanes)), thread_name_prefix='tfsc-mail') as pool:
+            for future in [pool.submit(_send_lane, entity, rows) for entity, rows in lanes.items()]:
+                try:
+                    future.result()
+                except Exception:  # noqa: BLE001  (one lane never stops the others)
+                    log.exception('a mail lane failed')
+    return sum(len(rows) for rows in lanes.values())
 
 
-def _send_one(r: dict) -> None:
+PAUSES = {'auth': 1800, 'quota': 600, 'daily': 3600, 'connect': 120}
+
+
+def _release(c, rows: list[dict], reason: str) -> None:
+    """Back in the queue, without counting a try: the mailbox was the problem, not these emails."""
+    ids = [r['id'] for r in rows]
+    if not ids:
+        return
+    c.execute(update(outbox).where(outbox.c.id.in_(ids), outbox.c.state == 'sending').values(state='queued', lease_until=None, last_error=reason[:2000]))
+    waiting = [r['recipient_id'] for r in rows if r['recipient_id']]
+    if waiting:      # the envelope shows "not delivered yet" with the reason, from the first failed try
+        c.execute(update(recipients).where(recipients.c.id.in_(waiting), recipients.c.delivery == 'pending').values(delivery_error=reason[:1000]))
+
+
+def _pause(entity: str, kind: str, reason: str, rows: list[dict]) -> None:
+    now = time.time()
+    with db.engine.begin() as c:
+        count = (c.execute(select(mailboxes.c.pause_count).where(mailboxes.c.entity == entity)).scalar() or 0) + 1
+        if kind == 'connect':
+            seconds = min(1800, PAUSES['connect'] * 2 ** min(count - 1, 4))      # 2, 4, 8, 16, 30 minutes
+        elif kind == 'cap':
+            tomorrow = dt.datetime.now(dt.UTC).replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(days=1)
+            seconds = max(60, tomorrow.timestamp() - now)
+        else:
+            seconds = PAUSES[kind]
+        c.execute(update(mailboxes).where(mailboxes.c.entity == entity).values(paused_until=now + seconds, pause_kind=kind, pause_reason=reason[:1000],
+                                                                                 pause_count=count, smtp_error=reason[:1000]))
+        _release(c, rows, reason)
+    log.warning('sending for %s is paused for %d minutes (%s): %s', entity, round(seconds / 60), kind, reason)
+
+
+def _send_lane(entity: str, rows: list[dict]) -> None:
+    today = dt.datetime.now(dt.UTC).strftime('%Y-%m-%d')
     try:
         with db.engine.connect() as c:
-            box = transport(c, r['entity'])
-            files = attachment_bytes(c, r['attachments'])
-            ref = c.execute(select(envelopes.c.ref).where(envelopes.c.id == r['envelope_id'])).scalar() if r['envelope_id'] else None
-        msg = build_message(box, dict(r, envelope_ref=ref), files)
-        deliver(box, msg, r['to_addrs'] + r['cc_addrs'] + r['bcc_addrs'])
+            box = transport(c, entity)
+    except Exception as exc:  # noqa: BLE001  (mailbox not connected: each email is retried later and reported after the last try)
+        for r in rows:
+            _failed(r, exc, mailbox_error=False)
+        return
+    already = (box.get('sent_count') or 0) if box.get('sent_day') == today else 0
+    if DAILY_CAP and box['mode'] == 'mailbox' and already >= DAILY_CAP:
+        _pause(entity, 'cap', f'This mailbox sent {already} emails today, the daily limit set for it. Sending resumes tomorrow; nothing is lost.', rows)
+        return
+    try:
+        smtp = _smtp_session(box)
     except Exception as exc:  # noqa: BLE001
-        attempts = r['attempts'] + 1
-        final = _permanent(exc) or attempts >= MAX_ATTEMPTS
-        reason = _describe(exc)
-        log.warning('email %s (%s) failed: %s', r['id'], r['kind'], reason)
-        with db.engine.begin() as c:
-            c.execute(update(outbox).where(outbox.c.id == r['id']).values(
-                state='failed' if final else 'queued', attempts=attempts, last_error=reason[:2000], lease_until=None,
-                next_attempt=time.time() + min(6 * 3600, 60 * 2 ** attempts)))
-            if not isinstance(exc, smtplib.SMTPRecipientsRefused):
-                c.execute(update(mailboxes).where(mailboxes.c.entity == r['entity']).values(smtp_error=reason[:1000]))
-            if final and r['recipient_id']:
+        if not (_auth_problem(exc) or _quota(exc) or _connection_problem(exc) or isinstance(exc, (smtplib.SMTPException, OSError))):
+            log.exception('mail lane for %s could not start', entity)
+        _pause(entity, 'auth' if _auth_problem(exc) else 'quota' if _quota(exc) else 'connect', _describe(exc), rows)
+        return
+    sent = 0
+    try:
+        for i, r in enumerate(rows):
+            if r['attempts'] >= MAX_ATTEMPTS:
+                _failed(r, RuntimeError('Sending was interrupted too many times.'), final=True)
+                continue
+            if DAILY_CAP and box['mode'] == 'mailbox' and already + sent >= DAILY_CAP:
+                _pause(entity, 'cap', f'This mailbox sent {already + sent} emails today, the daily limit set for it. Sending resumes tomorrow; nothing is lost.', rows[i:])
+                break
+            try:
+                with db.engine.connect() as c:
+                    files = attachment_bytes(c, r['attachments'])
+                    ref = c.execute(select(envelopes.c.ref).where(envelopes.c.id == r['envelope_id'])).scalar() if r['envelope_id'] else None
+                msg = build_message(box, dict(r, envelope_ref=ref), files)
+                refused = _send_over(smtp, msg, r['to_addrs'] + r['cc_addrs'] + r['bcc_addrs'])
+            except Exception as exc:  # noqa: BLE001
+                if _quota(exc):
+                    daily = bool(re.search(r'5\.4\.5|daily', _reply_text(exc), re.I))
+                    _pause(entity, 'daily' if daily else 'quota', _describe(exc), rows[i:])
+                    break
+                if _auth_problem(exc):
+                    _pause(entity, 'auth', _describe(exc), rows[i:])
+                    break
+                if _connection_problem(exc) or isinstance(exc, (socket.timeout, TimeoutError)):
+                    _pause(entity, 'connect', _describe(exc), rows[i:])
+                    break
+                _failed(r, exc)
+                continue
+            _sent(r, refused)
+            sent += 1
+    finally:
+        try:
+            smtp.quit()
+        except Exception:  # noqa: BLE001
+            smtp.close()
+        if sent:
+            with db.engine.begin() as c:
+                c.execute(update(mailboxes).where(mailboxes.c.entity == entity).values(sent_day=today, sent_count=already + sent))
+
+
+def _failed(r: dict, exc: Exception, *, final: bool = False, mailbox_error: bool = True) -> None:
+    attempts = r['attempts'] + 1
+    final = final or _permanent(exc) or attempts >= MAX_ATTEMPTS
+    reason = _describe(exc) if not final or not isinstance(exc, RuntimeError) else str(exc)
+    log.warning('email %s (%s) failed: %s', r['id'], r['kind'], reason, exc_info=not isinstance(exc, (smtplib.SMTPException, OSError, MailboxNotReady, RuntimeError)))
+    with db.engine.begin() as c:
+        c.execute(update(outbox).where(outbox.c.id == r['id']).values(
+            state='failed' if final else 'queued', attempts=attempts, last_error=reason[:2000], lease_until=None,
+            next_attempt=time.time() + min(6 * 3600, 60 * 2 ** attempts)))
+        if mailbox_error and not isinstance(exc, smtplib.SMTPRecipientsRefused):
+            c.execute(update(mailboxes).where(mailboxes.c.entity == r['entity']).values(smtp_error=reason[:1000]))
+        if r['recipient_id']:
+            if final:
                 c.execute(update(recipients).where(recipients.c.id == r['recipient_id']).values(delivery='failed', delivery_error=reason[:1000]))
                 import esign
                 esign.mail_failed(c, r, reason)
-        return
+            else:
+                c.execute(update(recipients).where(recipients.c.id == r['recipient_id'], recipients.c.delivery == 'pending').values(delivery_error=reason[:1000]))
+
+
+def _sent(r: dict, refused: dict | None = None) -> None:
     link = re.compile(r'/sign/[A-Za-z0-9_-]{30,60}')
+    # some addresses of a message can be refused while others are accepted: the email counts as sent, and the refusals are kept
+    note = ('Sent, but the mail server refused: ' + '; '.join(f'{k} ({v[0]})' for k, v in refused.items()))[:2000] if refused else None
     with db.engine.begin() as c:
         # The stored copy keeps no working signing link once the email is out.
-        c.execute(update(outbox).where(outbox.c.id == r['id']).values(state='sent', attempts=r['attempts'] + 1, sent_at=time.time(), lease_until=None, last_error=None,
+        c.execute(update(outbox).where(outbox.c.id == r['id']).values(state='sent', attempts=r['attempts'] + 1, sent_at=time.time(), lease_until=None, last_error=note,
                                                                       text=link.sub('/sign/[link removed after sending]', r['text']),
                                                                       html=link.sub('/sign/[link removed after sending]', r['html'])))
-        c.execute(update(mailboxes).where(mailboxes.c.entity == r['entity']).values(smtp_error=None))
+        c.execute(update(mailboxes).where(mailboxes.c.entity == r['entity']).values(smtp_error=None, paused_until=None, pause_kind=None, pause_reason=None, pause_count=0))
         if r['recipient_id']:
             c.execute(update(recipients).where(recipients.c.id == r['recipient_id'], recipients.c.delivery.in_(['pending', 'failed'])).values(delivery='sent', delivery_error=None))
+
+
+def _send_one(r: dict) -> None:
+    """Send one claimed email on a connection of its own (kept for callers that send a single message)."""
+    _send_lane(r['entity'], [r])
+
+
+def resume(c, entity_name: str) -> None:
+    """Lift a pause (the Super Admin fixed the mailbox, or a test email went through)."""
+    c.execute(update(mailboxes).where(mailboxes.c.entity == entity_name).values(paused_until=None, pause_kind=None, pause_reason=None, pause_count=0, smtp_error=None))
+    wake.set()
 
 
 def send_test(c, entity_name: str, to: str) -> None:
@@ -744,6 +955,7 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
 # ------------------------------------------------------------------ incoming mail (IMAP)
 def _imap_session(box: dict):
     host, port, security = box['imap_host'], box['imap_port'], box['imap_security']
+    refuse_internal_host(host)
     if security == 'ssl':
         imap = imaplib.IMAP4_SSL(host, port, ssl_context=_context(), timeout=30)
     else:
@@ -799,10 +1011,20 @@ def poll_inboxes() -> int:
             error = None
         except Exception as exc:  # noqa: BLE001
             error = _describe(exc) if not isinstance(exc, imaplib.IMAP4.error) else f'The mail server refused: {str(exc)[:300]}'
-            log.warning('inbox poll for %s failed: %s', name, error)
+            known = isinstance(exc, (imaplib.IMAP4.error, OSError, MailboxNotReady, ScannerUnavailable, smtplib.SMTPException))
+            log.warning('inbox poll for %s failed: %s', name, error, exc_info=not known)
         with db.engine.begin() as c:
             c.execute(update(mailboxes).where(mailboxes.c.entity == name).values(imap_lease=None, imap_last_poll=time.time(), imap_error=error))
     return processed
+
+
+def clean_text(value, limit: int, keep_newlines: bool = False) -> str:
+    """Text from an email as it is stored: without NUL and other control characters (PostgreSQL refuses NUL in text, and a
+    single message with one would otherwise stop the whole mailbox from being read)."""
+    text = str(value or '')
+    allowed = '\n\t' if keep_newlines else ''
+    text = ''.join(ch if (ch in allowed or (ch.isprintable() and ch != '\x00')) else ' ' for ch in text)
+    return (text if keep_newlines else re.sub(r'\s+', ' ', text)).strip()[:limit]
 
 
 def poll_interval() -> float:
@@ -842,16 +1064,40 @@ def _poll(name: str) -> int:
             if size <= 25_000_000 and _maybe_ours(header):
                 status, data = imap.uid('FETCH', str(uid), '(BODY.PEEK[])')
                 raw = next((item[1] for item in data if isinstance(item, tuple)), None)
-            with db.engine.begin() as c:
-                if raw:
-                    count += process_inbound(c, box, validity, uid, raw)
-                c.execute(update(mailboxes).where(mailboxes.c.entity == name).values(imap_last_uid=uid))
+            # Every message is handled on its own. One that cannot be processed is set aside for a person to look at and
+            # reading goes on with the next one: a single message can never block a company's inbox.
+            try:
+                with db.engine.begin() as c:
+                    if raw:
+                        count += process_inbound(c, box, validity, uid, raw)
+                    c.execute(update(mailboxes).where(mailboxes.c.entity == name).values(imap_last_uid=uid))
+            except ScannerUnavailable:
+                raise           # nothing is skipped while the virus scanner is away; this message is read again next time
+            except Exception as exc:  # noqa: BLE001
+                log.exception('message %s in the %s inbox could not be processed; it was set aside', uid, name)
+                _quarantine(box, validity, uid, raw, exc)
     finally:
         try:
             imap.logout()
         except Exception:  # noqa: BLE001
             pass
     return count
+
+
+def _quarantine(box: dict, validity: int, uid: int, raw: bytes | None, exc: Exception) -> None:
+    sender = subject = ''
+    try:
+        msg = email.message_from_bytes(raw or b'', policy=email.policy.default)
+        sender, subject = clean_text(parseaddr(str(msg.get('From', '')))[1], 250), clean_text(msg.get('Subject', ''), 300)
+    except Exception:  # noqa: BLE001
+        pass
+    with db.engine.begin() as c:
+        if not c.execute(select(inbound.c.id).where(inbound.c.entity == box['entity'], inbound.c.uidvalidity == validity, inbound.c.uid == uid)).first():
+            c.execute(inbound.insert().values(id=db.uid(), entity=box['entity'], uidvalidity=validity, uid=uid, kind='quarantined', message_id='', from_addr=sender,
+                                              subject=subject, received=time.time(), envelope_id=None, recipient_id=None, outbox_id=None, created=time.time(),
+                                              snippet=clean_text(f'This message could not be processed automatically ({exc.__class__.__name__}). '
+                                                                 f'Open the {box["address"]} mailbox to read it.', 1000)))
+        c.execute(update(mailboxes).where(mailboxes.c.entity == box['entity']).values(imap_last_uid=uid))
 
 
 def _starting_uid(imap, since: float) -> int:
@@ -994,9 +1240,9 @@ def process_inbound(c, box: dict, validity: int, uid: int, raw: bytes) -> int:
     if row is None or not row['envelope_id']:
         return 0
     record = dict(id=db.uid(), entity=box['entity'], uidvalidity=validity, uid=uid, kind='bounce' if bounce else 'reply',
-                  message_id=str(msg.get('Message-ID', ''))[:250], from_addr=sender[:250], subject=re.sub(r'[\r\n]+', ' ', str(msg.get('Subject', '')))[:300],
+                  message_id=clean_text(msg.get('Message-ID', ''), 250), from_addr=clean_text(sender, 250), subject=clean_text(msg.get('Subject', ''), 300),
                   received=time.time(), envelope_id=row['envelope_id'], recipient_id=row['recipient_id'], outbox_id=row['id'], created=time.time(),
-                  snippet=(f"{bounce['status']} {bounce['diagnostic']}".strip() if bounce else _body_text(msg)))
+                  snippet=clean_text(f"{bounce['status']} {bounce['diagnostic']}" if bounce else _body_text(msg), 3000, keep_newlines=True))
     c.execute(inbound.insert().values(**record))
     if bounce:
         c.execute(update(outbox).where(outbox.c.id == row['id']).values(state='bounced', last_error=record['snippet'][:2000]))
@@ -1007,7 +1253,7 @@ def process_inbound(c, box: dict, validity: int, uid: int, raw: bytes) -> int:
     files, skipped = [], []
     for part in msg.iter_attachments():
         content_type = part.get_content_type()
-        name = re.sub(r'[^\w .()-]', '_', part.get_filename() or 'attachment')[:150] or 'attachment'
+        name = clean_text(re.sub(r'[^\w .()-]', '_', part.get_filename() or 'attachment'), 150) or 'attachment'
         body = part.get_payload(decode=True) or b''
         if content_type not in ALLOWED_ATTACHMENTS or not 0 < len(body) <= 10_000_000 or len(files) >= 5:
             skipped.append(name)
@@ -1015,9 +1261,9 @@ def process_inbound(c, box: dict, validity: int, uid: int, raw: bytes) -> int:
         try:
             verdict = scan(body)
         except Exception as exc:  # noqa: BLE001
+            # A file is never stored unscanned and never thrown away: the whole message waits until the scanner answers.
             log.warning('attachment scan failed: %s', exc)
-            skipped.append(name + ' (could not be scanned)')
-            continue
+            raise ScannerUnavailable('The virus scanner is not reachable, so replies with attachments are waiting. They are read as soon as it is back.') from None
         if verdict == 'infected':
             skipped.append(name + ' (blocked: malware detected)')
             continue

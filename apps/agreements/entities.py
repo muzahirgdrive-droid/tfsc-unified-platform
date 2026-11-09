@@ -7,7 +7,9 @@ database. Built-ins always come first, so existing positions — used to index c
 """
 from __future__ import annotations
 
+import logging
 import os
+import threading
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -34,7 +36,30 @@ for _e in _BUILTINS.values():
 _LETTERHEADS = DATA / 'letterheads'
 _LOGOS = DATA / 'company-logos'
 _CACHE: dict = {'at': 0.0, 'ents': None}
-_TTL = 3.0
+# How long one process trusts its copy. Short, because another process may have changed a company; cheap, because the
+# refresh reads only the small columns (letterheads and logos are read from the database only when their cache file is
+# missing) on a connection of its own.
+_TTL = float(os.getenv('TFSC_COMPANY_CACHE_SECONDS', '5'))
+_LOCK = threading.Lock()
+_SIDE: dict = {'for': None, 'engine': None}
+log = logging.getLogger('tfsc.entities')
+
+
+def _registry_engine(db):
+    """The connection the registry is read with.
+
+    The registry is looked up inside requests that already hold a pooled connection. Taking a second connection from
+    the same pool there is what froze the site under load (every thread held one connection and waited for another).
+    On PostgreSQL the registry therefore has a tiny pool of its own; one refresh runs at a time, so it never needs more.
+    """
+    main = db.engine
+    if main.dialect.name != 'postgresql':
+        return main
+    if _SIDE['for'] is not main:
+        from sqlalchemy import create_engine
+        _SIDE['engine'] = create_engine(main.url, pool_size=1, max_overflow=1, pool_timeout=5, pool_pre_ping=True, pool_recycle=1800)
+        _SIDE['for'] = main
+    return _SIDE['engine']
 
 
 def _materialize(folder: Path, name: str, content: bytes) -> Path:
@@ -48,15 +73,28 @@ def _materialize(folder: Path, name: str, content: bytes) -> Path:
     return path
 
 
-def _build_custom(row: dict) -> dict:
+def _build_custom(row: dict, c=None, db=None) -> dict:
     key = row['key']
     sha = row['letterhead_sha256']
-    template_path = _materialize(_LETTERHEADS, f'{key}-{sha[:16]}.docx', bytes(row['letterhead']))
+    template_path = _LETTERHEADS / f'{key}-{sha[:16]}.docx'
+    if 'letterhead' in row:
+        template_path = _materialize(_LETTERHEADS, template_path.name, bytes(row['letterhead']))
+    elif not template_path.is_file():        # first use in this container: fetch the file once
+        from sqlalchemy import select
+        body = c.execute(select(db.companies.c.letterhead).where(db.companies.c.key == key)).scalar()
+        template_path = _materialize(_LETTERHEADS, template_path.name, bytes(body))
     logo_url = f"/api/companies/{key}/logo.png"
     logo_path = None
     if row.get('logo'):
         ext = (row.get('logo_ext') or 'png').lstrip('.')
         logo_path = _materialize(_LOGOS, f'{key}.{ext}', bytes(row['logo']))
+    elif row.get('logo_size'):
+        ext = (row.get('logo_ext') or 'png').lstrip('.')
+        logo_path = _LOGOS / f'{key}.{ext}'
+        if not logo_path.is_file() or logo_path.stat().st_size != row['logo_size']:
+            from sqlalchemy import select
+            body = c.execute(select(db.companies.c.logo).where(db.companies.c.key == key)).scalar()
+            logo_path = _materialize(_LOGOS, logo_path.name, bytes(body)) if body else None
     return dict(key=key, name=row['name'], short=row['short'], display=row['display'], dark=row['dark'],
                 signatory=row['signatory'], title=row['title'], signature_scale=row['signature_scale'],
                 governing_state=row['governing_state'], timezone=row['timezone'], color=row['color'], accent=row['accent'],
@@ -111,34 +149,60 @@ def _apply_override(base: dict, o: dict, c, db) -> dict:
     return e
 
 
-def _load(force: bool = False) -> dict:
-    if not force and _CACHE['ents'] is not None and time.time() - _CACHE['at'] < _TTL:
-        return _CACHE['ents']
+def _read() -> dict:
+    """Read the registry from the database. Raises when the database cannot be read (the caller keeps its last copy)."""
+    import database as db
+    from sqlalchemy import func, select
     ents = dict(_BUILTINS)
-    try:
-        import database as db
-        from sqlalchemy import select
-        with db.engine.connect() as c:
-            by_key = {e['key']: name for name, e in _BUILTINS.items()}
-            for setting, value in c.execute(select(db.settings.c.key, db.settings.c.value).where(db.settings.c.key.like('company:%'))).all():
-                key = setting.split(':', 1)[1]
-                if ':' in key or key not in by_key or not isinstance(value, dict):
-                    continue
-                try:
-                    ents[by_key[key]] = _apply_override(_BUILTINS[by_key[key]], value, c, db)
-                except Exception:  # noqa: BLE001  (an unreadable change never hides the company: it keeps its original details)
-                    continue
-            rows = c.execute(select(db.companies).where(db.companies.c.active.is_(True)).order_by(db.companies.c.created, db.companies.c.key)).mappings().all()
+    with _registry_engine(db).connect() as c:
+        by_key = {e['key']: name for name, e in _BUILTINS.items()}
+        small = select(db.settings.c.key, db.settings.c.value).where(db.settings.c.key.like('company:%'), ~db.settings.c.key.like('company:%:%'))
+        for setting, value in c.execute(small).all():
+            key = setting.split(':', 1)[1]
+            if ':' in key or key not in by_key or not isinstance(value, dict):
+                continue
+            try:
+                ents[by_key[key]] = _apply_override(_BUILTINS[by_key[key]], value, c, db)
+            except Exception:  # noqa: BLE001  (an unreadable change never hides the company: it keeps its original details)
+                log.warning('company details of %s could not be applied', key, exc_info=True)
+        columns = [col for col in db.companies.c if col.name not in ('letterhead', 'logo')]
+        rows = c.execute(select(*columns, func.length(db.companies.c.logo).label('logo_size')).where(db.companies.c.active.is_(True))
+                         .order_by(db.companies.c.created, db.companies.c.key)).mappings().all()
         for row in rows:
             try:
-                ents[row['name']] = _build_custom(dict(row))
+                ents[row['name']] = _build_custom(dict(row), c, db)
             except Exception:  # noqa: BLE001  (one unreadable company must not hide the others)
-                continue
-    except Exception:  # noqa: BLE001  (table missing during bootstrap, or the database is briefly unavailable)
-        pass
-    _CACHE['ents'] = ents
-    _CACHE['at'] = time.time()
+                log.warning('company %s could not be loaded', row['key'], exc_info=True)
     return ents
+
+
+def _load(force: bool = False) -> dict:
+    ents = _CACHE['ents']
+    if not force and ents is not None and time.time() - _CACHE['at'] < _TTL:
+        return ents
+    # One refresh at a time. While one runs, everybody else keeps using the copy they have.
+    if ents is not None and not force:
+        if not _LOCK.acquire(blocking=False):
+            return ents
+    else:
+        _LOCK.acquire()
+    try:
+        if not force and _CACHE['ents'] is not None and time.time() - _CACHE['at'] < _TTL:
+            return _CACHE['ents']
+        try:
+            fresh = _read()
+        except Exception:  # noqa: BLE001  (tables missing during the very first start, or the database is briefly unavailable)
+            # A failed read is never remembered: the last good copy stays in use and the next lookup tries again.
+            if _CACHE['ents'] is not None:
+                log.warning('company registry could not be refreshed; using the last copy', exc_info=True)
+                _CACHE['at'] = time.time() - _TTL + 2     # try again in a couple of seconds, not on every lookup
+                return _CACHE['ents']
+            return dict(_BUILTINS)
+        _CACHE['ents'] = fresh
+        _CACHE['at'] = time.time()
+        return fresh
+    finally:
+        _LOCK.release()
 
 
 def invalidate() -> None:

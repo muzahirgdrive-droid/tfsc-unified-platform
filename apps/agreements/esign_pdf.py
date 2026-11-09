@@ -59,11 +59,61 @@ def _safe_text(value: str, font: str) -> str:
 
 
 # ------------------------------------------------------------------ inspection and page images
+def _opens_without_password(reader) -> bool:
+    """A PDF with only an owner ("permissions") password opens for everyone without asking: it is not really locked."""
+    try:
+        return bool(reader.decrypt(''))
+    except Exception:  # noqa: BLE001  (unsupported encryption: treat as locked)
+        return False
+
+
+def normalize(raw: bytes) -> bytes:
+    """The PDF as stored for an envelope: without encryption, and with each page's media box equal to what viewers show.
+
+    A PDF can show less than its full page (a "crop box"). Viewers show the crop box; the field editor, the signing page and
+    the stamps work on the media box. Making the two the same keeps every field and the Envelope ID line where people see them.
+    A PDF that needs neither change is returned as it is, byte for byte.
+    """
+    try:
+        reader = PdfReader(io.BytesIO(raw), strict=False)
+        unlocked = False
+        if reader.is_encrypted:
+            if not _opens_without_password(reader):
+                return raw
+            unlocked = True
+        cropped = False
+        for page in reader.pages:
+            media, crop = page.mediabox, page.cropbox
+            if any(abs(float(a) - float(b)) > 0.5 for a, b in zip((media.left, media.bottom, media.right, media.top), (crop.left, crop.bottom, crop.right, crop.top))):
+                cropped = True
+                break
+        if not cropped and not unlocked:
+            return raw
+        writer = PdfWriter()
+        for page in reader.pages:
+            crop = page.cropbox
+            box = [float(crop.left), float(crop.bottom), float(crop.right), float(crop.top)]
+            writer.add_page(page)
+            added = writer.pages[-1]
+            for name in ('/MediaBox', '/CropBox', '/TrimBox', '/BleedBox', '/ArtBox'):
+                if name == '/MediaBox' or name in added:
+                    from pypdf.generic import ArrayObject, FloatObject
+                    from pypdf.generic import NameObject as _Name
+                    added[_Name(name)] = ArrayObject([FloatObject(v) for v in box])
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except ValueError:
+        raise
+    except Exception:  # noqa: BLE001  (leave an unusual file to inspect(), which reports it properly)
+        return raw
+
+
 def inspect(raw: bytes) -> list[list[float]]:
     """Validate a PDF and return [[width, height, rotation], ...] of each page as displayed."""
     try:
         reader = PdfReader(io.BytesIO(raw), strict=False)
-        if reader.is_encrypted:
+        if reader.is_encrypted and not _opens_without_password(reader):
             raise ValueError('This PDF is password-protected. Remove the password and upload it again.')
         count = len(reader.pages)
         if not 1 <= count <= MAX_PAGES:
@@ -546,9 +596,11 @@ def image_to_pdf(raw: bytes) -> bytes:
     from PIL import Image as PILImage
     try:
         with PILImage.open(io.BytesIO(raw)) as image:
-            image.load()
+            # The size comes from the file header. It is checked BEFORE the pixels are decoded: a small file can declare
+            # a huge picture, and decoding it would take hundreds of megabytes of memory.
             if image.width * image.height > 40_000_000:
                 raise ValueError('The image is too large.')
+            image.load()
             image = image.convert('RGB')
             png = io.BytesIO()
             image.save(png, format='PNG')
@@ -599,7 +651,7 @@ def to_pdf(name: str, raw: bytes) -> tuple[bytes, str]:
     elif kind == 'office':
         pdf = office_to_pdf(raw, Path(name).suffix.lower())
     else:
-        pdf = raw
+        pdf = normalize(raw)
     inspect(pdf)
     return pdf, stem + '.pdf'
 

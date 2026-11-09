@@ -52,7 +52,7 @@ def _rows(payload: dict) -> list[dict]:
 
 
 def _fill(text: str, row: dict) -> str:
-    first = row['name'].split()[0] if row['name'].split() else row['name']
+    first = esign.split_name(row['name'])[0] or row['name']      # "Dr. Laura Bennett, MD" -> "Laura", never the title
     return text.replace('{{name}}', row['name']).replace('{{first_name}}', first).replace('{{client}}', row['client'] or row['name'])
 
 

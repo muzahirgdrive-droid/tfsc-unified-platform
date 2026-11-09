@@ -17,6 +17,7 @@ import hashlib
 import io
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -62,7 +63,14 @@ OPEN_STATUSES = ('sent', 'delivered')
 DONE_STATUSES = ('signed', 'completed')
 INACTIVE = ('reassigned',)                     # replaced by someone else; no longer part of the routing
 PAGE_DPI = 120
-SESSION_SECONDS = 4 * 3600
+SESSION_SECONDS = 4 * 3600                     # a signing session never lasts longer than this
+# ... and ends after this long without any activity (automatic logoff); the signing page keeps it alive while the person
+# reads, scrolls or types, and warns before it ends. The link in the email opens a new session and saved answers are kept.
+SIGNER_IDLE = max(5, int(os.getenv('TFSC_SIGNER_IDLE_MINUTES', '15'))) * 60
+OLD_LINK_GRACE_DAYS = 30
+# Limits per internet address are high on purpose: a clinic or an office shares one address. Each link, access code and
+# account has its own, much lower limit.
+LINKS_PER_ADDRESS = int(os.getenv('TFSC_SIGN_LINKS_PER_ADDRESS', '1000'))
 LABELS = {
     'created': 'Envelope created', 'sent': 'Envelope sent', 'routed': 'Sent to recipient', 'delivered': 'Viewed by recipient',
     'consent': 'Accepted electronic record and signature disclosure', 'auth_passed': 'Access code verified', 'auth_failed': 'Wrong access code entered',
@@ -184,6 +192,9 @@ def settings_value(payload: dict | None, current: dict | None = None) -> dict:
     for key in FLAGS:
         if payload and key in payload:
             out[key] = payload[key] is True
+    # the warning comes before the expiration: a warning period as long as the expiry would email "expires soon" at once
+    if out.get('expire_days') and out.get('warn_days', 0) >= out['expire_days']:
+        out['warn_days'] = max(0, out['expire_days'] - 1)
     return out
 
 
@@ -454,6 +465,11 @@ def check_text(value: str, options: dict, label: str) -> str | None:
     rule = VALIDATIONS.get(options.get('validation', ''))
     if rule and value and not rule[0].fullmatch(value.strip()):
         return f'{label}: enter {rule[1]}.'
+    if rule and value and options.get('validation') == 'date':
+        try:
+            dt.datetime.strptime(value.strip(), '%m/%d/%Y')
+        except ValueError:
+            return f'{label}: {value.strip()} is not a real date. Enter a date as MM/DD/YYYY.'
     return None
 
 
@@ -580,7 +596,17 @@ def _replace_recipients(c, envelope: dict, payload: dict) -> None:
 # ------------------------------------------------------------------ sending and routing
 def issue_token(c, recipient_id: str, via='email') -> str:
     token = secrets.token_urlsafe(32)
-    c.execute(tokens.insert().values(id=digest(token), recipient_id=recipient_id, via=via, created=now(), expires=now() + 300 if via in ('portal', 'in_person') else None))
+    t = now()
+    if via in ('portal', 'in_person'):
+        expires = t + 300
+    else:
+        # The link in the newest email keeps working (completed documents stay available from it). When a newer email is
+        # sent (a reminder, a resend, the completed copy), the links in the earlier emails stop working a month later, so
+        # an old forwarded email does not open the documents for ever.
+        expires = None
+        grace = t + OLD_LINK_GRACE_DAYS * 86400
+        c.execute(update(tokens).where(tokens.c.recipient_id == recipient_id, tokens.c.via == 'email', or_(tokens.c.expires.is_(None), tokens.c.expires > grace)).values(expires=grace))
+    c.execute(tokens.insert().values(id=digest(token), recipient_id=recipient_id, via=via, created=t, expires=expires))
     return token
 
 
@@ -773,9 +799,13 @@ def resend(c, actor: dict, envelope: dict, recipient_id: str | None) -> int:
 def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> None:
     if envelope['status'] != 'sent':
         raise HTTPException(409, 'Only an envelope that is waiting for signatures can be corrected.')
+    # The screen sends the version it loaded. If someone else changed the envelope since, saving would silently undo their
+    # change (and could send the signing link to an address they had just corrected), so the person is asked to reload.
+    if payload.get('version') is not None and str(payload['version']) != str(envelope['version']):
+        raise HTTPException(409, 'Someone else changed this envelope while you had it open. Reload the envelope, check their change, then make yours.')
     if isinstance(payload.get('layout'), dict):
         return correct_layout(c, actor, envelope, payload['layout'], ip, ua)
-    changed = []
+    changed, log_changes = [], []
     current = {r['id']: dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'])).mappings()}
     for item in payload.get('recipients', []) or []:
         r = current.get(item.get('id') if isinstance(item, dict) else None)
@@ -799,6 +829,12 @@ def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> 
             values.update(status='sent', auth_failures=0)
         if not values:
             continue
+        logged = {'recipient': r['name'], 'fields': sorted(k for k in values if k not in ('auth_failures',))}
+        if 'email' in values:
+            logged.update(email_from=mask_email(r['email']), email_to=mask_email(values['email']))
+        if 'name' in values:
+            logged.update(name_to=values['name'])
+        log_changes.append(logged)
         if 'email' in values or 'access_code' in values or 'status' in values:
             c.execute(delete(tokens).where(tokens.c.recipient_id == r['id']))
             c.execute(delete(sign_sessions).where(sign_sessions.c.recipient_id == r['id']))
@@ -816,6 +852,7 @@ def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> 
         env_values.update(expires_at=now() + days * 86400 if days else None, expiry_warned=False,
                           settings=dict(envelope['settings'], expire_days=days))
         changed.append({'expiration_days': days})
+        log_changes.append({'expiration_days': days})
     if payload.get('settings'):
         settings = settings_value({k: v for k, v in payload['settings'].items() if k != 'expire_days'}, env_values.get('settings', envelope['settings']))
         env_values['settings'] = settings
@@ -824,6 +861,13 @@ def correct(c, actor: dict, envelope: dict, payload: dict, ip: str, ua: str) -> 
         raise HTTPException(400, 'Nothing was changed.')
     c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(updated=now(), version=envelope['version'] + 1, **env_values))
     record(c, envelope['id'], 'corrected', actor['name'], ip=ip, ua=ua, detail={'changes': changed})
+    db.log(c, actor, 'esign.corrected', envelope['client_id'], {'envelope': envelope['ref'], 'changes': log_changes or [{'settings': True}]})
+
+
+def mask_email(address: str) -> str:
+    """j***@clinic.test: enough to recognise an address in the Activity log without repeating it in full."""
+    local, _, domain = (address or '').partition('@')
+    return (local[:1] + '***@' + domain) if domain else (address or '')
 
 
 LOCKED_STATUSES = DONE_STATUSES + INACTIVE + ('declined',)
@@ -926,7 +970,7 @@ def delete_draft(c, envelope: dict) -> None:
         c.execute(statement)
 
 
-def copy(c, actor: dict, source: dict, *, as_template: str | None = None, client_id=None) -> dict:
+def copy(c, actor: dict, source: dict, *, as_template: str | None = None, client_id=None, keep_people=False) -> dict:
     """New draft (or template) with the same documents, recipients and field layout, without any signing data."""
     sec.ensure_company(actor, source['entity'])
     t = now()
@@ -943,8 +987,11 @@ def copy(c, actor: dict, source: dict, *, as_template: str | None = None, client
         c.execute(documents.insert().values(**new))
         doc_map[d['id']] = new['id']
     for r in c.execute(select(recipients).where(recipients.c.envelope_id == source['id'], recipients.c.status.notin_(INACTIVE))).mappings():
-        new = dict(id=db.uid(), envelope_id=target['id'], role=r['role'], role_name=r['role_name'], routing_order=r['routing_order'], name=r['name'], email=r['email'],
-                   access_code=None, note=r['note'], status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t,
+        # A template keeps each recipient's role, order and fields, not the person: the next client must never be pre-filled
+        # with the previous client's signer (unless the person saving it asks to keep the people, e.g. an internal approver).
+        person = not as_template or source['status'] == 'template' or keep_people is True or (isinstance(keep_people, list) and r['id'] in keep_people)
+        new = dict(id=db.uid(), envelope_id=target['id'], role=r['role'], role_name=r['role_name'], routing_order=r['routing_order'], name=r['name'] if person else '',
+                   email=r['email'] if person else '', access_code=None, note=r['note'] if person else '', status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t,
                    host_id=r['host_id'] if r['role'] == 'in_person' else None)
         if new['host_id']:
             try:
@@ -996,7 +1043,7 @@ def open_link(token: str, request: Request):
     ip = request.client.host if request.client else ''
     ua = request.headers.get('user-agent', '')[:300]
     with write_tx() as c:
-        if not sec.rate_limit(c, 'sign-link:' + ip, 120):
+        if not sec.rate_limit(c, 'sign-link:' + ip, LINKS_PER_ADDRESS):
             return _message_page('Too many attempts', 'Please wait a few minutes and open the link from your email again.', 429)
         row = c.execute(select(tokens).where(tokens.c.id == digest(token))).mappings().first() if re.fullmatch(r'[A-Za-z0-9_-]{30,60}', token or '') else None
         if not row or (row['expires'] and row['expires'] < now()):
@@ -1012,7 +1059,7 @@ def open_link(token: str, request: Request):
         csrf = secrets.token_urlsafe(24)
         c.execute(delete(sign_sessions).where(sign_sessions.c.expires < now()))
         c.execute(sign_sessions.insert().values(id=digest(key), csrf=csrf, recipient_id=r['id'], verified=not r['access_code'] or row['via'] in ('portal', 'in_person'),
-                                                via=row['via'], expires=now() + SESSION_SECONDS))
+                                                via=row['via'], expires=now() + SIGNER_IDLE, created=now()))
         if row['via'] == 'portal':
             record(c, envelope['id'], 'portal_session', r['name'], recipient_id=r['id'], ip=ip, ua=ua)
         elif row['via'] == 'in_person':
@@ -1035,6 +1082,9 @@ def signer_session(c, request: Request, recipient_id: str, write: bool = False, 
                                                 sign_sessions.c.expires > now())).mappings().first() if key else None
     if not row:
         raise HTTPException(401, 'Your signing session has ended. Open the link from your email again.')
+    started = row.get('created')
+    if started and row['expires'] - now() < SIGNER_IDLE - 60 and now() < started + SESSION_SECONDS:
+        request.state.touch_session = ('signer', row['id'], min(now() + SIGNER_IDLE, started + SESSION_SECONDS))
     if write and not secrets.compare_digest(request.headers.get('x-csrf-token', ''), row['csrf']):
         raise HTTPException(403, 'Reload the page and try again.')
     r = dict(c.execute(select(recipients).where(recipients.c.id == recipient_id)).mappings().one())
@@ -1125,7 +1175,7 @@ def verify_code(c, session: dict, r: dict, envelope: dict, code: str, request: R
     locked = HTTPException(423, 'Access is locked after too many wrong access codes. Contact the sender to unlock it.')
     if r['status'] == 'auth_failed':
         return locked
-    if not sec.rate_limit(c, 'sign-code-ip:' + ip, 30):
+    if sec.rate_blocked(c, 'sign-code-ip:' + ip, 300):
         return HTTPException(429, 'Too many attempts. Try again later.')
     if r['access_code'] and sec.verify(r['access_code'], str(code or '')[:60]):
         c.execute(update(sign_sessions).where(sign_sessions.c.id == session['id']).values(verified=True))
@@ -1133,6 +1183,7 @@ def verify_code(c, session: dict, r: dict, envelope: dict, code: str, request: R
         record(c, envelope['id'], 'auth_passed', r['name'], recipient_id=r['id'], ip=ip, ua=ua)
         return None
     failures = r['auth_failures'] + 1
+    sec.rate_limit(c, 'sign-code-ip:' + ip, 300)
     record(c, envelope['id'], 'auth_failed', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'attempt': failures})
     if failures >= 5:
         c.execute(update(recipients).where(recipients.c.id == r['id']).values(auth_failures=failures, status='auth_failed'))
@@ -1344,14 +1395,15 @@ def reassign(c, session: dict, r: dict, envelope: dict, payload: dict, request: 
     t = now()
     note = f"{r['name']} assigned these documents to you. Their message: {reason}" + (f"\n\n{r['note']}" if r['note'] else '')
     new = dict(id=db.uid(), envelope_id=envelope['id'], role=r['role'], role_name=r['role_name'], routing_order=r['routing_order'], name=name, email=address,
-               access_code=r['access_code'], note=note[:1000], status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t)
+               access_code=None, note=note[:1000], status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=t)
     c.execute(recipients.insert().values(**new))
     c.execute(update(recipients).where(recipients.c.id == r['id']).values(status='reassigned', reassigned_to=new['id'], progress=None))
     c.execute(update(fields).where(fields.c.recipient_id == r['id']).values(recipient_id=new['id'], value=None, filled_at=None))
     c.execute(delete(documents).where(documents.c.envelope_id == envelope['id'], documents.c.source == 'attachment', documents.c.recipient_id == r['id']))
     ip, ua = _actor_info(request)
     record(c, envelope['id'], 'reassigned', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'to': address, 'name': name, 'reason': reason})
-    notify(c, envelope, 'reassigned', f"{r['name']} ({r['email']})", f'Assigned to {name} ({address}). Reason: {reason}')
+    code_note = ' The access code did not move to the new person: use Correct to set one for them if you want one.' if r['access_code'] else ''
+    notify(c, envelope, 'reassigned', f"{r['name']} ({r['email']})", f'Assigned to {name} ({address}). Reason: {reason}.{code_note}')
     db.log(c, None, 'esign.reassigned', envelope['client_id'], {'envelope': envelope['ref'], 'from': r['email'], 'to': address}, who=f"{r['name']} (signer)")
     advance(c, envelope)
 
@@ -2157,7 +2209,8 @@ def install(app) -> None:  # noqa: C901  (route table)
             client_id = payload.get('client_id') or None
             if client_id and not c.execute(select(db.clients.c.id).where(db.clients.c.id == client_id, sec.scope(a, db.clients.c.owner_id), db.clients.c.deleted_at.is_(None))).first():
                 raise HTTPException(404, 'Client not found.')
-            target = copy(c, a, source, as_template=template_name, client_id=client_id if source['status'] == 'template' else None)
+            target = copy(c, a, source, as_template=template_name, client_id=client_id if source['status'] == 'template' else None,
+                          keep_people=payload.get('keep_people') if isinstance(payload.get('keep_people'), list) else payload.get('keep_people') is True)
             db.log(c, a, 'esign.template_saved' if template_name else 'esign.copied', target['client_id'],
                    {'envelope': source['ref'], 'new': target['ref'], 'template': template_name or ''})
             return detail(c, a, get_envelope(c, a, target['id']))
@@ -2222,9 +2275,11 @@ def install(app) -> None:  # noqa: C901  (route table)
             get_entity(name)
             what = payload.get('what')
             result = {'at': now(), 'what': what}
+            resumed = False
             try:  # network work happens outside any write transaction
                 if what == 'send':
                     mailer.send_test(c, name, payload.get('to') or a['email'])
+                    resumed = True
                     result.update(ok=True, message=f"Test email sent to {payload.get('to') or a['email']}. Check that inbox (and its spam folder).")
                 elif what == 'inbox':
                     count = mailer.check_inbox(c, name)
@@ -2236,6 +2291,8 @@ def install(app) -> None:  # noqa: C901  (route table)
             except Exception as exc:  # noqa: BLE001  (the real reason is shown to the Super Admin)
                 result.update(ok=False, message=mailer._describe(exc))
         with write_tx() as c:
+            if resumed:
+                mailer.resume(c, name)      # the mailbox works again: queued email goes out now
             box = mailer.load(c, name)
             tests = dict(box['last_test'] or {})
             tests[what or 'unknown'] = result

@@ -1,6 +1,6 @@
 """E-signature and company mailbox tables (envelopes, recipients, fields, audit trail, mail outbox and inbox)."""
 from sqlalchemy import (JSON, BigInteger, Boolean, Column, Float, ForeignKey, Index, Integer, LargeBinary, String, Table, Text,
-                        UniqueConstraint, false)
+                        UniqueConstraint, false, func, text)
 
 from database import meta
 
@@ -39,6 +39,10 @@ envelopes = Table(
 Index('ix_esign_env_owner_updated', envelopes.c.owner_id, envelopes.c.updated)
 Index('ix_esign_env_status', envelopes.c.status, envelopes.c.completion_next)
 Index('ix_esign_env_client', envelopes.c.client_id, envelopes.c.created)
+Index('ix_esign_env_contract', envelopes.c.contract_id)
+Index('ix_esign_env_client_status', envelopes.c.client_id, envelopes.c.status)
+Index('ix_esign_env_entity_status', envelopes.c.entity, envelopes.c.status, envelopes.c.updated)
+Index('ix_esign_env_open', envelopes.c.status, sqlite_where=text("status IN ('sent', 'completing')"), postgresql_where=text("status IN ('sent', 'completing')"))
 
 documents = Table(
     'esign_documents', meta,
@@ -58,6 +62,7 @@ documents = Table(
     Column('created', Float, nullable=False),
     Column('recipient_id', String(32), nullable=True),          # the signer who uploaded an attachment
 )
+Index('ix_esign_docs_source', documents.c.source_document_id)
 
 recipients = Table(
     'esign_recipients', meta,
@@ -95,6 +100,7 @@ recipients = Table(
     Column('reassigned_to', String(32), nullable=True),       # "Assign to someone else": the new recipient
 )
 Index('ix_esign_rcpt_email', recipients.c.email, recipients.c.status)
+Index('ix_esign_rcpt_lower_email', func.lower(recipients.c.email), recipients.c.status)
 
 fields = Table(
     'esign_fields', meta,
@@ -114,6 +120,7 @@ fields = Table(
     Column('value', Text, nullable=True),
     Column('filled_at', Float, nullable=True),
 )
+Index('ix_esign_fields_recipient', fields.c.recipient_id)
 
 events = Table(
     'esign_events', meta,
@@ -129,8 +136,11 @@ events = Table(
     Column('detail', JSON, nullable=False),
     Column('prev_hash', String(64), nullable=False),
     Column('hash', String(64), nullable=False),
+    Column('seal', String(64), nullable=True),                # keyed seal of the entry (esign.seal_of); the hash alone can be recomputed by anyone
     UniqueConstraint('envelope_id', 'seq', name='uq_esign_event_seq'),
 )
+Index('ix_esign_events_at', events.c.at)
+Index('ix_esign_events_env_at', events.c.envelope_id, events.c.at)
 
 tokens = Table(
     'esign_tokens', meta,
@@ -149,6 +159,7 @@ sign_sessions = Table(
     Column('verified', Boolean, nullable=False),
     Column('via', String(12), nullable=False),                # email | portal
     Column('expires', Float, nullable=False, index=True),
+    Column('created', Float, nullable=True),                  # the idle limit slides from here, never past the 4-hour limit
 )
 
 mailboxes = Table(
@@ -179,6 +190,12 @@ mailboxes = Table(
     Column('last_test', JSON, nullable=False),
     Column('updated', Float, nullable=False),
     Column('updated_by', String(32), nullable=True),
+    # Sending is paused for this mailbox until `paused_until` (pause_kind: auth | quota | connect | cap). Queued email waits;
+    # nothing is dropped. Cleared when an email goes out, when the settings are saved or when a test email succeeds.
+    Column('paused_until', Float, nullable=True), Column('pause_kind', String(12), nullable=True), Column('pause_reason', Text, nullable=True),
+    Column('pause_count', Integer, nullable=True),
+    Column('sent_day', String(10), nullable=True), Column('sent_count', Integer, nullable=True),   # emails sent on that (UTC) day
+    Column('support_email', String(200), nullable=True),      # where this company's clients are told to write; empty: the mailbox address
 )
 
 outbox = Table(
@@ -205,6 +222,7 @@ outbox = Table(
     Column('sent_at', Float, nullable=True),
 )
 Index('ix_mail_outbox_queue', outbox.c.state, outbox.c.next_attempt)
+Index('ix_mail_outbox_entity_queue', outbox.c.entity, outbox.c.state, outbox.c.next_attempt)
 
 inbound = Table(
     'mail_inbound', meta,

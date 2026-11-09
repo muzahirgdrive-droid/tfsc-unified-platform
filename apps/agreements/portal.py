@@ -26,6 +26,10 @@ if not db.LOCAL and (not ORIGIN.startswith('https://') or db.URL.startswith('sql
 @asynccontextmanager
 async def lifespan(app):
     db.init_db()
+    # No more request threads than database connections: a thread without a connection would only wait for one.
+    if db.engine.dialect.name=='postgresql':
+        import anyio.to_thread
+        anyio.to_thread.current_default_thread_limiter().total_tokens=db.POOL_SIZE
     yield
 app=FastAPI(title='TFSC Compliance',version=VERSION,lifespan=lifespan,docs_url=None,redoc_url=None)
 import logging, uuid
@@ -59,21 +63,50 @@ async def boundary(request,call_next):
             request._body=b''.join(chunks)
         except Exception:return JSONResponse({'error':'Invalid request body.'},400)
     try:response=await call_next(request)
-    except Exception:
-        import logging;logging.exception('Application request failed')
-        response=JSONResponse({'error':'The request could not be completed. Please try again.'},500)
+    except Exception as exc:
+        response=busy_response(exc)
+        if response is None:
+            import logging;logging.exception('Application request failed')
+            response=JSONResponse({'error':'The request could not be completed. Please try again.'},500)
+    touch=getattr(request.state,'touch_session',None)
+    if touch and response.status_code<500:
+        import anyio.to_thread
+        try:await anyio.to_thread.run_sync(extend_session,*touch)
+        except Exception:logging.getLogger('tfsc.session').warning('session could not be extended',exc_info=True)
     # Routes may allow private caching (immutable e-signature page images); everything else is never cached.
     if 'cache-control' not in response.headers:response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
     response.headers['Referrer-Policy']='same-origin'
     response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-    if not db.LOCAL:response.headers['Strict-Transport-Security']='max-age=31536000'
+    response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()'
+    if not db.LOCAL:response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     response.headers['X-Request-Id']=rid
     route=getattr(request.scope.get('route'),'path','unmatched')
     if route!='/api/health':access.info('request',extra={'method':request.method,'route':route,'status':response.status_code,'duration_ms':round((time.perf_counter()-started)*1000,1)})
     return response
 
+def extend_session(kind,token,until):
+    """Move a session's idle limit forward after a request (staff sessions and signing sessions)."""
+    with db.engine.begin() as c:
+        if kind=='signer':
+            from esign_db import sign_sessions
+            c.execute(sign_sessions.update().where(sign_sessions.c.id==token,sign_sessions.c.expires<until).values(expires=until))
+        else:c.execute(db.sessions.update().where(db.sessions.c.token==token,db.sessions.c.expires<until).values(expires=until))
+BUSY='The system is busy right now. Please try again in a few seconds.'
+def busy_response(exc):
+    """A short, honest answer when the database is saturated or stopped a statement, instead of a 30-second wait and a generic error."""
+    from sqlalchemy.exc import TimeoutError as PoolTimeout, OperationalError
+    if isinstance(exc,PoolTimeout):
+        logging.getLogger('tfsc.capacity').warning('no database connection was free within the pool timeout')
+    elif isinstance(exc,OperationalError) and type(getattr(exc,'orig',None)).__name__ in ('QueryCanceled','LockNotAvailable','IdleInTransactionSessionTimeout'):
+        logging.getLogger('tfsc.capacity').warning('the database stopped a request: %s',type(exc.orig).__name__)
+    else:return None
+    return JSONResponse({'error':BUSY},503,headers={'Retry-After':'3'})
+@app.exception_handler(IntegrityError)
+async def conflict(request,exc):
+    logging.getLogger('tfsc.conflict').info('conflicting write: %s',str(getattr(exc,'orig',exc))[:200])
+    return JSONResponse({'error':'This was saved by another request at the same moment. Reload the page and check before trying again.'},409)
 @app.exception_handler(HTTPException)
 async def error(request,exc):return JSONResponse({'error':exc.detail},exc.status_code)
 @app.exception_handler(ValueError)
@@ -83,11 +116,12 @@ def bootstrap_available(c):return c.execute(select(db.users.c.id).limit(1)).firs
 def session_response(c,user):
     token=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32)
     c.execute(delete(db.sessions).where(db.sessions.c.expires<time.time()))
-    c.execute(db.sessions.insert().values(token=sec.digest(token),user_id=user['id'],csrf=csrf,expires=time.time()+28800))
-    response=JSONResponse({'user':sec.public(user),'csrf':csrf})
+    now=time.time()
+    c.execute(db.sessions.insert().values(token=sec.digest(token),user_id=user['id'],csrf=csrf,expires=now+sec.IDLE,created=now))
+    response=JSONResponse({'user':sec.public(user),'csrf':csrf,'session':{'idle_seconds':sec.IDLE,'ends':now+sec.IDLE}})
     # Lax (like the CRM): sent on top-level arrivals from the identity provider and from the CRM's "Open Agreements"
     # link; every state change still needs the X-CSRF-Token header, so cross-site requests cannot act.
-    response.set_cookie('tfsc_session',token,httponly=True,secure=not db.LOCAL,samesite='lax',max_age=28800,path='/')
+    response.set_cookie('tfsc_session',token,httponly=True,secure=not db.LOCAL,samesite='lax',max_age=sec.ABSOLUTE,path='/')
     return response
 
 @app.get('/api/health')
@@ -125,16 +159,23 @@ def valid_email(value):
     if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',value):raise HTTPException(400,'Enter a valid email address.')
     return value
 
+# Sign-in limits count wrong passwords only. A whole office shares one internet address, so correct sign-ins never count
+# against it; a password-guesser is still stopped per account (10 wrong tries) and per address (300 wrong tries).
+LOGIN_IP_FAILURES=int(os.getenv('TFSC_LOGIN_IP_FAILURES','300'))
 @app.post('/api/auth/login')
 def login(payload:dict,request:Request):
-    email=str(payload.get('email','')).strip().casefold()[:200]
+    email=str(payload.get('email','')).strip().casefold()[:200];ip='login-ip:'+str(request.client.host);password=str(payload.get('password',''))[:201]
+    with db.engine.connect() as c:
+        blocked=sec.rate_blocked(c,ip,LOGIN_IP_FAILURES) or sec.rate_blocked(c,'login:'+email,10)
+        user=None if blocked else c.execute(select(db.users).where(db.users.c.email==email,db.users.c.active==True)).mappings().first()
+    if blocked:raise HTTPException(429,'Too many wrong sign-in attempts. Try again in 15 minutes.')
+    if not (sec.verify(user['password'],password) if user else sec.verify_absent(password)):
+        with db.engine.begin() as c:sec.rate_limit(c,ip,LOGIN_IP_FAILURES);sec.rate_limit(c,'login:'+email,10)
+        raise HTTPException(401,'Email or password is incorrect.')
     with db.engine.begin() as c:
-        allowed=sec.rate_limit(c,'login-ip:'+str(request.client.host),50) and sec.rate_limit(c,'login:'+email,10)
-    if not allowed:raise HTTPException(429,'Too many sign-in attempts. Try again in 15 minutes.')
-    with db.engine.begin() as c:
-        user=c.execute(select(db.users).where(db.users.c.email==email,db.users.c.active==True)).mappings().first()
-        if not user or not sec.verify(user['password'],str(payload.get('password',''))[:201]):
-            raise HTTPException(401,'Email or password is incorrect.')
+        if user['role']=='user' and user['admin_id']:
+            parent=c.execute(select(db.users.c.active).where(db.users.c.id==user['admin_id'])).scalar()
+            if not parent:raise sec.inactive_admin()
         db.log(c,user,'user.signed_in')
         c.execute(delete(db.throttle).where(db.throttle.c.key==sec.digest('login:'+email)))
         return session_response(c,user)
@@ -142,7 +183,7 @@ def login(payload:dict,request:Request):
 @app.get('/api/auth/me')
 def me(request:Request):
     with db.engine.connect() as c:
-        a=sec.get_actor(request,c,True);return {'user':sec.public(a),'csrf':a['_csrf']}
+        a=sec.get_actor(request,c,True);return {'user':sec.public(a),'csrf':a['_csrf'],'session':{'idle_seconds':sec.IDLE,'ends':a['_session_ends']}}
 @app.post('/api/auth/logout')
 def logout(request:Request):
     with db.engine.begin() as c:
@@ -354,6 +395,10 @@ def folders(payload:dict,request:Request):
                 roots += [letter+':\\' for i,letter in enumerate(string.ascii_uppercase) if mask & (1<<i)]
         return {'roots':list(dict.fromkeys(roots)),'entries':[],'path':''}
     root=output_path(str(raw),a)
+    if not db.LOCAL:
+        # Hosted: agreements are filed per client automatically and downloaded from the portal. The storage folder names are
+        # client names of every company, so they are never listed.
+        return {'path':str(db.OUTPUT),'parent':'','entries':[],'truncated':False}
     try:
         # scandir avoids stat calls on files; bounded responses keep large directories usable.
         entries=[]

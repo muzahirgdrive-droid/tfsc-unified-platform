@@ -69,7 +69,7 @@ class PortalTests(unittest.TestCase):
         with db.engine.begin() as c:c.execute(db.users.update().where(db.users.c.id==self.admin['id']).values(companies=[]))
         self.assertEqual(self.post('/api/clients',self.payload()).status_code,403)
         with db.engine.begin() as c:c.execute(db.users.update().where(db.users.c.id==self.admin['id']).values(active=False))
-        self.assertEqual(self.api.get('/api/config').status_code,401)
+        r=self.api.get('/api/config');self.assertEqual(r.status_code,403);self.assertIn('administrator',r.json()['error'])   # a reason, not a sign-in loop
     def test_job_idempotency_storage_download_and_audit(self):
         self.login(self.u1);p=self.payload();key=db.uid()
         r=self.post('/api/generate',p,**{'Idempotency-Key':key});self.assertEqual(r.status_code,202,r.text)

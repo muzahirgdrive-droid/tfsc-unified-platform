@@ -10,6 +10,7 @@ DATA=Path(os.getenv('TFSC_DATA_DIR',str(APP/'.data'))).resolve()
 OUTPUT=Path(os.getenv('TFSC_OUTPUT_ROOT',str(APP.parent/'Client Contracts'))).resolve()
 LOCAL=os.getenv('TFSC_MODE','local')=='local'
 URL=os.getenv('DATABASE_URL','sqlite:///'+str(DATA/'tfsc.db'))
+POOL_SIZE=max(2,int(os.getenv('DB_POOL_SIZE','20')))
 meta=MetaData()
 users=Table('users',meta,
     Column('id',String(32),primary_key=True),Column('email',String(200),unique=True,nullable=False),
@@ -17,10 +18,12 @@ users=Table('users',meta,
     Column('role',String(20),nullable=False),Column('admin_id',String(32),ForeignKey('users.id'),index=True),
     Column('companies',JSON,nullable=False),Column('active',Boolean,nullable=False,default=True),
     Column('reset_required',Boolean,nullable=False,default=False),Column('created',Float,nullable=False),
-    Column('services',JSON,nullable=True))  # allowed service ids; NULL/empty: every service the company offers
+    Column('services',JSON,nullable=True),  # allowed service ids; NULL/empty: every service the company offers
+    Column('custom_services',Boolean,nullable=True))  # a person limited to certain services may add a custom one only when this is set
 sessions=Table('sessions',meta,Column('token',String(64),primary_key=True),
     Column('user_id',String(32),ForeignKey('users.id'),nullable=False,index=True),
-    Column('csrf',String(64),nullable=False),Column('expires',Float,nullable=False,index=True))
+    Column('csrf',String(64),nullable=False),Column('expires',Float,nullable=False,index=True),
+    Column('created',Float,nullable=True))  # sign-in time: the idle limit slides, but never past created + the absolute limit
 clients=Table('clients',meta,Column('id',String(32),primary_key=True),
     Column('owner_id',String(32),ForeignKey('users.id'),nullable=False),
     Column('name',String(200),nullable=False),Column('name_key',String(64),nullable=False),
@@ -88,6 +91,8 @@ Index('ix_client_owner_updated',clients.c.owner_id,clients.c.updated,clients.c.i
 Index('ix_clients_client_number',clients.c.client_number,unique=True)
 Index('ix_contract_client_created',contracts.c.client_id,contracts.c.created,contracts.c.id)
 Index('ix_contract_owner_created',contracts.c.owner_id,contracts.c.created)
+Index('ix_contracts_entity_created',contracts.c.entity,contracts.c.created)
+Index('ix_clients_live_updated',clients.c.updated,sqlite_where=text('deleted_at IS NULL'),postgresql_where=text('deleted_at IS NULL'))
 Index('ix_audit_client_created',audit.c.client_id,audit.c.created,audit.c.id)
 Index('ix_audit_created',audit.c.created)
 Index('ix_audit_actor_created',audit.c.actor_id,audit.c.created)
@@ -102,7 +107,17 @@ def make_engine(url=URL):
         def configure(conn,_):
             conn.execute('PRAGMA foreign_keys=ON');conn.execute('PRAGMA journal_mode=WAL');conn.execute('PRAGMA busy_timeout=30000')
     else:
-        e=create_engine(url,pool_pre_ping=True,pool_size=int(os.getenv('DB_POOL_SIZE','5')),max_overflow=5,pool_recycle=1800)
+        # Every thread that serves a request holds one connection, so the pool is at least as large as the thread pool
+        # (POOL_SIZE is also the thread limit, portal.py lifespan); the overflow is head-room for the few places that
+        # use a second connection. A request that cannot get a connection within a few seconds is answered "busy, try
+        # again" (portal.py) instead of hanging for half a minute.
+        # The server stops any statement, lock wait or forgotten transaction after these limits, so one stuck request
+        # can never hold everybody else up (0 = no limit). The background worker sets longer ones in its environment.
+        options=' '.join(f'-c {name}={int(os.getenv(env,default))}' for name,env,default in (
+            ('statement_timeout','DB_STATEMENT_TIMEOUT_MS','60000'),('lock_timeout','DB_LOCK_TIMEOUT_MS','10000'),
+            ('idle_in_transaction_session_timeout','DB_IDLE_TX_TIMEOUT_MS','300000')))
+        e=create_engine(url,pool_pre_ping=True,pool_size=POOL_SIZE,max_overflow=int(os.getenv('DB_POOL_OVERFLOW','5')),
+            pool_timeout=float(os.getenv('DB_POOL_TIMEOUT','5')),pool_recycle=1800,connect_args={'options':options})
     return e
 
 engine=make_engine()

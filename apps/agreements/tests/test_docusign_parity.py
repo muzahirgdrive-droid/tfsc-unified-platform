@@ -326,8 +326,10 @@ class Parity(Base):
                             {'key': 'b', 'role': 'cc', 'routing_order': 2, 'name': 'Compliance', 'email': 'cc@scribealign.test'}],
                       [self.box(doc, recipient='a', kind='signature', w=170, h=40)], subject='Please sign, {{first_name}}', message='Hello {{name}} at {{client}}')
         self.assertEqual(r.status_code, 200, r.text)
-        r = self.post(f"/api/esign/envelopes/{env['id']}/copy", {'template_name': 'Order form'})
+        r = self.post(f"/api/esign/envelopes/{env['id']}/copy", {'template_name': 'Order form', 'keep_people': [x['id'] for x in r.json()['recipients'] if x['role'] == 'cc']})
         template = r.json()
+        # the template keeps the role of the signer, not the person; the internal copy recipient was kept on purpose
+        self.assertEqual(sorted((x['role'], x['email']) for x in template['recipients']), [('cc', 'cc@scribealign.test'), ('signer', '')])
         rows = [{'name': 'Ann Alpha', 'email': 'ann@a.test', 'client': 'Alpha Clinic'}, {'name': 'Ben Beta', 'email': 'ben@b.test'}]
         self.assertEqual(self.post('/api/esign/bulk', {'template_id': template['id'], 'rows': rows + [rows[0]]}).status_code, 400, 'duplicates are refused')
         self.login(self.ehs_user)
