@@ -3,6 +3,9 @@
  // Return to a same-site page (`?next=/reviews`) with its #fragment (a CRM handoff code); anything else goes home.
  const target=()=>{const n=new URLSearchParams(location.search).get('next')||'';return /^\/[A-Za-z0-9_\-\/]*$/.test(n)&&!n.startsWith('//')?n+location.hash:'/';};
  const error=message=>{$('login-error').textContent=message;$('login-error').hidden=false;};
+ // Why the person is here again (set by the portal when it signs somebody out).
+ const why={idle:'You were signed out after a while without activity, to protect client information. Sign in to continue where you left off.',expired:'Your session ended. Sign in again to continue where you left off.'}[new URLSearchParams(location.search).get('reason')];
+ if(why&&$('login-notice')){$('login-notice').textContent=why;$('login-notice').hidden=false;}
  async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(data)});const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d;}
  function changeMode(){change=true;$('login-title').textContent='Set your password';$('login-description').textContent='Replace your temporary password to continue.';$('new-password-field').hidden=false;$('new-password').required=true;$('email').disabled=true;$('login-submit').textContent='Save password';}
  $('login-form').addEventListener('submit',async e=>{e.preventDefault();$('login-submit').disabled=true;$('login-error').hidden=true;try{

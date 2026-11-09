@@ -200,6 +200,24 @@ def install(app) -> None:
         ip, ua = esign._actor_info(request)
         return run(a['id'], str(payload.get('template_id') or ''), payload, ip, ua)
 
+    @app.post('/api/esign/bulk/check')
+    def api_bulk_check(request: Request, payload: dict = Body(...)):
+        """Before a bulk send: which typed client names are clients already on file, and which would become new clients.
+
+        A name that is not on file but looks like one that is (the same name without ", PLLC", different capitals or
+        punctuation) comes back with those clients, so the person can pick the existing record instead of creating a twin."""
+        import clients
+        names = payload.get('clients')
+        if not isinstance(names, list) or len(names) > MAX_ROWS:
+            raise ValueError(f'Check at most {MAX_ROWS} names at a time.')
+        out = {}
+        with db.engine.connect() as c:
+            a = sec.get_actor(request, c)
+            for raw in dict.fromkeys(str(n or '').strip()[:200] for n in names):
+                if raw:
+                    out[raw] = clients.match_name(c, a, raw)
+        return {'clients': out}
+
     @app.get('/api/esign/bulk')
     def api_bulk_list(request: Request):
         with db.engine.connect() as c:

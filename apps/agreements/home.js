@@ -8,7 +8,7 @@
   async function api(path) {
     const r = await fetch(path, {cache: "no-store"});
     const d = await r.json().catch(() => ({}));
-    if (r.status === 401) { location.href = "/login"; throw new Error("Please sign in again."); }
+    if (r.status === 401) { window.tfscSignIn("expired"); throw new Error("Please sign in again."); }
     if (!r.ok) throw new Error(d.error || "The request failed.");
     return d;
   }

@@ -63,6 +63,7 @@ OPEN_STATUSES = ('sent', 'delivered')
 DONE_STATUSES = ('signed', 'completed')
 INACTIVE = ('reassigned',)                     # replaced by someone else; no longer part of the routing
 PAGE_DPI = 120
+PAGE_AHEAD = 5                 # pages drawn together with a requested page that is not in the cache yet
 SESSION_SECONDS = 4 * 3600                     # a signing session never lasts longer than this
 # ... and ends after this long without any activity (automatic logoff); the signing page keeps it alive while the person
 # reads, scrolls or types, and warns before it ends. The link in the email opens a new session and saved answers are kept.
@@ -141,7 +142,59 @@ def build_event(c, envelope_id: str, kind: str, actor: str, *, recipient_id=None
     row = dict(id=db.uid(), envelope_id=envelope_id, seq=(last[0] + 1) if last else 1, recipient_id=recipient_id, at=at or now(), kind=kind,
                actor=(actor or '')[:250], ip=(ip or '')[:64], user_agent=(ua or '')[:300], detail=detail or {}, prev_hash=last[1] if last else '0' * 64)
     row['hash'] = hashlib.sha256((row['prev_hash'] + canonical(row)).encode()).hexdigest()
+    row['seal'] = seal_of(row)
     return row
+
+
+def _seal_key() -> bytes | None:
+    key = os.getenv('TFSC_SECRET_KEY', '')
+    return hashlib.sha256(('tfsc-esign-history-seal:' + key).encode()).digest() if len(key) >= 16 else None
+
+
+def seal_of(row: dict) -> str | None:
+    """A keyed seal of one history entry.
+
+    The hash chain proves that entries fit together, but anyone able to write to the database could change an entry and
+    recompute every hash after it. The seal is made with the installation's secret key (never stored in the database), so a
+    changed entry cannot be given a matching seal. The database also refuses changes to the history outright (migration 0012).
+    """
+    key = _seal_key()
+    if not key:
+        return None
+    import hmac
+    return hmac.new(key, f"{row['envelope_id']}:{row['seq']}:{row['hash']}".encode(), hashlib.sha256).hexdigest()
+
+
+def verify_seals(rows: list[dict], sealed_since: float | None) -> bool | None:
+    """True: every entry carries a valid seal. False: an entry has a wrong seal, or lacks one although it should have one.
+    None: this installation cannot check (no secret key), or entries from before sealing have not been sealed yet."""
+    if not _seal_key():
+        return None
+    pending = False
+    for row in rows:
+        if row.get('seal'):
+            if row['seal'] != seal_of(row):
+                return False
+        elif sealed_since and row['at'] >= sealed_since:
+            return False
+        else:
+            pending = True
+    return None if pending else True
+
+
+def seal_backfill(limit: int = 3000) -> int:
+    """Seal the history written before sealing existed (once). After that, an entry without a seal is reported."""
+    if not _seal_key():
+        return 0
+    with db.engine.begin() as c:
+        if c.execute(select(db.settings.c.value).where(db.settings.c.key == 'esign_events_sealed')).scalar():
+            return 0
+        rows = [dict(r) for r in c.execute(select(events.c.id, events.c.envelope_id, events.c.seq, events.c.hash).where(events.c.seal.is_(None)).limit(limit)).mappings()]
+        for row in rows:
+            c.execute(update(events).where(events.c.id == row['id'], events.c.seal.is_(None)).values(seal=seal_of(row)))
+        if len(rows) < limit:
+            c.execute(db.settings.insert().values(key='esign_events_sealed', value={'at': now()}))
+    return len(rows)
 
 
 def record(c, envelope_id: str, kind: str, actor: str, **kw) -> dict:
@@ -1483,28 +1536,44 @@ def decline(c, session: dict, r: dict, envelope: dict, reason: str, request: Req
 
 
 # ------------------------------------------------------------------ completion (worker)
+COMPLETE_BATCH = int(os.getenv('TFSC_COMPLETE_BATCH', '10'))
+COMPLETE_LEASE = 180            # seconds one worker may hold an envelope; another takes over after that (a crash, a restart)
+COMPLETE_ALERT = 5              # failed tries after which the envelope is reported as needing attention
+
+
 def complete_due() -> int:
+    """Prepare the signed copies and certificates of envelopes everyone has signed. Safe to run in several processes at once:
+    each envelope is claimed by one of them (row lock, then a short lease)."""
     done = 0
     t = now()
     with db.engine.begin() as c:
-        ids = [x[0] for x in c.execute(select(envelopes.c.id).where(envelopes.c.status == 'completing', envelopes.c.completion_next <= t,
-                                                                     or_(envelopes.c.lease_until.is_(None), envelopes.c.lease_until < t)).limit(5))]
+        q = select(envelopes.c.id).where(envelopes.c.status == 'completing', envelopes.c.completion_next <= t,
+                                         or_(envelopes.c.lease_until.is_(None), envelopes.c.lease_until < t)).order_by(envelopes.c.completion_next).limit(COMPLETE_BATCH)
+        if c.dialect.name == 'postgresql':
+            q = q.with_for_update(skip_locked=True)
+        ids = [x[0] for x in c.execute(q)]
+        if ids:
+            c.execute(update(envelopes).where(envelopes.c.id.in_(ids)).values(lease_until=t + COMPLETE_LEASE))
     for envelope_id in ids:
-        with db.engine.begin() as c:
-            claimed = c.execute(update(envelopes).where(envelopes.c.id == envelope_id, envelopes.c.status == 'completing',
-                                                        or_(envelopes.c.lease_until.is_(None), envelopes.c.lease_until < t)).values(lease_until=t + 900))
-        if claimed.rowcount != 1:
-            continue
         try:
             finalize(envelope_id)
             done += 1
         except Exception as exc:  # noqa: BLE001
             log.exception('completing envelope %s failed', envelope_id)
             with db.engine.begin() as c:
-                attempts = c.execute(select(envelopes.c.completion_attempts).where(envelopes.c.id == envelope_id)).scalar() + 1
+                attempts = (c.execute(select(envelopes.c.completion_attempts).where(envelopes.c.id == envelope_id)).scalar() or 0) + 1
+                # keeps trying (a minute, two, four ... at most every six hours); after a few failures it is shown on the
+                # System status strip so a person looks at it
                 c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(
-                    completion_attempts=attempts, completion_error=str(exc)[:1000], lease_until=None, completion_next=now() + min(3600, 60 * 2 ** attempts)))
+                    completion_attempts=attempts, completion_error=friendly_error(exc)[:1000], lease_until=None, completion_next=now() + min(6 * 3600, 60 * 2 ** min(attempts, 10))))
     return done
+
+
+def friendly_error(exc: Exception) -> str:
+    """A sentence for the screen; the technical detail is in the server log."""
+    if isinstance(exc, ValueError | HTTPException):
+        return str(getattr(exc, 'detail', exc))
+    return f'The signed copies could not be prepared ({exc.__class__.__name__}). The system keeps trying; details are in the server log.'
 
 
 def signature_id(envelope: dict, r: dict) -> str:
@@ -1773,7 +1842,9 @@ def detail(c, actor: dict, envelope: dict) -> dict:
     return {k: envelope[k] for k in ('id', 'ref', 'entity', 'client_id', 'contract_id', 'subject', 'message', 'status', 'template_name', 'settings', 'version', 'created',
                                      'updated', 'sent_at', 'expires_at', 'completed_at', 'closed_at', 'close_reason', 'completion_error', 'certificate_sha256')} | {
         'client': client or '', 'sender': {'name': owner['name'], 'email': owner['email']}, 'documents': docs, 'recipients': people, 'fields': fs, 'history': history,
-        'chain_ok': verify_chain(trail), 'mails': mails, 'replies': replies, 'entity_short': entity['short'],
+        'chain_ok': verify_chain(trail), 'sealed_ok': verify_seals(trail, ((c.execute(select(db.settings.c.value).where(db.settings.c.key == 'esign_events_sealed')).scalar() or {}).get('at'))),
+        'completion_problem': (envelope.get('completion_error') or '') if envelope['status'] == 'completing' and (envelope.get('completion_attempts') or 0) >= 2 else '',
+        'mails': mails, 'replies': replies, 'entity_short': entity['short'],
         'mailbox': {'ready': mailer.ready(box), 'address': box['address'], 'signer_email': box['signer_email']},
         'can_sign_now': mine['id'] if mine else None, 'can_host': hosting, 'is_owner': envelope['owner_id'] == actor['id'], 'bulk_id': envelope.get('bulk_id'),
         'hosts': hosts_for(c, envelope['entity']), 'test': bool(envelope.get('test'))}
@@ -1952,6 +2023,21 @@ def library_document(c, actor: dict, envelope: dict, source: str, item_id: str) 
 
 
 # ------------------------------------------------------------------ routes
+def page_png(c, document_id: str, page: int, pages: int) -> bytes:
+    """The image of one page. Served from the page cache; when it is missing, this page and the next few are drawn in one go
+    (people read on), and only then is the PDF itself read from the database."""
+    folder = db.DATA / 'esign-cache' / document_id
+    cached = folder / f'{page}.png'
+    if cached.is_file():
+        try:
+            os.utime(folder)          # the tidy-up job removes the folders nobody opened for longest
+        except OSError:
+            pass
+        return cached.read_bytes()
+    raw = c.execute(select(documents.c.pdf).where(documents.c.id == document_id)).scalar()
+    return esign_pdf.render_pages(bytes(raw), page, min(pages, page + PAGE_AHEAD), PAGE_DPI, folder)
+
+
 def install(app) -> None:  # noqa: C901  (route table)
     from fastapi import Body
 
@@ -2096,8 +2182,10 @@ def install(app) -> None:  # noqa: C901  (route table)
             c.execute(update(envelopes).where(envelopes.c.id == envelope_id).values(updated=now(), version=envelope['version'] + 1, **follow_documents(c, envelope, was_auto)))
             return detail(c, a, get_envelope(c, a, envelope_id))
 
-    def _doc_for_sender(c, a, document_id):
-        row = c.execute(select(documents).where(documents.c.id == document_id)).mappings().first()
+    def _doc_for_sender(c, a, document_id, light=False):
+        # light: without the PDF bodies (a page image comes from the cache; the file is read only when a page is missing)
+        columns = [col for col in documents.c if col.name not in ('pdf', 'final_pdf')] if light else [documents]
+        row = c.execute(select(*columns).where(documents.c.id == document_id)).mappings().first()
         if not row:
             raise HTTPException(404, 'Document not found.')
         row = dict(row)
@@ -2108,12 +2196,11 @@ def install(app) -> None:  # noqa: C901  (route table)
     def api_page(document_id: str, page: int, request: Request):
         with db.engine.connect() as c:
             a = actor_of(request, c)
-            row = _doc_for_sender(c, a, document_id)
-            raw = bytes(row['pdf'])
+            row = _doc_for_sender(c, a, document_id, light=True)
             pages = row['pages']
-        if not 1 <= page <= pages:
-            raise HTTPException(404, 'Page not found.')
-        png = esign_pdf.render_page(raw, page, PAGE_DPI, db.DATA / 'esign-cache' / document_id / f'{page}.png')
+            if not 1 <= page <= pages:
+                raise HTTPException(404, 'Page not found.')
+            png = page_png(c, document_id, page, pages)
         # A document's pages never change (documents are immutable once added), so the browser may keep them.
         return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
@@ -2396,9 +2483,10 @@ def install(app) -> None:  # noqa: C901  (route table)
     def sign_decline(recipient_id: str, request: Request, payload: dict = Body(...)):
         return _sign_write(recipient_id, request, decline, payload.get('reason', ''))
 
-    def _signer_doc(c, request, recipient_id, document_id):
+    def _signer_doc(c, request, recipient_id, document_id, light=False):
         session, r, envelope = signer_session(c, request, recipient_id)
-        row = c.execute(select(documents).where(documents.c.id == document_id, documents.c.envelope_id == envelope['id'])).mappings().first()
+        columns = [col for col in documents.c if col.name not in ('pdf', 'final_pdf')] if light else [documents]
+        row = c.execute(select(*columns).where(documents.c.id == document_id, documents.c.envelope_id == envelope['id'])).mappings().first()
         if not row:
             raise HTTPException(404, 'Document not found.')
         if r['role'] != 'cc' and r['status'] in OPEN_STATUSES and envelope['status'] == 'sent' and not r['consent_at']:
@@ -2408,11 +2496,11 @@ def install(app) -> None:  # noqa: C901  (route table)
     @app.get('/sign/r/{recipient_id}/page/{document_id}/{page}.png')
     def sign_page_image(recipient_id: str, document_id: str, page: int, request: Request):
         with db.engine.connect() as c:
-            _, _, _, row = _signer_doc(c, request, recipient_id, document_id)
-            raw, pages = bytes(row['pdf']), row['pages']
-        if not 1 <= page <= pages:
-            raise HTTPException(404, 'Page not found.')
-        png = esign_pdf.render_page(raw, page, PAGE_DPI, db.DATA / 'esign-cache' / document_id / f'{page}.png')
+            _, _, _, row = _signer_doc(c, request, recipient_id, document_id, light=True)
+            pages = row['pages']
+            if not 1 <= page <= pages:
+                raise HTTPException(404, 'Page not found.')
+            png = page_png(c, document_id, page, pages)
         return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
     @app.get('/sign/r/{recipient_id}/document/{document_id}')

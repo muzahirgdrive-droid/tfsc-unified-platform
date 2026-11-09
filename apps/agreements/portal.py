@@ -115,7 +115,6 @@ async def invalid(request,exc):return JSONResponse({'error':str(exc)},400)
 def bootstrap_available(c):return c.execute(select(db.users.c.id).limit(1)).first() is None
 def session_response(c,user):
     token=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(32)
-    c.execute(delete(db.sessions).where(db.sessions.c.expires<time.time()))
     now=time.time()
     c.execute(db.sessions.insert().values(token=sec.digest(token),user_id=user['id'],csrf=csrf,expires=now+sec.IDLE,created=now))
     response=JSONResponse({'user':sec.public(user),'csrf':csrf,'session':{'idle_seconds':sec.IDLE,'ends':now+sec.IDLE}})
@@ -379,7 +378,9 @@ def get_job(id:str,request:Request):
         a=sec.get_actor(request,c);row=c.execute(select(db.jobs).where(db.jobs.c.id==id,sec.scope(a,db.jobs.c.owner_id))).mappings().first()
         if not row:raise HTTPException(404,'Generation not found.')
         sec.ensure_company(a,row['payload']['entity'])
-        return {'id':id,'state':row['state'],'result':row['result'],'error':row['error']}
+        # how many generations are ahead in the queue (shown to the person waiting)
+        ahead=c.execute(select(func.count()).select_from(db.jobs).where(db.jobs.c.state=='queued',db.jobs.c.created<row['created'])).scalar() if row['state']=='queued' else 0
+        return {'id':id,'state':row['state'],'result':row['result'],'error':row['error'],'ahead':ahead}
 
 @app.post('/api/folders')
 def folders(payload:dict,request:Request):
@@ -471,6 +472,19 @@ def update_user(id:str,payload:dict,request:Request):
             if not payload['active'] and target['role']=='super_admin':
                 raise HTTPException(400,'Super administrator accounts cannot be disabled through this screen.')
             values['active']=payload['active']
+            # Disabling an Admin: the people who report to them would be locked out. The Super Admin says who takes them
+            # over (another Admin, or nobody: they then answer to the Super Admin directly).
+            team=[] if payload['active'] or target['role']!='admin' else c.execute(select(db.users.c.id,db.users.c.name,db.users.c.companies).where(db.users.c.admin_id==id,db.users.c.active==True).order_by(db.users.c.name)).mappings().all()
+            if team:
+                if 'reassign_to' not in payload:
+                    return JSONResponse({'error':f"{target['name']} manages {len(team)} {'person' if len(team)==1 else 'people'}. Choose who takes them over before disabling this account.",'team':[r['name'] for r in team],'needs':'reassign_to'},409)
+                successor=payload['reassign_to'] or None
+                if successor:
+                    manager=c.execute(select(db.users).where(db.users.c.id==successor,db.users.c.role=='admin',db.users.c.active==True,db.users.c.id!=id)).mappings().first()
+                    if not manager:raise HTTPException(400,'Choose an active Admin to take over these users.')
+                c.execute(db.users.update().where(db.users.c.admin_id==id).values(admin_id=successor))
+                c.execute(delete(db.sessions).where(db.sessions.c.user_id.in_([r['id'] for r in team])))
+                db.log(c,a,'user.team_reassigned',detail={'from':id,'to':successor,'users':[r['id'] for r in team]})
         if 'services' in payload:
             import company_admin
             values['services']=company_admin.clean_user_services(payload['services'])
@@ -520,7 +534,7 @@ company_admin.install(app)   # before companies.install so its literal routes be
 companies.install(app)
 import insights
 insights.install(app)
-PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','verify.css','resilient.js'}
+PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','verify.css','resilient.js','session.js'}
 PRIVATE={'app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request):

@@ -18,7 +18,7 @@
     const r = await fetch(path, {method: body === undefined ? "GET" : "POST", headers: body === undefined ? {} : {"Content-Type": "application/json", "X-CSRF-Token": csrf()},
       body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store"});
     let d = {}; try { d = await r.json(); } catch (_) { /* empty */ }
-    if (r.status === 401) { location.href = "/login"; throw new Error("Please sign in again."); }
+    if (r.status === 401) { window.tfscSignIn("expired"); throw new Error("Please sign in again."); }
     if (!r.ok) throw new Error(d.error || `The request failed (${r.status}).`);
     return d;
   }

@@ -833,3 +833,24 @@ input.is-locked{background:var(--surface-2,#f3f5f8);color:var(--ink-2,#3b4658);c
 .subject-note strong{color:var(--ink,#0F172A)}
 .subject-note-icon{flex:none;font-weight:700}
 .subject-note .link-button{border:0;background:none;padding:0;color:var(--primary,#1F55D6);font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
+
+/* ---- automatic sign-out warning, and the reason shown on the sign-in page */
+.session-dialog{width:min(460px,calc(100vw - 32px))}
+.session-dialog .dialog-body{display:grid;gap:10px}
+.session-countdown{font-size:17px;font-weight:600;color:#111b5d;margin:0;font-variant-numeric:tabular-nums}
+.session-dialog .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:8px;flex-wrap:wrap}
+.login-notice{background:#eef8ff;border:1px solid #cfe7f7;color:#1b3a63;padding:12px;border-radius:7px;font-size:13px;line-height:1.5;margin:0 0 12px}
+
+/* ---- bulk send preview: which client each row goes to */
+.bulk-preview td strong{display:block}
+.bulk-badge{display:inline-block;margin:4px 6px 0 0;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.5}
+.bulk-badge-ok{background:#e7f6ec;color:#17603a}
+.bulk-badge-new{background:#fff4db;color:#7a4b00}
+.bulk-use{display:block;margin-top:4px;font-size:12px;text-align:left}
+.table-scroll{overflow:auto}
+
+/* ---- disabling an Admin: who takes over the team; destructive buttons look destructive */
+.successor-team{margin:6px 0 14px;padding-left:20px;max-height:180px;overflow:auto;font-size:13px;color:#34466b}
+.dialog-actions-row{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap}
+.button-danger-quiet{color:#b3261e;border-color:#e6b8b4}
+.button-danger-quiet:hover{background:#fdf1f0;border-color:#b3261e;color:#8f1d17}

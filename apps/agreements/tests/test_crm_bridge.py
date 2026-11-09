@@ -51,8 +51,15 @@ class BridgeTests(unittest.TestCase):
  def test_abandoned_generation_lease_also_hands_the_approval_back(self):
   cid,r=self.submitted();self.approve(r);self.login(self.u1)
   self.post('/api/reviews/'+r['id']+'/generate',{},**{'Idempotency-Key':db.uid()});job=worker.claim()
+  # a generation interrupted by a crash or restart is taken up again by itself ...
+  for attempt in (2,3):
+   with db.engine.begin() as c:c.execute(db.jobs.update().where(db.jobs.c.id==job['id']).values(lease_until=time.time()-1))
+   again=worker.claim();self.assertEqual((again['id'],again['attempts']),(job['id'],attempt))
+   self.assertEqual(self.api.get('/api/reviews').json()['reviews'][0]['state'],'queued')
+  # ... and only after several tries is it reported as failed, with the approval handed back
   with db.engine.begin() as c:c.execute(db.jobs.update().where(db.jobs.c.id==job['id']).values(lease_until=time.time()-1))
-  self.assertIsNone(worker.claim())  # the expired job is failed, nothing else is queued
+  self.assertIsNone(worker.claim())
+  with db.engine.connect() as c:self.assertEqual(c.execute(select(db.jobs.c.state).where(db.jobs.c.id==job['id'])).scalar(),'failed')
   self.assertEqual(self.api.get('/api/reviews').json()['reviews'][0]['state'],'approved')
  def test_changed_content_cannot_reuse_approval(self):
   cid,r=self.submitted();self.approve(r);self.login(self.u1);p=self.payload();p.update(id=cid,special_terms='Changed after approval.')

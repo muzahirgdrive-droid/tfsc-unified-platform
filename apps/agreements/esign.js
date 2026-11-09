@@ -48,7 +48,7 @@
       body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store"});
     let d = {};
     try { d = await r.json(); } catch (_) { /* empty */ }
-    if (r.status === 401) { location.href = "/login"; throw new Error("Please sign in again."); }
+    if (r.status === 401) { window.tfscSignIn("expired"); throw new Error("Please sign in again."); }
     if (!r.ok) throw new Error(d.error || `The request failed (${r.status}).`);
     return d;
   }
@@ -544,7 +544,7 @@
         return item;
       });
       const days = form.querySelector('[name="expire_days"]').value;
-      await api(`/api/esign/envelopes/${e.id}/correct`, {recipients, expire_days: days === "" ? null : Number(days)});
+      await api(`/api/esign/envelopes/${e.id}/correct`, {recipients, expire_days: days === "" ? null : Number(days), version: e.version});
       ok("The envelope was corrected.");
       await showEnvelope(e.id);
     });
@@ -562,8 +562,15 @@
   }
 
   function saveTemplate(e) {
-    dialog("Save as template", body => body.append(field("Template name", input(e.subject.slice(0, 150), "text", {maxLength: 150, required: true}))), "Save template", async form => {
-      await api(`/api/esign/envelopes/${e.id}/copy`, {template_name: form.querySelector("input").value});
+    const people = e.recipients.filter(r => !["reassigned"].includes(r.status) && (r.name || r.email));
+    dialog("Save as template", body => {
+      body.append(field("Template name", input(e.subject.slice(0, 150), "text", {maxLength: 150, required: true, name: "template_name"})));
+      if (people.length) {
+        body.append(el("p", "portal-note", "A template keeps each recipient's role, signing order and fields, not the person: the next client starts with empty names. Tick only people who belong on every envelope made from it (for example a colleague who always gets a copy)."));
+        people.forEach(r => { const l = el("label", "check-inline"); const c = input("", "checkbox", {name: "keep", value: r.id}); l.append(c, document.createTextNode(`Keep ${r.name || r.email} (${ROLES[r.role][0]})`)); body.append(l); });
+      }
+    }, "Save template", async form => {
+      await api(`/api/esign/envelopes/${e.id}/copy`, {template_name: form.querySelector('[name="template_name"]').value, keep_people: [...form.querySelectorAll('[name="keep"]:checked')].map(c => c.value)});
       ok("Template saved. Find it under Templates.");
     });
   }
@@ -1326,7 +1333,7 @@
   async function saveCorrections() {
     const found = problems();
     if (found.length) { fail(new Error(found.join(" "))); return; }
-    const result = await api(`/api/esign/envelopes/${editor.e.id}/correct`, {layout: layoutBody()});
+    const result = await api(`/api/esign/envelopes/${editor.e.id}/correct`, {layout: layoutBody(), version: editor.e.version});
     editor = null;
     ok("The envelope was corrected. Recipients who changed received a corrected email; new recipients get the envelope when it is their turn.");
     await showEnvelope(result.envelope.id);
@@ -1426,25 +1433,50 @@
   }
 
   // ------------------------------------------------------------------ bulk send
-  function parseCsv(text) {
+  // One delimiter per file (taken from the header line), quotes as in any spreadsheet export (RFC 4180).
+  function csvRows(text, delimiter) {
     const rows = []; let row = [], cell = "", quoted = false;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       if (quoted) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') quoted = false; else cell += ch; }
-      else if (ch === '"') quoted = true;
-      else if (ch === "," || ch === "\t" || ch === ";") { row.push(cell.trim()); cell = ""; }
+      else if (ch === '"' && !cell.trim()) quoted = true;
+      else if (ch === delimiter) { row.push(cell.trim()); cell = ""; }
       else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell.trim()); cell = ""; if (row.some(Boolean)) rows.push(row); row = []; }
       else cell += ch;
     }
     row.push(cell.trim()); if (row.some(Boolean)) rows.push(row);
-    let columns = {name: 0, email: 1, client: 2, note: 3};
-    if (rows.length && rows[0].some(c => /e-?mail/i.test(c))) {
-      const header = rows.shift().map(c => c.toLowerCase());
-      const find = re => header.findIndex(c => re.test(c));
-      columns = {name: find(/name/), email: find(/e-?mail/), client: find(/client|practice|company|organi[sz]ation/), note: find(/note|message/)};
-    }
+    return rows;
+  }
+  const EMAIL_IN_LINE = /[^\s,;<>"|]+@[^\s,;<>"|]+\.[A-Za-z0-9-]{2,}/;
+  // A typed line: the email address is the anchor. Everything before it is the person's name (commas included: "Rebecca
+  // Moore, MD"), everything after it is the client (commas included: "Hill Country Allergy & Asthma, PLLC"), and a private
+  // message, when there is one, comes after a "|".
+  function typedLine(line) {
+    const found = EMAIL_IN_LINE.exec(line);
+    if (!found) return {name: line.trim().replace(/[,;\s]+$/, ""), email: "", client: "", note: ""};
+    const strip = s => s.trim().replace(/^[,;\s]+|[,;\s]+$/g, "").replace(/^"(.*)"$/, "$1").trim();
+    const before = strip(line.slice(0, found.index).replace(/<\s*$/, "")), after = line.slice(found.index + found[0].length).replace(/^\s*>/, "");
+    const bar = after.search(/[|\t]/);
+    return {name: before, email: found[0], client: strip(bar < 0 ? after : after.slice(0, bar)), note: bar < 0 ? "" : strip(after.slice(bar + 1))};
+  }
+  function parseCsv(text) {
+    const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim());
+    if (!lines.length) return [];
+    // A header line names its columns and holds no email address ("Name, Email, Client, Note").
+    const first = lines[0];
+    const isHeader = !EMAIL_IN_LINE.test(first) && /(^|[,;\t"])\s*e-?mail(\s+address)?\s*($|[,;\t"])/i.test(first);
+    if (!isHeader) return lines.map(typedLine);
+    const delimiter = [",", "\t", ";"].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+    const rows = csvRows(text, delimiter);
+    const header = rows.shift().map(c => c.toLowerCase());
+    const find = (re, not = -1) => header.findIndex((c, i) => i !== not && re.test(c));
+    const client = find(/client|practice|clinic|company|organi[sz]ation|account/);
+    let name = find(/contact|signer|recipient|person|full\s*name/, client);
+    if (name < 0) name = find(/name/, client);
+    const columns = {name, email: find(/e-?mail/), client, note: find(/note|message/)};
     return rows.map(r => ({name: r[columns.name] || "", email: r[columns.email] || "", client: columns.client >= 0 ? r[columns.client] || "" : "", note: columns.note >= 0 ? r[columns.note] || "" : ""}));
   }
+  window.tfscParseRecipients = parseCsv;   // used by the automated checks
 
   async function showBulk() {
     if (!guard()) return;
@@ -1459,20 +1491,48 @@
       const form = el("section", "card");
       const template = select(templates.envelopes.map(t => [t.id, `${t.template_name} · ${(entities.find(x => x.name === t.entity) || {}).short || t.entity}`]));
       const name = input("", "text", {maxLength: 200, placeholder: "Optional, e.g. November BAA renewals"});
-      const text = Object.assign(el("textarea"), {rows: 8, placeholder: "One person per line: Name, Email, Client (optional), Private message (optional)\nPat Doctor, pat@clinic.com, Northside Family Clinic\n\nOr upload a CSV file with a header row (Name, Email, Client, Note)."});
+      const text = Object.assign(el("textarea"), {rows: 8, placeholder: "One person per line: Name, Email, Client (optional) | Private message (optional)\nDr. Pat Doctor, MD, pat@clinic.com, Northside Family Clinic, PLLC | See you Tuesday\n\nCommas inside names are fine. Or upload a CSV file with a header row (Name, Email, Client, Note)."});
       const file = input("", "file", {accept: ".csv,text/csv,text/plain"});
       const preview = el("div");
+      // What is known about each typed client name (already on file, or new), and the person's choice of an existing record.
+      const known = new Map(), chosen = new Map(); let checkTimer = null;
+      const clientOf = r => chosen.get(r.client) || r.client;
+      const lookup = rows => {
+        clearTimeout(checkTimer);
+        const names = [...new Set(rows.map(r => r.client).filter(n => n && !known.has(n)))];
+        if (!names.length) return;
+        checkTimer = setTimeout(async () => {
+          try { const d = await api("/api/esign/bulk/check", {clients: names.slice(0, 500)}); Object.entries(d.clients).forEach(([n, v]) => known.set(n, v)); names.forEach(n => { if (!known.has(n)) known.set(n, {match: null, similar: []}); }); render(); }
+          catch (e) { /* the list still sends; only the badges are missing */ }
+        }, 350);
+      };
       const render = () => {
         const rows = parseCsv(text.value);
         const bad = rows.filter(r => !r.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email));
-        preview.replaceChildren(el("p", bad.length ? "field-warning small" : "muted small", `${rows.length} recipient${rows.length === 1 ? "" : "s"}${bad.length ? `, ${bad.length} with a missing name or an invalid email` : ""}.`));
+        const fresh = new Set(rows.map(r => r.client).filter(n => n && !chosen.has(n) && known.has(n) && !known.get(n).match));
+        preview.replaceChildren(el("p", bad.length ? "field-warning small" : "muted small", `${rows.length} recipient${rows.length === 1 ? "" : "s"}${bad.length ? `, ${bad.length} with a missing name or an invalid email` : ""}${fresh.size ? `. ${fresh.size} new client${fresh.size === 1 ? "" : "s"} will be created: check the names below` : ""}.`));
         if (rows.length) {
-          const t = el("table", "portal-table"); const h = el("tr"); ["#", "Name", "Email", "Client", "Private message"].forEach(x => h.append(el("th", "", x)));
+          const t = el("table", "portal-table bulk-preview"); const h = el("tr"); ["#", "Name", "Email", "Client", "Private message"].forEach(x => h.append(el("th", "", x)));
           const th = el("thead"); th.append(h); t.append(th); const tb = el("tbody");
-          rows.slice(0, 200).forEach((r, i) => { const tr = el("tr"); [i + 1, r.name, r.email, r.client, r.note].forEach(x => tr.append(el("td", "", x))); tb.append(tr); });
-          t.append(tb); const wrap = el("div"); wrap.style.overflow = "auto"; wrap.append(t); preview.append(wrap);
+          rows.slice(0, 200).forEach((r, i) => {
+            const tr = el("tr"); [i + 1, r.name, r.email].forEach(x => tr.append(el("td", "", x)));
+            const cell = el("td");
+            if (r.client) {
+              const info = known.get(r.client), picked = chosen.get(r.client);
+              cell.append(el("strong", "", picked || r.client));
+              if (picked) cell.append(el("span", "bulk-badge bulk-badge-ok", "Existing client"));
+              else if (info && info.match) cell.append(el("span", "bulk-badge bulk-badge-ok", `Existing client${info.match.client_number ? " " + info.match.client_number : ""}`));
+              else if (info) {
+                cell.append(el("span", "bulk-badge bulk-badge-new", "New client will be created"));
+                info.similar.forEach(c => { const b = el("button", "text-button bulk-use", `Use “${c.name}”${c.client_number ? ` (${c.client_number})` : ""} instead`); b.type = "button"; b.addEventListener("click", () => { chosen.set(r.client, c.name); render(); }); cell.append(b); });
+              }
+            }
+            tr.append(cell, el("td", "", r.note)); tb.append(tr);
+          });
+          t.append(tb); const wrap = el("div", "table-scroll"); wrap.append(t); preview.append(wrap);
         }
-        return rows;
+        lookup(rows);
+        return rows.map(r => Object.assign({}, r, {client: clientOf(r)}));
       };
       text.addEventListener("input", render);
       file.addEventListener("change", async () => { if (file.files[0]) { text.value = await file.files[0].text(); render(); } });

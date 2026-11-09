@@ -64,6 +64,35 @@ def visible_client(c, actor: dict, name: str):
     return row
 
 
+def loose_key(name: str) -> str:
+    """Letters and digits only, lower case: "Hill Country Allergy & Asthma, PLLC" and "hill country allergy and asthma pllc"
+    compare as near enough to ask the person which one they mean."""
+    return re.sub(r'[^a-z0-9]+', '', re.sub(r'\s*&\s*', ' and ', name.casefold()))
+
+
+def match_name(c, actor: dict, name: str) -> dict:
+    """{'match': client or None, 'similar': [clients]} for a typed client name, among the clients the actor can see."""
+    def view(row):
+        return {'id': row['id'], 'name': row['name'], 'client_number': row['client_number'] or ''}
+    scope = [sec.scope(actor, db.clients.c.owner_id), client_trash.live()]
+    columns = (db.clients.c.id, db.clients.c.name, db.clients.c.client_number)
+    exact = c.execute(select(*columns).where(*scope, db.clients.c.name_key == name_key(name))
+                      .order_by(case((db.clients.c.owner_id == actor['id'], 0), else_=1), db.clients.c.updated.desc()).limit(1)).mappings().first()
+    if exact:
+        return {'match': view(exact), 'similar': []}
+    typed = loose_key(name)
+    words = [w for w in re.split(r'[^A-Za-z0-9]+', name) if len(w) >= 3][:2]
+    similar = []
+    if typed and words:
+        rows = c.execute(select(*columns).where(*scope, *[func.lower(db.clients.c.name).contains(w.lower(), autoescape=True) for w in words])
+                         .order_by(db.clients.c.updated.desc()).limit(200)).mappings().all()
+        for row in rows:
+            other = loose_key(row['name'])
+            if other == typed or (min(len(other), len(typed)) >= 6 and (other.startswith(typed) or typed.startswith(other))):
+                similar.append(view(row))
+    return {'match': None, 'similar': similar[:5]}
+
+
 def client_for(c, actor: dict, client_id: str) -> dict:
     row = c.execute(select(db.clients).where(db.clients.c.id == client_id, sec.scope(actor, db.clients.c.owner_id))).mappings().first()
     if not row:

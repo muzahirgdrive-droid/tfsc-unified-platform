@@ -88,7 +88,7 @@
     let result;
     try { result = await response.json(); }
     catch (_) { throw new Error("The local service returned an unexpected response. Restart Contract Studio and try again."); }
-    if (response.status === 401) { location.href = "/login"; throw Error("Please sign in again."); }
+    if (response.status === 401) { window.tfscSignIn("expired"); throw Error("Please sign in again."); }
     if (!response.ok || result.error) throw new Error(result.error || `The request failed (${response.status}).`);
     return result;
   }
@@ -846,7 +846,7 @@
   $("help-button").addEventListener("click", () => $("help-dialog").showModal());
   document.querySelectorAll(".close-dialog").forEach(button => button.addEventListener("click", () => button.closest("dialog").close()));
   document.querySelectorAll("dialog").forEach(dialog => dialog.addEventListener("click", event => { if (event.target === dialog) { const box = dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close(); } }));
-  window.addEventListener("beforeunload", event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ""; } });
+  window.addEventListener("beforeunload", event => { if (window.tfscLeaving) return; if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ""; } });
 
   // The portal's screens live in scripts that load after this one (portal.js, esign.js, ... admin.js). DOMContentLoaded
   // fires only after every deferred script has run, so the screens start once all of them exist, however fast /api/config
@@ -881,10 +881,17 @@
       form.hidden = (document.body.dataset.view || "builder") !== "builder"; state.dirty = false;
       const linkedClient=new URLSearchParams(location.search).get('client');
       if(linkedClient&&/^[a-f0-9]{32}$/.test(linkedClient))await window.openClientDraft(linkedClient);
+      // An agreement that was being prepared when the session ended is put back after signing in again.
+      const kept = window.tfscTakeSnapshot?.();
+      if (kept && (config.entities || []).some(e => e.name === kept.entity)) {
+        applyClient(kept); state.clientId = kept.id || ""; bypassPicker = true; picked = kept.entity; state.dirty = true;
+        window.showBuilder?.(); announce("Your unsaved agreement was put back. Check it, then continue.");
+      }
     } catch (error) { announce(error.message, true); }
     finally { $("loading").hidden = true; }
   }
   // opts.entity / opts.documents: open the client for that company with those agreements ticked ("Send a BAA" from the client records)
+  window.tfscBuilder = {snapshot: () => payload(), unsaved: () => unsavedWork()};
   window.openClientDraft=async(id,opts={})=>{if(state.dirty&&!confirm("Open this client and replace unsaved changes?"))return;const d=await api(`/api/clients/${encodeURIComponent(id)}`+(opts.entity?`?entity=${encodeURIComponent(opts.entity)}`:''));if(opts.documents)d.document_types=opts.documents;applyClient(d);bypassPicker=(state.config.entities||[]).some(e=>e.name===d.entity);if(bypassPicker)picked=d.entity;window.showBuilder?.();};
   initialize();
 })();

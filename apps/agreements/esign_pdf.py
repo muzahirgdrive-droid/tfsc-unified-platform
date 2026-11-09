@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import zoneinfo
 from pathlib import Path
 
@@ -160,6 +161,49 @@ def render_page(raw: bytes, page: int, dpi: int, cache: Path | None = None) -> b
         temp.write_bytes(png)
         temp.replace(cache)
     return png
+
+
+_render_locks: dict[str, threading.Lock] = {}
+_render_guard = threading.Lock()
+
+
+def render_pages(raw: bytes, first: int, last: int, dpi: int, folder: Path) -> bytes:
+    """PNG of page `first`; pages first..last are drawn by one run of the renderer and kept in `folder` (<page>.png)."""
+    with _render_guard:
+        lock = _render_locks.setdefault(str(folder), threading.Lock())
+    with lock:          # two people opening the same new document draw it once
+        wanted = folder / f'{first}.png'
+        if wanted.is_file():
+            return wanted.read_bytes()
+        tool = os.getenv('PDFTOPPM_BIN', 'pdftoppm')
+        with tempfile.TemporaryDirectory(prefix='tfsc-page-') as work:
+            source = Path(work) / 'in.pdf'
+            source.write_bytes(raw)
+            try:
+                result = subprocess.run([tool, '-f', str(first), '-l', str(last), '-r', str(dpi), '-png', str(source), str(Path(work) / 'p')], capture_output=True, timeout=90)
+            except FileNotFoundError:
+                raise RuntimeError('The page renderer (poppler-utils) is not installed on this server.') from None
+            except subprocess.TimeoutExpired:
+                raise RuntimeError('This page took too long to display.') from None
+            made = {}
+            for path in Path(work).glob('p-*.png'):
+                try:
+                    made[int(path.stem.rsplit('-', 1)[1])] = path
+                except ValueError:
+                    continue
+            if result.returncode or first not in made:
+                raise RuntimeError('This page could not be displayed.')
+            folder.mkdir(parents=True, exist_ok=True)
+            png = made[first].read_bytes()
+            for number, path in made.items():
+                target = folder / f'{number}.png'
+                if not target.is_file():
+                    temp = target.with_suffix(f'.{os.getpid()}.tmp')
+                    temp.write_bytes(path.read_bytes())
+                    temp.replace(target)
+        with _render_guard:
+            _render_locks.pop(str(folder), None)
+        return png
 
 
 # ------------------------------------------------------------------ automatic field placement for generated agreements
