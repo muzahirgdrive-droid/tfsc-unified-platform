@@ -49,20 +49,20 @@
   window.homeStartMenu = startMenu;
 
   // System status (Super Admin): what works in the background, with a link to where a problem is fixed.
-  const STATE = {ok: ["Working", "status-ok"], warn: ["Needs a look", "status-warn"], bad: ["Not working", "status-bad"]};
+  const STATE = {ok: ["Working", "sys-status-ok"], warn: ["Needs a look", "sys-status-warn"], bad: ["Not working", "sys-status-bad"]};
   async function systemStatus(strip, fresh) {
     let d;
     try { d = await api("/api/system-status" + (fresh ? "?fresh=1" : "")); } catch (e) { return; }
     const problems = d.items.filter(i => i.state !== "ok");
-    const head = el("div", "status-head");
+    const head = el("div", "sys-status-head");
     const title = el("h2", "", "System status");
-    const pill = el("span", `status-pill ${STATE[d.status][1]}`, d.status === "ok" ? "Everything is working" : `${problems.length} item${problems.length === 1 ? "" : "s"} need${problems.length === 1 ? "s" : ""} attention`);
+    const pill = el("span", `sys-status-pill ${STATE[d.status][1]}`, d.status === "ok" ? "Everything is working" : `${problems.length} item${problems.length === 1 ? "" : "s"} need${problems.length === 1 ? "s" : ""} attention`);
     const again = el("button", "text-button", "Check again"); again.type = "button"; again.addEventListener("click", () => systemStatus(strip, true));
     head.append(title, pill, again);
-    const list = el("ul", "status-list");
+    const list = el("ul", "sys-status-list");
     const row = i => {
-      const li = el("li", `status-item ${STATE[i.state][1]}`);
-      const mark = el("span", "status-mark", i.state === "ok" ? "✓" : i.state === "warn" ? "!" : "✕"); mark.setAttribute("aria-hidden", "true");
+      const li = el("li", `sys-status-item ${STATE[i.state][1]}`);
+      const mark = el("span", "sys-status-mark", i.state === "ok" ? "✓" : i.state === "warn" ? "!" : "✕"); mark.setAttribute("aria-hidden", "true");
       const text = el("div"); text.append(el("strong", "", `${i.label}: ${STATE[i.state][0].toLowerCase()}`), el("span", "", i.detail));
       li.append(mark, text);
       if (i.link && i.state !== "ok") li.append(link(i.link, "button button-quiet button-sm", "Open"));
@@ -70,9 +70,9 @@
     };
     problems.forEach(i => list.append(row(i)));
     const rest = d.items.filter(i => i.state === "ok");
-    const more = el("details", "status-more"); more.append(el("summary", "", `${rest.length} check${rest.length === 1 ? "" : "s"} passed`));
-    const okList = el("ul", "status-list"); rest.forEach(i => okList.append(row(i))); more.append(okList);
-    strip.className = `status-strip ${STATE[d.status][1]}`;
+    const more = el("details", "sys-status-more"); more.append(el("summary", "", `${rest.length} check${rest.length === 1 ? "" : "s"} passed`));
+    const okList = el("ul", "sys-status-list"); rest.forEach(i => okList.append(row(i))); more.append(okList);
+    strip.className = `sys-status-strip ${STATE[d.status][1]}`;
     strip.replaceChildren(head, ...(problems.length ? [list] : []), more);
     strip.hidden = false;
   }
@@ -102,7 +102,7 @@
     right.append(strip, el("p", "home-period", "Completed: last 6 months"));
     hero.append(intro, right);
     view.append(hero);
-    if (config?.user?.role === "super_admin") { const strip = el("section", "status-strip"); strip.hidden = true; strip.setAttribute("aria-label", "System status"); view.append(strip); systemStatus(strip); }
+    if (config?.user?.role === "super_admin") { const sys = el("section", "sys-status-strip"); sys.hidden = true; sys.setAttribute("aria-label", "System status"); view.append(sys); systemStatus(sys); }
 
     const head = el("div", "page-head"); head.style.margin = "24px 0 0";
     const title = el("div"); title.append(el("h2", "", "Last 6 months"));

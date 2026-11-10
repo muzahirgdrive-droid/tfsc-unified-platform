@@ -87,6 +87,13 @@ def page_cache(now: float | None = None) -> int:
                     if path.name not in active:
                         shutil.rmtree(path, ignore_errors=True)
                         removed += 1
+    # analysis results of documents nobody touched for three months (worked out again if ever needed)
+    analysis = db.DATA / 'esign-analysis'
+    if analysis.is_dir():
+        for path in analysis.iterdir():
+            if _old(path, 90 * DAY, now):
+                path.unlink(missing_ok=True)
+                removed += 1
     # size cap: the folders nobody opened for longest go first
     sized = []
     for path in root.iterdir():

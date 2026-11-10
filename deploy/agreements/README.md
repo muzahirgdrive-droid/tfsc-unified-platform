@@ -401,11 +401,23 @@ indexes. People who are signed in stay signed in.
   agreements and certificates are kept as before.
 - **Uploads:** a PDF with only an owner password is accepted; PDFs with a crop box keep fields where people see them.
 
+**Screens (phones, tablets, touch)**
+- Agreements on a phone or tablet: the folders are one row of chips above the list, so the envelopes are on the first
+  screen. Users & permissions on a phone shows each person as a card with their buttons, nothing hidden off the edge.
+- Sign-in on a phone shows the form first. Buttons and checkboxes are larger on touch screens. Email addresses no longer
+  break in the middle. Grey text has more contrast. Motion is reduced for people who ask their device for that.
+- Signing page: the title no longer runs under the Finish button on small phones; "Other actions" is announced to screen
+  readers; the Decline box has room to write.
+- A workspace that cannot load says so after 15 seconds and offers "Try again"; a wrong address shows a proper "page not
+  found"; opening a screen you have no access to says so.
+
 **Speed and capacity** (see "Server size and capacity" below)
 - The freeze at about 1,000 people (every connection waiting for another) is fixed; a busy moment gets a short "busy,
   try again" instead of a 30-second wait.
 - Web: one process per processor core. Background work: separate processes for document generation (2), signed copies
   (2), email and reminders, so a burst of signed envelopes or a slow mail server delays nothing else.
+- A new agreement's PDF is analysed once and the result is shared by all processes (creating an envelope from it no
+  longer repeats seconds of work); Insights are remembered for a minute; turning a report page does not rebuild the report.
 - Scripts and style sheets are cached by the browser; twelve database indexes; the Clients and Signed agreements
   registers read each table once; page images are drawn several at a time and tidied up after 30 days.
 - Logs rotate (they can no longer fill the disk); leftovers from crashes are removed hourly.

@@ -356,7 +356,7 @@ def _default_setup(c, envelope: dict, contract: dict, box: dict) -> None:
         # The client initials every page, in the free band above the footer.
         for page, spot in enumerate(suggestion(bytes(doc['pdf']), doc['sha256'], True, 1)['initials'][0], start=1):
             add_field(c, envelope['id'], doc['id'], client['id'], page, 'initials', spot, True)
-        anchors = esign_pdf.execution_anchors(bytes(doc['pdf']))
+        anchors = anchors_of(bytes(doc['pdf']), doc['sha256'])
         if not anchors:
             continue
         side = anchors['client']
@@ -1961,13 +1961,37 @@ def follow_documents(c, envelope: dict, was_auto: bool) -> dict:
 SENDABLE = ('.pdf', '.docx', '.doc', '.odt', '.rtf', '.txt', '.png', '.jpg', '.jpeg')
 
 
+def _analysis(name: str, compute):
+    """The result of analysing a PDF, worked out once per document and kept on disk for every process (a PDF never changes:
+    it is identified by its SHA-256). Without this, each web process analysed each new agreement again inside a request."""
+    path = db.DATA / 'esign-analysis' / f'{name}.json'
+    try:
+        if path.is_file():
+            return json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        pass
+    value = compute()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(f'.{os.getpid()}.tmp')
+        temp.write_text(json.dumps(value), encoding='utf-8')
+        temp.replace(path)
+    except (OSError, TypeError, ValueError):
+        pass          # not cacheable: computed again next time
+    return value
+
+
 def suggestion(raw: bytes, sha: str, generated: bool, signers: int) -> dict:
     key = (sha, generated, signers)
     if key not in _SUGGESTED:
         if len(_SUGGESTED) > 300:
             _SUGGESTED.clear()
-        _SUGGESTED[key] = esign_pdf.suggest(raw, generated, signers)
+        _SUGGESTED[key] = _analysis(f'{sha}-s-{int(generated)}-{signers}', lambda: esign_pdf.suggest(raw, generated, signers))
     return _SUGGESTED[key]
+
+
+def anchors_of(raw: bytes, sha: str):
+    return _analysis(f'{sha}-a', lambda: esign_pdf.execution_anchors(raw))
 
 
 def library_items(c, actor: dict, envelope: dict) -> list[dict]:

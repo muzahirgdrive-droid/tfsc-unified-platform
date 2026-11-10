@@ -360,3 +360,14 @@ body.has-rail .sign-footer{padding-right:calc(var(--rail) + 16px)}
 
 /* People who ask their device for less motion get none of the pulsing and sliding. */
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Small phones (320-380 px): the title shortens instead of running under the Finish button */
+.top-in{min-width:0}
+.ttl{min-width:0;overflow:hidden}
+.ttl strong,.ttl small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:420px){.ttl small{display:none}.brand-name{max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+@media (max-width:360px){.tdiv,.ttl{display:none}}
+/* The reason for declining gets room to write */
+#decline-reason{width:100%;min-height:110px;box-sizing:border-box;font:inherit;padding:10px 12px}
+/* Touch screens: comfortable targets */
+@media (pointer:coarse){.finish,.glass,.dialog button{min-height:44px}}

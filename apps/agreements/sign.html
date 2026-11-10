@@ -136,7 +136,7 @@
   <dialog id="decline-dialog" class="dialog" aria-labelledby="decline-title">
     <form method="dialog">
       <header class="dialog-head"><div><h2 id="decline-title">Decline to sign</h2><p>The sender will be notified and the documents will be closed. Tell them why.</p></div><button type="submit" value="cancel" class="x" aria-label="Close">×</button></header>
-      <div class="dialog-body"><label for="decline-reason">Reason for declining</label><textarea id="decline-reason" rows="4" maxlength="1000" required></textarea><p class="alert" id="decline-error" hidden></p></div>
+      <div class="dialog-body"><label for="decline-reason">Reason for declining</label><textarea id="decline-reason" rows="4" maxlength="1000" required placeholder="For example: the fees in section 3 are not what we agreed"></textarea><p class="alert" id="decline-error" hidden></p></div>
       <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="decline-confirm" class="btn btn-danger">Decline to sign</button></div>
     </form>
   </dialog>

@@ -100,6 +100,15 @@
     if (quiet < 90 && Date.now() - lastServer > Math.min(240, idle / 3) * 1000) ping();
   }
   function seenShared() { try { return Number(localStorage.getItem(ACTIVE)) || 0; } catch (e) { return 0; } }
+  // "Preparing your workspace..." must not stay for ever when the server cannot be reached.
+  setTimeout(() => {
+    const loading = document.getElementById("loading");
+    if (!loading || loading.hidden || leaving) return;
+    const card = el("div", "load-problem"); card.setAttribute("role", "alert");
+    const again = el("button", "button button-primary", "Try again"); again.type = "button"; again.addEventListener("click", () => location.reload());
+    card.append(el("h2", "", "The workspace is taking too long to load"), el("p", "", "Check your internet connection. If it keeps happening, the server may be restarting: wait a minute and try again."), again);
+    loading.replaceChildren(card);
+  }, 15000);
   active(true);
   ping();
   setInterval(tick, 1000);

@@ -10,6 +10,7 @@ viewed, signed, declined, downloaded). Signers have no account, so their entries
 """
 from __future__ import annotations
 
+import json
 import csv
 import datetime as dt
 import io
@@ -32,6 +33,10 @@ from esign_db import documents as esign_documents
 
 EXPORT_LIMIT = 50_000
 SCREEN_LIMIT = 10_000
+INSIGHTS_SECONDS = 0 if db.LOCAL else 60       # the local edition and the tests always compute afresh
+REPORT_SECONDS = 60
+_INSIGHTS: dict = {}
+_REPORTS: dict = {}
 STATUS_LABELS = {'draft': 'Draft', 'sent': 'Waiting for others', 'completing': 'Finishing', 'completed': 'Completed', 'declined': 'Declined',
                  'voided': 'Voided', 'expired': 'Expired', 'template': 'Template'}
 RECIPIENT_STATUS = {'created': 'Waiting for their turn', 'sent': 'Sent', 'delivered': 'Viewed', 'signed': 'Signed', 'completed': 'Completed',
@@ -772,7 +777,16 @@ def install(app) -> None:  # noqa: C901  (route table)
             a = actor_of(request, c)
             if entity:
                 sec.ensure_company(a, entity)
-            return insights(c, a, entity, months, tz)
+            # Insights are totals over months: a minute-old answer is as good, and the charts cost seconds of work to build
+            key = (a['id'], a['role'], tuple(a['companies']), entity, months, tz)
+            hit = _INSIGHTS.get(key)
+            if hit and time.time() - hit[0] < INSIGHTS_SECONDS:
+                return hit[1]
+            value = insights(c, a, entity, months, tz)
+            if len(_INSIGHTS) > 200:
+                _INSIGHTS.clear()
+            _INSIGHTS[key] = (time.time(), value)
+            return value
 
     @app.get('/api/reports/catalog')
     def api_catalog(request: Request):
@@ -793,7 +807,16 @@ def install(app) -> None:  # noqa: C901  (route table)
         page = max(0, min(int(payload.get('page') or 0), 1000))
         with db.engine.connect() as c:
             a = actor_of(request, c)
-            name, spec, columns, rows, more, f = run_report(c, a, payload, SCREEN_LIMIT)
+            # Turning the page of a report does not build the whole report again (for a minute).
+            key = (a['id'], a['role'], tuple(a['companies']), json.dumps({k: v for k, v in payload.items() if k != 'page'}, sort_keys=True, default=str))
+            hit = _REPORTS.get(key)
+            if hit and time.time() - hit[0] < REPORT_SECONDS and page > 0:
+                name, spec, columns, rows, more, f = hit[1]
+            else:
+                name, spec, columns, rows, more, f = run_report(c, a, payload, SCREEN_LIMIT)
+                if len(_REPORTS) >= 6:
+                    _REPORTS.pop(next(iter(_REPORTS)))
+                _REPORTS[key] = (time.time(), (name, spec, columns, rows, more, f))
         tz = tz_of(f['tz'])
         window = rows[page * 100:(page + 1) * 100]
         return {'dataset': name, 'columns': [{'key': k, 'label': label, 'type': kind} for k, label, kind in columns],
