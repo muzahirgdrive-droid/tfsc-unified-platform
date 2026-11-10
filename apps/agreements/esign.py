@@ -34,6 +34,7 @@ import esign_pdf
 import mailer
 import marks
 import security as sec
+import static_assets
 from entities import ENTITIES, get_entity
 from esign_db import client_contacts, documents, envelopes, events, fields, inbound, inbound_files, outbox, recipients, sign_sessions, tokens
 
@@ -1125,7 +1126,7 @@ def open_link(token: str, request: Request):
 
 def _message_page(title: str, body: str, status: int = 200):
     import html as h
-    page = (db.APP / 'sign.html').read_text(encoding='utf-8').replace('__CSRF__', '').replace('__MESSAGE_TITLE__', h.escape(title)).replace('__MESSAGE_BODY__', h.escape(body))
+    page = static_assets.page('sign.html').replace('__CSRF__', '').replace('__MESSAGE_TITLE__', h.escape(title)).replace('__MESSAGE_BODY__', h.escape(body))
     return HTMLResponse(page, status_code=status)
 
 
@@ -1776,8 +1777,8 @@ def summary(c, rows: list[dict]) -> list[dict]:
     people: dict[str, list] = {}
     if ids:
         for r in c.execute(select(recipients.c.envelope_id, recipients.c.name, recipients.c.email, recipients.c.role, recipients.c.status, recipients.c.delivery,
-                                  recipients.c.routing_order).where(recipients.c.envelope_id.in_(ids)).order_by(recipients.c.routing_order)).mappings():
-            people.setdefault(r['envelope_id'], []).append({k: r[k] for k in ('name', 'email', 'role', 'status', 'delivery', 'routing_order')})
+                                  recipients.c.routing_order, recipients.c.delivery_error).where(recipients.c.envelope_id.in_(ids)).order_by(recipients.c.routing_order)).mappings():
+            people.setdefault(r['envelope_id'], []).append({k: r[k] for k in ('name', 'email', 'role', 'status', 'delivery', 'routing_order', 'delivery_error')})
     clients = {}
     client_ids = [r['client_id'] for r in rows if r['client_id']]
     if client_ids:
@@ -1791,7 +1792,7 @@ def summary(c, rows: list[dict]) -> list[dict]:
         out.append({k: r[k] for k in ('id', 'ref', 'subject', 'status', 'entity', 'client_id', 'sent_at', 'updated', 'completed_at', 'expires_at', 'template_name', 'created')}
                    | {'test': bool(r.get('test')), 'client': clients.get(r['client_id'], ''), 'sender': owners.get(r['owner_id'], ''), 'recipients': ps,
                       'progress': [sum(p['status'] in DONE_STATUSES for p in acting), len(acting)],
-                      'attention': any(p['delivery'] in ('bounced', 'failed') or p['status'] == 'auth_failed' for p in ps)})
+                      'attention': any(p['delivery'] in ('bounced', 'failed') or p['status'] == 'auth_failed' or (p['delivery'] == 'pending' and p.get('delivery_error')) for p in ps)})
     return out
 
 
@@ -2407,7 +2408,7 @@ def install(app) -> None:  # noqa: C901  (route table)
 
     @app.get('/verify')
     def verify_page():
-        return HTMLResponse((db.APP / 'verify.html').read_text(encoding='utf-8'))
+        return HTMLResponse(static_assets.page('verify.html'))
 
     # ---- signer pages and API
     @app.get('/sign/{token}')
@@ -2421,7 +2422,7 @@ def install(app) -> None:  # noqa: C901  (route table)
                 session, r, envelope = signer_session(c, request, recipient_id, need_verified=False)
             except HTTPException:
                 return _message_page('Open the link from your email', 'For your security, documents open only from the link in the email you received.', 401)
-        page = (db.APP / 'sign.html').read_text(encoding='utf-8').replace('__CSRF__', session['csrf']).replace('__MESSAGE_TITLE__', '').replace('__MESSAGE_BODY__', '')
+        page = static_assets.page('sign.html').replace('__CSRF__', session['csrf']).replace('__MESSAGE_TITLE__', '').replace('__MESSAGE_BODY__', '')
         return HTMLResponse(page)
 
     @app.get('/sign/r/{recipient_id}/api/state')

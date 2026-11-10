@@ -148,7 +148,10 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
     facts = {r['id']: {'companies': [], 'status': {}, 'baa': {}, 'signed': {}, 'sent': {}, 'past_sources': [], 'first_past': None, 'last': 0.0,
                        'last_source': '', 'past': 0, 'portal': False}
              for r in rows}
-    ids = list(facts)
+    # Everything for the visible clients in one pass per table: the database joins on the client scope itself. (Long lists of
+    # ids sent in chunks made PostgreSQL pick a plan that read whole tables for every chunk.) A given list of clients is short.
+    scope_ids = select(db.clients.c.id).where(*cond)
+    parts = [scope_ids] if client_ids is None else list(_chunks(list(facts)))
 
     def company(f, entity):
         if entity not in f['companies']:
@@ -177,7 +180,7 @@ def gather(c, actor: dict, test: str = 'real', client_ids: list[str] | None = No
         if day and day > f['sent'].get((entity, kind), ''):
             f['sent'][(entity, kind)] = day
 
-    for part in _chunks(ids):
+    for part in parts:
         q = select(db.contracts.c.client_id, db.contracts.c.entity, db.contracts.c.created, db.documents.c.agreement).join(
             db.documents, db.documents.c.contract_id == db.contracts.c.id).where(
             db.contracts.c.client_id.in_(part), sec.scope(actor, db.contracts.c.owner_id), sec.company_scope(actor, db.contracts.c.entity))

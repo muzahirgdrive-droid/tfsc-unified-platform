@@ -78,3 +78,17 @@ def rate_limit(c,key,limit=10,seconds=900):
         count=case((db.throttle.c.until<now,1),else_=db.throttle.c.count+1),
         until=case((db.throttle.c.until<now,now+seconds),else_=db.throttle.c.until)).returning(db.throttle.c.count)).first()
     return row[0]<=limit
+
+def rate_limit_ok_anonymous(c,request,limit=120,seconds=60):
+    """A light limit for public status endpoints (per address, per minute). Read-only connections cannot count, so the
+    count is kept in memory per process: good enough to stop a loop, never a reason to refuse a monitor."""
+    import threading
+    now=time.time();key=str(request.client.host if request.client else '')
+    with _anon_lock:
+        start,count=_anon.get(key,(now,0))
+        if now-start>seconds:start,count=now,0
+        _anon[key]=(start,count+1)
+        if len(_anon)>5000:_anon.clear()
+        return count<limit
+import threading as _threading
+_anon={};_anon_lock=_threading.Lock()

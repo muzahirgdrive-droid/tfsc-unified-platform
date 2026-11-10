@@ -16,6 +16,7 @@ import marks
 import client_numbers
 import client_trash
 import entities as entities_mod
+import static_assets
 from entities import ENTITIES, get_entity
 
 VERSION='5.0.0'
@@ -109,6 +110,16 @@ async def conflict(request,exc):
     return JSONResponse({'error':'This was saved by another request at the same moment. Reload the page and check before trying again.'},409)
 @app.exception_handler(HTTPException)
 async def error(request,exc):return JSONResponse({'error':exc.detail},exc.status_code)
+NOT_FOUND_PAGE="""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Page not found | TFSC Agreements</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/portal.css"><link rel="stylesheet" href="/ui.css"></head><body class="login-page"><main class="login-card"><img src="/assets/tfsc-logo.png" alt="TFSC Agreements" width="260"><h1>We couldn't find that page</h1><p>The address may be mistyped, or the page may have moved.</p><p class="notfound-actions"><a class="button button-primary" href="/">Go to Home</a> <a class="button button-quiet" href="/login">Sign in</a></p></main></body></html>"""
+def not_found(request):
+    """People get a page they can act on; programs (the API) get JSON."""
+    if request.url.path.startswith('/api/') or 'text/html' not in request.headers.get('accept',''):return JSONResponse({'error':'Not found.'},404)
+    return HTMLResponse(NOT_FOUND_PAGE,404)
+from starlette.exceptions import HTTPException as StarletteHTTPException
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request,exc):
+    if exc.status_code==404 and exc.detail in ('Not Found','Not found.'):return not_found(request)
+    return JSONResponse({'error':exc.detail},exc.status_code)
 @app.exception_handler(ValueError)
 async def invalid(request,exc):return JSONResponse({'error':str(exc)},400)
 
@@ -204,9 +215,9 @@ def home(request:Request):
     with db.engine.connect() as c:
         try:a=sec.get_actor(request,c)
         except HTTPException:return RedirectResponse('/login')
-    return HTMLResponse((db.APP/'index.html').read_text(encoding='utf-8').replace('__CSRF_TOKEN__',a['_csrf']))
+    return HTMLResponse(static_assets.page('index.html').replace('__CSRF_TOKEN__',a['_csrf']))
 @app.get('/login')
-def login_page():return FileResponse(db.APP/'login.html')
+def login_page():return HTMLResponse(static_assets.page('login.html'))
 @app.get('/favicon.ico')
 def favicon():return Response(status_code=204)
 
@@ -534,14 +545,16 @@ company_admin.install(app)   # before companies.install so its literal routes be
 companies.install(app)
 import insights
 insights.install(app)
+import health
+health.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','verify.css','resilient.js','session.js'}
 PRIVATE={'app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
 @app.get('/{name}')
-def static_file(name:str,request:Request):
-    if name in PRIVATE:
-        with db.engine.connect() as c:sec.get_actor(request,c)
-    elif name not in PUBLIC:raise HTTPException(404,'Not found.')
-    return FileResponse(db.APP/name)
+def static_file(name:str,request:Request,v:str=''):
+    # Scripts and style sheets hold no data (every piece of data comes from /api, which checks the session), so they are
+    # served without a database round trip and cached by the browser under the release fingerprint.
+    if name not in PRIVATE and name not in PUBLIC:return not_found(request)
+    return FileResponse(db.APP/name,headers={'Cache-Control':static_assets.cache_header(v)})
 ASSETS=re.compile(r'tfsc-logo\.png|brand/(scribe|ehs|24-7)\.png|fonts/(Poppins-Regular\.ttf|Poppins-SemiBold\.ttf|Inter-var\.woff2|sig-[a-z]+\.ttf)')
 @app.get('/assets/{name:path}')
 def asset(name:str):

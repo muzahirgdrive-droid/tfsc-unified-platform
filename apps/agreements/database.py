@@ -117,7 +117,10 @@ def make_engine(url=URL):
             ('statement_timeout','DB_STATEMENT_TIMEOUT_MS','60000'),('lock_timeout','DB_LOCK_TIMEOUT_MS','10000'),
             ('idle_in_transaction_session_timeout','DB_IDLE_TX_TIMEOUT_MS','300000')))
         e=create_engine(url,pool_pre_ping=True,pool_size=POOL_SIZE,max_overflow=int(os.getenv('DB_POOL_OVERFLOW','5')),
-            pool_timeout=float(os.getenv('DB_POOL_TIMEOUT','5')),pool_recycle=1800,connect_args={'options':options})
+            pool_timeout=float(os.getenv('DB_POOL_TIMEOUT','5')),pool_recycle=1800,
+            # prepare_threshold None: every statement is planned for its actual values. Server-side prepared statements made
+            # PostgreSQL fall back to one-size-fits-all plans that scanned whole tables for the register and the lists.
+            connect_args={'options':options,'prepare_threshold':None})
     return e
 
 engine=make_engine()

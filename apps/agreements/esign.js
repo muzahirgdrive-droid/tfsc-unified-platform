@@ -420,6 +420,7 @@
       if (r.role === "in_person") { const host = e.hosts.find(h => h.id === r.host_id); events.append(el("span", "", `Hosted by ${host ? host.name : "the sender"}`)); }
       if (r.reassigned_to) { const to = e.recipients.find(x => x.id === r.reassigned_to); if (to) events.append(el("span", "", `Assigned to ${to.name} (${to.email})`)); }
       if (r.saved_progress && !LOCKED.includes(r.status)) events.append(el("span", "", "Started; saved to finish later"));
+      if (r.delivery === "pending" && r.delivery_error && !LOCKED.includes(r.status)) events.append(el("span", "attention-flag", `Not delivered yet, retrying: ${r.delivery_error}`));
       if (r.delivery === "bounced" || r.delivery === "failed") events.append(el("span", "attention-flag", `${r.delivery === "bounced" ? "Email undeliverable" : "Email not sent"}${r.delivery_error ? `: ${r.delivery_error}` : ""}`));
       if (r.reminders_sent) events.append(el("span", "", `${r.reminders_sent} reminder${r.reminders_sent === 1 ? "" : "s"}`));
       who.append(events);
@@ -501,7 +502,7 @@
     const details = el("section", "card"); const detailsHead = el("div", "card-head"); detailsHead.append(el("h2", "", "Details")); details.append(detailsHead);
     const facts = el("ul", "summary-list");
     [["Status", STATUS[e.status]], ["Envelope ID", e.ref], ["Created", when(e.created)], ["Sent", when(e.sent_at)], ["Completed", when(e.completed_at)],
-     ["Expires", e.status === "sent" ? (e.expires_at ? when(e.expires_at) : "Never") : ""], ["Reminders", e.settings.reminder_every ? `After ${e.settings.reminder_delay} days, then every ${e.settings.reminder_every}` : "Off"]]
+     ["Expires", e.status === "sent" ? (e.expires_at ? when(e.expires_at) : "Never") : ""], ["Reminders", e.settings.reminder_every ? `After ${e.settings.reminder_delay} day${e.settings.reminder_delay === 1 ? "" : "s"}, then every ${e.settings.reminder_every} day${e.settings.reminder_every === 1 ? "" : "s"}` : "Off"]].filter(x => x[0] !== "Reminders" || e.status === "sent")
       .filter(([, v]) => v).forEach(([k, v]) => { const li = el("li"); li.append(el("span", "", k), el("strong", "", v)); facts.append(li); });
     details.append(facts);
     if (e.message) { details.append(el("h3", "", "Message")); const m = el("p", "muted small", e.message); m.style.whiteSpace = "pre-wrap"; details.append(m); }
@@ -1354,7 +1355,8 @@
     const card = el("section", "card");
     const [label, tone] = state(box);
     const head = el("div", "card-head"); head.append(el("h2", "", box.entity), chip(tone, label)); card.append(head, el("p", "", box.address || "No address set"));
-    if (box.smtp_error) card.append(notice("danger", `Sending: ${box.smtp_error}`));
+    if (box.paused) card.append(notice("danger", `Sending is paused until ${when(box.paused.until)}. ${box.paused.reason} Queued emails are kept and go out when sending resumes; saving the settings or a successful test email resumes it at once.`));
+    else if (box.smtp_error) card.append(notice("danger", `Sending: ${box.smtp_error}`));
     if (box.imap_error) card.append(notice("danger", `Inbox: ${box.imap_error}`));
     return card;
   }

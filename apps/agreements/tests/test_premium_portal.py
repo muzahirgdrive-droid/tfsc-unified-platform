@@ -152,7 +152,7 @@ class CompanySettings(Base):
             self.assertIn('muzahir@scribealign.com', html, page)
             self.assertIn('All rights reserved.', html, page)
         # the verify page has its own stylesheet (the signing page's styles changed in the signer redesign)
-        self.assertIn('href="/verify.css"', self.api.get('/verify').text)
+        self.assertIn('href="/verify.css?v=', self.api.get('/verify').text)
         css = self.api.get('/verify.css')
         self.assertEqual(css.status_code, 200)
         self.assertIn('.vf-result.ok', css.text)
