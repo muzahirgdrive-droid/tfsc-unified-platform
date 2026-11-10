@@ -38,7 +38,7 @@
   const PEN = ["M4 20h4L19 9l-4-4L4 16v4z", "m13.5 6.5 4 4"];
   const CLIP = ["M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"];
   function show(id, on) { $(id).hidden = !on; }
-  function error(message) { const box = $("error"); box.textContent = message; box.hidden = !message; if (message) box.scrollIntoView({behavior: "smooth", block: "center"}); }
+  function error(message) { const box = $("error"); box.textContent = message; box.hidden = !message; if (message) box.scrollIntoView({behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center"}); }
 
   async function call(path, body) {
     const options = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: JSON.stringify(body)};
@@ -277,7 +277,7 @@
         const thumb = el("button", `thumb${onPage.some(f => f.required) ? " thumb-fields" : ""}`); thumb.type = "button";
         const t = el("img"); t.loading = "lazy"; t.alt = ""; t.src = image.src; thumb.append(t, el("span", "", `Page ${number}`));
         thumb.setAttribute("aria-label", `${doc.name}, page ${number}${onPage.length ? ", has fields for you" : ""}`);
-        thumb.addEventListener("click", () => { page.scrollIntoView({behavior: "smooth", block: "start"}); if (window.innerWidth < 900) pages(false); });
+        thumb.addEventListener("click", () => { page.scrollIntoView({behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"}); if (window.innerWidth < 900) pages(false); });
         thumbs.append(thumb);
       });
       container.append(section);
@@ -651,7 +651,7 @@
     setActive(target.id);
     const node = nodeOf(target.id);
     if (node) {
-      node.scrollIntoView({behavior: "smooth", block: "center"});
+      node.scrollIntoView({behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center"});
       node.classList.add("pulse"); setTimeout(() => node.classList.remove("pulse"), 1100);
       if (fromGuide && (node.matches("input, select") || node.querySelector("input"))) setTimeout(() => (node.matches("input, select") ? node : node.querySelector("input")).focus({preventScroll: true}), 380);
     }

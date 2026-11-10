@@ -106,7 +106,7 @@
     {label: "Mark as real", run: ids => api("/api/client-records/mark", {ids, test: false}).then(r => `${plural(r.changed, "client")} marked as real.`)},
     {label: "Export (.xlsx)", run: ids => exportClients(ids, "xlsx")},
     {label: "Export (.csv)", run: ids => exportClients(ids, "csv"), more: true},
-    {label: "Delete", danger: true, superAdmin: true, run: (ids, ctx) => confirmDelete(ids, ctx)},
+    {label: "Move to Trash", danger: true, superAdmin: true, run: (ids, ctx) => confirmDelete(ids, ctx)},
   ];
   async function exportClients(ids, format) {
     const r = await fetch("/api/client-records/export", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf()}, body: JSON.stringify({ids, format})});
@@ -148,8 +148,8 @@
     return new Promise(resolve => {
       const box = el("dialog", "rc-dialog rc-confirm"); box.setAttribute("aria-labelledby", "rc-del-title");
       const top = el("div", "rc-confirm-top"); const ic = el("span", "rc-confirm-ic", "🗑"); ic.setAttribute("aria-hidden", "true");
-      const t = el("div"); const h = el("h2", "", n === 1 ? "Delete this client record?" : `Delete ${n} client records?`); h.id = "rc-del-title";
-      t.append(h, el("p", "", n === 1 ? `Are you sure you want to delete ${d.clients[0].client_number} ${d.clients[0].name}?` : "Are you sure you want to delete the selected client records?"));
+      const t = el("div"); const h = el("h2", "", n === 1 ? "Move this client to the Trash?" : `Move ${n} clients to the Trash?`); h.id = "rc-del-title";
+      t.append(h, el("p", "", n === 1 ? `${d.clients[0].client_number} ${d.clients[0].name} goes to the Trash and can be restored for 30 days.` : "The selected clients go to the Trash and can be restored for 30 days."));
       top.append(ic, t);
       const body = el("div", "rc-confirm-body");
       if (n > 1 || d.clients[0].companies.length) {

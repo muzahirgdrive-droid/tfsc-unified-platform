@@ -36,7 +36,7 @@
    if(user.role==='super_admin'){if(a==='mailboxes')return go('mailboxes','admin',()=>window.esignShowMailboxes?.());if(['companies','email-trust','workspace'].includes(a))return go('admin','admin',()=>window.adminShow?.(a));}
    return go('users','admin',loadUsers);}
   go('home','home',()=>window.homeShow?.());void b;}
- window.addEventListener('hashchange',()=>{if(quiet===location.hash){quiet=null;return;}quiet=null;if(config)route();});
+ window.addEventListener('hashchange',()=>{if(quiet===location.hash){quiet=null;return;}quiet=null;const p=$('company-picker');if(p&&!p.hidden){p.hidden=true;document.body.classList.remove('picking');}if(config)route();});
  window.portalRoute=hash=>{if(location.hash===hash)route();else location.hash=hash;};
  window.showBuilder=()=>window.portalRoute('#/create');
  document.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>{if(document.body.dataset.view!=='builder')window.portalRoute('#/create');}));
