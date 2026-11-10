@@ -71,14 +71,13 @@ services:
     env_file: [{ path: ./backup-offsite.env, required: false }]   # optional off-site repository (PGBACKREST_REPO2_*)
     volumes: [postgres-data:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro, backups:/backups, pg-socket:/var/run/postgresql]
     # Memory settings follow the server (see the top of this file). random_page_cost 1.1 and effective_io_concurrency suit
-    # SSD disks. The database is never the process the system stops first when memory runs short.
+    # SSD disks.
     command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=${PG_MAX_CONNECTIONS:-200}", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-3GB}",
               "-c", "effective_cache_size=${PG_EFFECTIVE_CACHE:-9GB}", "-c", "work_mem=${PG_WORK_MEM:-16MB}", "-c", "maintenance_work_mem=${PG_MAINTENANCE_MEM:-512MB}",
               "-c", "random_page_cost=1.1", "-c", "effective_io_concurrency=200", "-c", "wal_compression=on", "-c", "max_wal_size=2GB", "-c", "checkpoint_completion_target=0.9",
               "-c", "max_parallel_workers_per_gather=2", "-c", "log_min_duration_statement=2000", "-c", "log_lock_waits=on",
               "-c", "archive_mode=on", "-c", "archive_command=pgbackrest --stanza=tfsc archive-push %p", "-c", "archive_timeout=60"]
     shm_size: 1gb
-    oom_score_adj: -500
     stop_grace_period: 60s
     logging: *logging
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d crm"], interval: 5s, timeout: 5s, retries: 20 }
