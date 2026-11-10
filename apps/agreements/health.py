@@ -196,9 +196,9 @@ def check_disk() -> list[dict]:
             usage = shutil.disk_usage(path)
         except OSError:
             continue
-        free = usage.free / usage.total
-        if free < 0.15:
-            out.append(item('disk', 'Disk space', 'bad' if free < 0.07 else 'warn', f'Only {round(free * 100)}% of the server disk is free ({round(usage.free / 1e9, 1)} GB). A full disk stops the database.'))
+        free, gb = usage.free / usage.total, usage.free / 1e9
+        if free < 0.10 or gb < 10:
+            out.append(item('disk', 'Disk space', 'bad' if free < 0.05 or gb < 4 else 'warn', f'Only {round(free * 100)}% of the server disk is free ({round(usage.free / 1e9, 1)} GB). A full disk stops the database.'))
             break
     return out
 

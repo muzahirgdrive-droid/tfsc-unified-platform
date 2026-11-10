@@ -276,7 +276,7 @@ pre_update_copy() {   # a restorable, encrypted copy of the database, taken whil
 
 migrate_first() {   # database changes are applied by the new version in a one-off container while the current version keeps serving
   say "Applying database changes (the current version keeps running; changes only add, nothing is removed)"
-  if ! dc run --rm --no-deps -T agreements python -c "import database; database.init_db(); print('The database is ready for the new version.')"; then
+  if ! dc run --rm --no-deps -T -e DB_STATEMENT_TIMEOUT_MS=0 -e DB_LOCK_TIMEOUT_MS=60000 -e DB_POOL_SIZE=2 agreements python -c "import database; database.init_db(); print('The database is ready for the new version.')"; then
     docker tag tfsc-agreements:rollback tfsc-agreements:4 2>/dev/null || true
     die "The database changes could not be applied. PostgreSQL undid them completely, nothing was switched, and the current version is still running. Send the lines above to support."
   fi

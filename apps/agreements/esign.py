@@ -176,9 +176,9 @@ def verify_seals(rows: list[dict], sealed_since: float | None) -> bool | None:
         if row.get('seal'):
             if row['seal'] != seal_of(row):
                 return False
-        elif sealed_since and row['at'] >= sealed_since:
-            return False
         else:
+            # no seal: written before sealing, or by an earlier release that was put back for a while. Not proof of a change
+            # (a seal, once set, can never be removed: the database refuses it), so it is reported as "not sealed", not as broken.
             pending = True
     return None if pending else True
 

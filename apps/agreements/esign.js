@@ -442,6 +442,7 @@
     const first = tab("History", () => {
       const wrap = el("div");
       wrap.append(el("p", `integrity${e.chain_ok ? "" : " bad"}`, e.chain_ok ? "✓ Audit trail verified: every event is intact and in order." : "Warning: the audit trail does not verify. An event was changed or removed outside the application."));
+      if (e.sealed_ok === false) wrap.append(el("p", "integrity bad", "Warning: an entry of this audit trail does not carry this installation's seal. Tell your Super Admin before relying on this envelope."));
       const listEl = el("ol", "audit-list");
       [...e.history].reverse().forEach(h => {
         const li = el("li"); li.append(el("time", "", when(h.at)));

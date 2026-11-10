@@ -20,7 +20,7 @@ address and a password that the Super Admin creates for them.
 
 | | |
 |---|---|
-| Server | Ubuntu 24.04 or 22.04 LTS, x86_64, **2 vCPU, 4 GB RAM, 40 GB SSD** or more. Measured in testing: about 1.6 GB of memory in use after a complete signing run, 0.95 GB of it the virus scanner |
+| Server | Ubuntu 24.04 or 22.04 LTS, x86_64. **Recommended: 4 vCPU, 16 GB RAM, 200 GB SSD** (what release 5.1 is sized for; see "Server size and capacity"). Minimum 2 vCPU, 4 GB RAM, 40 GB SSD: the installer then starts fewer processes. Measured in testing: about 1.6 GB of memory in use after a complete signing run, 0.95 GB of it the virus scanner |
 | Access | SSH as root (or a user with `sudo`) |
 | Address | One web address for Agreements, for example `agreements.yourcompany.com`, on a domain you control |
 | Mailboxes | The compliance mailboxes (Google Workspace): compliance@scribealign.com, compliance@extendedhealthservices.us, compliance@24-7consultancyllc.com, each with an app password (step 5) |
@@ -312,7 +312,8 @@ A User sees their own work, an Admin their own and their team's, and the Super A
 
 | Command | What it does |
 |---|---|
-| `./agreements.sh status` | what is running, the HTTPS address, the latest backups |
+| `./agreements.sh status` | what is running and whether it is healthy, the HTTPS address, the latest backups, free disk space |
+| `sudo ./agreements.sh rollback` | go back to the version that ran before the last update (data is kept) |
 | `./agreements.sh logs` or `./agreements.sh logs agreements-worker` | follow the logs (Ctrl+C to stop) |
 | `sudo ./agreements.sh backup` | full backup now, then the restore test |
 | `sudo ./agreements.sh restart` / `stop` / `start` | restart, stop or start everything |
@@ -332,13 +333,21 @@ never lost and a folder from an earlier update is never overwritten. Data lives 
 Database changes are applied automatically during the update; they only ever add tables and columns.
 
 What `update` does, in order, so nothing is lost and the site is never left down:
-1. builds the new version while the current one keeps serving (about 6 minutes in testing when its libraries change,
-   under a minute otherwise);
-2. saves a copy of the database in the backups volume (`pre-update-<date>.dump`, the 5 most recent are kept);
-   if that copy cannot be saved, it stops and changes nothing;
-3. restarts on the new version (a few seconds; a signer who clicks during those seconds is reconnected automatically
+1. checks there is room on the disk, then saves a copy of the database in the backups volume while the current
+   version keeps serving. From release 5.1 on the copy is encrypted with your backup passphrase
+   (`pre-update-<date>.dump.enc`, the 2 most recent are kept; copies left by earlier releases are encrypted too).
+   If the copy cannot be saved, it stops and changes nothing;
+2. builds the new version while the current one keeps serving (about 6 minutes when its libraries change);
+3. applies the database changes while the current version still serves. Changes only ever add; if one fails,
+   PostgreSQL undoes it completely, nothing is switched and the current version simply keeps running;
+4. restarts on the new version (a few seconds; a signer who clicks during those seconds is reconnected automatically
    and loses nothing);
-4. if the new version is not healthy within 5 minutes, it puts the previous version back on the same data and tells you.
+5. if the new version is not healthy within 4 minutes (or reports an error while starting, which is noticed after
+   about a minute), it puts the previous version back on the same data and tells you. The database is left as it is:
+   the previous version runs on it, and the next update does not repeat what was already done.
+
+A dropped SSH connection no longer stops an update half way. If a new version starts but you want the previous one
+back, run `sudo ./agreements.sh rollback`.
 
 Agreements already sent for signature keep working through the update: the links in those emails, the answers a signer
 saved to finish later, and the signed copies already issued stay exactly as they were.
@@ -346,10 +355,74 @@ saved to finish later, and the signed copies already issued stay exactly as they
 To restore the pre-update copy by hand (only if support asks you to):
 ```
 cd /opt/tfsc-agreements/deploy/agreements && docker compose --env-file .env stop agreements agreements-worker
-docker compose --env-file .env exec -u postgres postgres ls /backups          # pick the pre-update-....dump
-docker compose --env-file .env exec -u postgres postgres pg_restore -U crm -d tfsc --clean --if-exists /backups/pre-update-YYYYMMDDTHHMMSSZ.dump
+docker compose --env-file .env exec -u postgres postgres ls /backups          # pick the pre-update-....dump.enc
+docker compose --env-file .env exec -u postgres postgres sh -c 'openssl enc -d -aes-256-cbc -pbkdf2 -pass env:PGBACKREST_REPO1_CIPHER_PASS -in /backups/pre-update-YYYYMMDDTHHMMSSZ.dump.enc | pg_restore -U crm -d tfsc --clean --if-exists'
+# a copy from before release 5.1 that still ends in .dump (not encrypted):
+#   docker compose --env-file .env exec -u postgres postgres pg_restore -U crm -d tfsc --clean --if-exists /backups/pre-update-YYYYMMDDTHHMMSSZ.dump
 docker compose --env-file .env start agreements agreements-worker
 ```
+
+### This update (November 10, 2026: release 5.1, the audit fixes) also
+
+Nothing you have is changed: every client, client number, generated agreement, envelope, signing link, signature, signed
+copy, certificate, BAA and mailbox setting stays exactly as it is. The database change (0012) only adds columns and
+indexes. People who are signed in stay signed in.
+
+**What you will notice**
+- **System status on Home (Super Admin):** one strip that says whether email, signed copies, document generation, the
+  virus scanner, backups and disk space are working, with a button to the screen where a problem is fixed. The same check
+  is at `/api/health/deep` for an outside uptime monitor (it answers 503 when something is broken).
+- **Automatic sign-out:** staff are signed out after 30 minutes without activity (a warning counts down two minutes
+  before, with "Stay signed in"); signers after 15 minutes. After signing in again you return to the same screen, and an
+  agreement you were preparing is put back. Change the times in `.env` (`TFSC_IDLE_MINUTES`, `TFSC_SIGNER_IDLE_MINUTES`).
+- **Sign-in limits count wrong passwords only**, so a whole office behind one internet address can sign in at 9 am.
+- **Email is never dropped because a mailbox had a bad hour.** When Google's daily sending limit is reached, the app
+  password is wrong or the mail server cannot be reached, sending for that company pauses and its queue is kept; other
+  companies are not delayed. The mailbox card and the status strip say why and until when. Saving the mailbox settings
+  or a successful "Send test email" resumes at once. Each mailbox stops by itself at 1,800 emails a day
+  (`TFSC_MAIL_DAILY_CAP`; Google allows 2,000).
+- **An envelope shows "Not delivered yet, retrying" with the reason** from the first failed try, not 14 hours later.
+- **One odd reply can no longer block a company inbox:** a message that cannot be processed is set aside and reading
+  continues; replies with attachments wait (are not dropped) while the virus scanner is away.
+- **Bulk send:** commas in names are kept ("Hill Country Allergy & Asthma, PLLC"; "Rebecca Moore, MD"). The email
+  address anchors each line; a private message comes after a `|`. Each row shows "Existing client CL-0007" or "New client
+  will be created", and offers the existing record when the name is nearly the same. `{{first_name}}` skips titles.
+- **Correcting a sent envelope:** if someone else changed it while you had it open, you are asked to reload instead of
+  silently undoing their fix. Every correction is in the Activity log.
+- **Save as template** keeps each recipient's role and fields, not the person, unless you tick "Keep".
+- **Disabling an Admin** asks who takes over their team; nobody is locked out.
+- **Imports:** importing the same spreadsheet twice, a repeated row or a double click adds nothing twice; "Billing" alone
+  is no longer taken for 3E Medical Billing; a signed date in the future is refused.
+- **Names and addresses are printed as typed** (long dashes are no longer rewritten). Whole numbers are required for days
+  and years, and dates must be between 2000 and 2100.
+- **A user limited to certain services** cannot get around it with a custom service or the preview, unless you allow
+  custom services for that user (Users & permissions).
+- **Trash:** when a client is purged after 30 days, their unsigned generated agreements are removed too; signed
+  agreements and certificates are kept as before.
+- **Uploads:** a PDF with only an owner password is accepted; PDFs with a crop box keep fields where people see them.
+
+**Speed and capacity** (see "Server size and capacity" below)
+- The freeze at about 1,000 people (every connection waiting for another) is fixed; a busy moment gets a short "busy,
+  try again" instead of a 30-second wait.
+- Web: one process per processor core. Background work: separate processes for document generation (2), signed copies
+  (2), email and reminders, so a burst of signed envelopes or a slow mail server delays nothing else.
+- Scripts and style sheets are cached by the browser; twelve database indexes; the Clients and Signed agreements
+  registers read each table once; page images are drawn several at a time and tidied up after 30 days.
+- Logs rotate (they can no longer fill the disk); leftovers from crashes are removed hourly.
+
+**Security**
+- The signing history can no longer be changed in the database (the database itself refuses it), and every entry carries
+  a seal made with your installation's secret key.
+- An image that claims to be enormous is refused before it is opened; the PDF library is updated (7 published flaws);
+  the storage-folder chooser no longer lists other companies' client folders; a wrong email and a wrong password take the
+  same time to refuse; a mailbox cannot be pointed at this server's private network.
+- Every Python package is pinned (`apps/agreements/requirements.lock`).
+
+**After the update, please do these three things**
+1. Open Home as the Super Admin and read the System status strip. "Off-site backup: needs a look" is expected until
+   you set up the off-site copy (step 10); it is the one way to survive the loss of this server's disk.
+2. Admin > Company mailboxes: each connected mailbox should say Connected.
+3. Send yourself a test envelope and sign it.
 
 Updating to version 5 also:
 - removes the 30-day expiry that earlier releases gave every envelope by default (an expiry someone chose is kept);
@@ -381,6 +454,26 @@ The November 6, 2026 update also:
   Billing Nest); set each one's signatory in Company settings before its first agreement;
 - leaves every agreement already generated, every envelope already sent and every signed copy exactly as it was.
 
+## Server size and capacity
+
+The installer (and the first update to release 5.1) looks at the server and writes its sizing into `.env` once
+(`WEB_WORKERS`, `TFSC_GENERATION_WORKERS`, `TFSC_COMPLETION_WORKERS`, `PG_SHARED_BUFFERS` ...). On **4 vCPU / 16 GB /
+200 GB** that is: 4 web processes with 16 request threads each, 2 generation and 2 signed-copy workers, one process each
+for email and for reminders/inbox reading, and PostgreSQL with a 3 GB cache and 200 connections. Typical memory in use:
+about 5-6 GB, most of the rest serves as the database's file cache. After resizing the server, delete those lines from
+`.env` and run `sudo ./agreements.sh update`.
+
+What this server can be expected to carry (from the November 2026 load tests and the measurements with this release):
+- **People working at the same time:** about 1,500 to 2,000 with pages under a second. The limit is the four
+  processors. 5,000 at the same time needs about 18-20 processor cores (a larger server, or two application servers);
+  nothing in the application has to change for that, the processes are added in `.env`.
+- **Envelopes:** 1,000 and more a day. Sending about 160 a minute, signed copies about 110 a minute with two workers.
+- **Email:** Google Workspace allows 2,000 messages per mailbox per day, about 220 two-signer envelopes per company per
+  day. Above that, sending pauses until the next day (nothing is lost); a company that sends more needs Google's SMTP
+  relay or a sending service.
+- **Disk:** every PDF is still kept in the database, about 3.4 MB per completed envelope. 200 GB is room for roughly
+  40,000 completed envelopes including backups. Watch "Disk" in `./agreements.sh status`; the status strip warns below 10 %.
+
 ## Changing settings later
 
 - Settings are in `deploy/agreements/.env`: edit, then `sudo ./agreements.sh start`.
@@ -396,10 +489,36 @@ The November 6, 2026 update also:
 | The address shows `NOT YET` or the browser warns about the certificate | DNS points at this server (`getent hosts agreements.yourcompany.com`), ports 80/443 open at the provider; `./agreements.sh logs edge` |
 | A company mailbox shows a problem, or signing emails stay "Retrying" | Company mailboxes > Send test email shows the reason (wrong app password, 2-Step Verification off, outgoing port 587 blocked by the provider) |
 | Someone cannot sign in | Users & permissions > Reset password (or Enable, if the account was disabled) |
-| Pages are slow or services restart | memory: `docker stats --no-stream`; 4 GB is the minimum |
+| Pages are slow or services restart | Home > System status; memory: `docker stats --no-stream`; sizing: "Server size and capacity" |
+| "The system is busy right now" | a short overload: try again. If it stays, see System status and `./agreements.sh logs agreements` |
+| An update went back to the previous version | send `deploy/agreements/last-failed-update.log` to support; your data is unchanged |
 | Anything else | `./agreements.sh status`, then `./agreements.sh logs <service>` |
 
 ## What was tested, and what was not
+
+### Release 5.1 (November 10, 2026)
+
+- **Automatic tests:** 287 tests (255 from before, 32 new for the audit fixes) pass on SQLite and, for the first time for
+  the whole suite, on PostgreSQL 16, the database your server uses.
+- **Update rehearsal on PostgreSQL 16 with real work in progress:** the released version (November 8) was started on an
+  empty database; a Super Admin, a user and a mailbox were set up; two BAA + Services Agreement packages were generated
+  with LibreOffice; one envelope was signed and completed; on a second one the signer saved 8 answers to finish later; a
+  draft was left open. Then this release was started on the same database. Result: the change was applied in 2 seconds;
+  the person signed in before the update was still signed in; clients and client numbers, both envelopes with their
+  history, the signed PDFs, the certificate and the generated Word and PDF files were byte for byte identical (compared
+  by SHA-256); the signing link emailed before the update opened and showed the 8 saved answers; the signer finished and
+  the new worker completed the envelope; the audit trail verified and was sealed; a new agreement was generated, sent and
+  emailed; a stale correction was refused; the old draft could be deleted.
+- **Step-back:** the previous version was then started again on the updated database: sign-in worked, the same signed
+  copies and certificates were served, and it generated, sent and emailed a new envelope. Updating again afterwards
+  worked (nothing was repeated).
+- **Load check (4 processor cores shared with the test client):** 400 clients requesting Home, the lists, the Clients
+  register and the configuration without pause for 20 seconds: 4,768 requests, no errors, no connection failures.
+- **Not tested here:** building the Docker images and running `agreements.sh update` end to end in Docker (this test
+  environment cannot reach the Debian and Alpine package servers the image builds need; the compose file was validated
+  with `docker compose config`, and both scripts with a syntax check); email through real Google Workspace mailboxes;
+  the off-site backup copy; a 5,000-user load test. Run `sudo ./agreements.sh backup` before the update as the guide
+  says; the update itself also saves a copy and steps back by itself if the new version does not start.
 
 Every test below unpacked this ZIP and ran `./agreements.sh` as described above, on Docker 29 (Linux, 4 vCPU, 16 GB).
 Two things differed from your server: Caddy issued its own test certificate (a test machine has no public address for
