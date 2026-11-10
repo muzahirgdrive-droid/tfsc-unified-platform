@@ -173,12 +173,46 @@ def purge_due(c, now: float | None = None) -> int:
         removed = c.execute(delete(client_files).where(client_files.c.client_id == r['id'], client_files.c.category.notin_(KEEP_FILE_CATEGORIES),
                                                        client_files.c.id.notin_(kept_files))).rowcount
         contacts = c.execute(delete(client_contacts).where(client_contacts.c.client_id == r['id'])).rowcount
+        generated = purge_generated(c, r['id'])
         c.execute(update(db.clients).where(db.clients.c.id == r['id']).values(
             purged_at=t, name_key=('purged-' + r['id'])[:64], address='', profile=None,
             draft={'entity': draft['entity']} if isinstance(draft, dict) and draft.get('entity') else {}))
         db.log(c, None, 'client.purged', r['id'], {'client_number': r['client_number'], 'name': r['name'], 'files_removed': removed,
-                                                  'contacts_removed': contacts, 'kept': 'signed agreements and certificates'})
+                                                  'contacts_removed': contacts, 'unsigned_agreements_removed': generated,
+                                                  'kept': 'signed agreements and certificates'})
     return len(due)
+
+
+def purge_generated(c, client_id: str) -> int:
+    """Remove the client's generated agreements that were never signed (their Word and PDF files, and the client details
+    kept with them: address, signatory, email, fees). An agreement that went into an envelope which was completed, or is
+    still out for signature, is a legal record and stays exactly as it is."""
+    from pathlib import Path
+    from esign_db import envelopes
+    ids = [x[0] for x in c.execute(select(db.contracts.c.id).where(db.contracts.c.client_id == client_id))]
+    if not ids:
+        return 0
+    kept = set(c.execute(select(envelopes.c.contract_id).where(envelopes.c.contract_id.in_(ids), envelopes.c.status.in_(('completed', 'sent', 'completing')))).scalars())
+    gone = [i for i in ids if i not in kept]
+    if not gone:
+        return 0
+    for path in c.execute(select(db.documents.c.path).where(db.documents.c.contract_id.in_(gone))).scalars():
+        try:
+            file = Path(path).resolve()
+            if file.is_relative_to(db.OUTPUT) and file.is_file():
+                file.unlink()
+        except OSError:
+            pass
+    c.execute(delete(db.documents).where(db.documents.c.contract_id.in_(gone)))
+    for row in c.execute(select(db.contracts.c.id, db.contracts.c.payload).where(db.contracts.c.id.in_(gone))).mappings():
+        payload = row['payload'] if isinstance(row['payload'], dict) else {}
+        c.execute(update(db.contracts).where(db.contracts.c.id == row['id']).values(payload={'entity': payload.get('entity', ''), 'purged': True}))
+    job_ids = [i.removeprefix('TFSC-').lower() for i in gone]
+    for row in c.execute(select(db.jobs.c.id, db.jobs.c.payload).where(db.jobs.c.client_id == client_id)).mappings():
+        if row['id'] in job_ids or not c.execute(select(db.contracts.c.id).where(db.contracts.c.id == 'TFSC-' + row['id'].upper())).first():
+            payload = row['payload'] if isinstance(row['payload'], dict) else {}
+            c.execute(update(db.jobs).where(db.jobs.c.id == row['id']).values(payload={'entity': payload.get('entity', ''), 'purged': True}, result=None))
+    return len(gone)
 
 
 def purge_once() -> int:

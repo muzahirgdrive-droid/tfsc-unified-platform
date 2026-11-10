@@ -50,13 +50,20 @@ def name_key(name: str) -> str:
     return sec.digest(name.strip().casefold())
 
 
+def name_keys(name: str) -> list[str]:
+    """The key of a name, plus the key it had when earlier releases rewrote long dashes in names ("A — B" was saved as
+    "A, B"): a client saved back then is still found, instead of becoming a second client."""
+    old = name.replace('\u2014', ', ').replace('\u2013', '-').replace('--', ', ').strip()
+    return list(dict.fromkeys([name_key(name), name_key(old)]))
+
+
 def visible_client(c, actor: dict, name: str):
     """The client with this name that the actor can already see (their own first, then the most recently updated), or None.
 
     Admins and the Super Admin work on their team's clients; looking only at the actor's own clients would create a second
     profile for the same clinic and split its agreements, contacts and files between the two."""
     row = c.execute(select(db.clients.c.id, db.clients.c.owner_id)
-                    .where(sec.scope(actor, db.clients.c.owner_id), db.clients.c.name_key == name_key(name), client_trash.live())
+                    .where(sec.scope(actor, db.clients.c.owner_id), db.clients.c.name_key.in_(name_keys(name)), client_trash.live())
                     .order_by(case((db.clients.c.owner_id == actor['id'], 0), else_=1), db.clients.c.updated.desc()).limit(1)).first()
     if not row:
         # the actor's own client with this name is in the Trash: say so instead of creating a second one (names are unique)

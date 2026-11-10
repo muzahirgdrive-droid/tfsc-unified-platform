@@ -52,15 +52,18 @@ STATES = {'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Conne
           'West Virginia','Wisconsin','Wyoming'}
 
 
-def clean(value, label, required=False, limit=500):
+def clean(value, label, required=False, limit=500, typography=True):
     if value is None:
         value = ''
     if not isinstance(value, (str, int, float)) or isinstance(value, bool):
         raise ValueError(f'{label} must be text.')
     value = unicodedata.normalize('NFC', str(value)).strip()
     # A dash that starts a line is a bullet (format_guard), not punctuation to rewrite.
-    value = re.sub(r'(?m)^([ \t]*)[\u2014\u2013](?=[ \t])', r'\1-', value)
-    value = value.replace('\u2014', ', ').replace('\u2013', '-').replace('--', ', ')
+    # House typography (no long dashes) applies to wording, never to names, addresses and email addresses: those are
+    # printed exactly as the person typed them ("Smith–Jones Clinic" stays "Smith–Jones Clinic").
+    if typography:
+        value = re.sub(r'(?m)^([ \t]*)[\u2014\u2013](?=[ \t])', r'\1-', value)
+        value = value.replace('\u2014', ', ').replace('\u2013', '-').replace('--', ', ')
     value = ''.join(c for c in value if c in '\n\t' or ord(c) >= 32)
     if required and not value:
         raise ValueError(f'{label} is required.')
@@ -77,16 +80,28 @@ def number(value, label, default=None, minimum=0.01, maximum=1000000000):
     except (ValueError, TypeError):
         raise ValueError(f'Enter a valid {label}.') from None
     if not math.isfinite(result) or not minimum <= result <= maximum:
-        raise ValueError(f'{label} must be between {minimum:g} and {maximum:g}.')
+        show = lambda n: f'{n:,.0f}' if float(n).is_integer() else f'{n:,.2f}'  # noqa: E731
+        raise ValueError(f'{label} must be between {show(minimum)} and {show(maximum)}.')
     return result
+
+
+def whole(value, label, default, minimum, maximum):
+    """A whole number of days or years: 30.9 days is refused, not silently shortened to 30."""
+    result = number(value, label, default=default, minimum=minimum, maximum=maximum)
+    if not float(result).is_integer():
+        raise ValueError(f'{label.capitalize()} must be a whole number.')
+    return int(result)
 
 
 def date_value(value, label):
     value = clean(value, label, True, 10)
     try:
-        return dt.date.fromisoformat(value).isoformat()
+        day = dt.date.fromisoformat(value)
     except ValueError:
         raise ValueError(f'{label} must be a valid date.') from None
+    if not 2000 <= day.year <= 2100:
+        raise ValueError(f'{label}: check the year ({day.year}). Enter a date between 2000 and 2100.')
+    return day.isoformat()
 
 
 # Service wording typed or pasted into the builder (a custom service's scope, responsibilities and exclusions, and any
@@ -160,7 +175,7 @@ def validate(payload, draft=False):
         # The company's own address and notice email come from Admin > Company settings, never from the form: a saved
         # client's draft must not carry another company's details into an agreement.
         value = default if field in ('provider_address','provider_email') else payload.get(field, default)
-        data[field] = clean(value, label, required, limit)
+        data[field] = clean(value, label, required, limit, typography=field in ('special_terms', 'nda_purpose'))
     data['governing_state'] = next((x for x in STATES if x.casefold()==data['governing_state'].casefold()), data['governing_state'])
     data['nda_purpose'] = data['nda_purpose'] or DEFAULTS['nda_purpose']
     for key in ('client_email','provider_email'):
@@ -169,9 +184,9 @@ def validate(payload, draft=False):
     if not draft and data['governing_state'] not in STATES:
         raise ValueError('Use the full name of a US state or District of Columbia for governing law.')
     for field in ('notice_days','payment_days','cure_days'):
-        data[field] = int(number(payload.get(field), field.replace('_',' '), default=DEFAULTS[field],minimum=1,maximum=180))
+        data[field] = whole(payload.get(field), field.replace('_',' '), DEFAULTS[field], 1, 180)
     for field,label in (('nda_term_years','NDA term'),('nda_survival_years','NDA confidentiality period')):
-        data[field] = int(number(payload.get(field), label+' (years)', default=DEFAULTS[field],minimum=1,maximum=10))
+        data[field] = whole(payload.get(field), label+' (years)', DEFAULTS[field], 1, 10)
     data['effective_date'] = date_value(payload.get('effective_date'), 'Effective date')
     data['baa_effective_date'] = date_value(payload.get('baa_effective_date') or data['effective_date'], 'BAA effective date')
     types = payload.get('document_types', [])

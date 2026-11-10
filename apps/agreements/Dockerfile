@@ -7,10 +7,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TFSC_BRIDGE_SCHEMAS=/opt/packag
 # poppler-utils draws the page images used to place and sign e-signature fields.
 RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation2 fontconfig poppler-utils && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY apps/agreements/requirements.txt ./
+# requirements.lock pins every package, including the ones the listed packages bring along, so a rebuild next month
+# installs exactly what was tested (requirements.txt names only the packages the application uses directly).
+COPY apps/agreements/requirements.txt apps/agreements/requirements.lock ./
 RUN --mount=type=secret,id=build_ca,required=false \
     if [ -s /run/secrets/build_ca ]; then export PIP_CERT=/run/secrets/build_ca; fi; \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.lock
 COPY packages/bridge-contract /opt/packages/bridge-contract
 RUN --mount=type=secret,id=build_ca,required=false \
     if [ -s /run/secrets/build_ca ]; then export PIP_CERT=/run/secrets/build_ca; fi; \

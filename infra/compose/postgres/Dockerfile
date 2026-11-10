@@ -12,7 +12,7 @@ FROM postgres:16-alpine
 RUN --mount=type=secret,id=build_ca,required=false \
     cp /etc/ssl/certs/ca-certificates.crt /tmp/ca.orig; \
     if [ -s /run/secrets/build_ca ]; then cat /run/secrets/build_ca >> /etc/ssl/certs/ca-certificates.crt; fi; \
-    apk add --no-cache libssh2 libxml2 lz4-libs zstd-libs libbz2 jq; status=$?; \
+    apk add --no-cache libssh2 libxml2 lz4-libs zstd-libs libbz2 jq openssl; status=$?; \
     cp /tmp/ca.orig /etc/ssl/certs/ca-certificates.crt; rm /tmp/ca.orig; exit $status
 COPY --from=pgbackrest /usr/bin/pgbackrest /usr/bin/pgbackrest
 COPY pgbackrest.conf /etc/pgbackrest/pgbackrest.conf

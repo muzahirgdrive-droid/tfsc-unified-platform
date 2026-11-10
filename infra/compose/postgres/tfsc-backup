@@ -219,6 +219,28 @@ status() {
               WHERE kind <> 'pitr_marker' ORDER BY id DESC LIMIT 10"
 }
 
+publish() {  # what the application shows on its System status strip: written into the Agreements database every few minutes
+    live tfsc "SELECT to_regclass('public.settings') IS NOT NULL" 2>/dev/null | grep -q t || return 0
+    offsite=false; [ -n "${PGBACKREST_REPO2_TYPE:-}" ] && offsite=true
+    summary=$(live crm "SELECT jsonb_build_object(
+        'at', extract(epoch from now()),
+        'offsite', $offsite,
+        'last_backup', (SELECT jsonb_build_object('at', extract(epoch from finished_at), 'ok', ok, 'type', detail->>'type')
+                        FROM ops.backup_runs WHERE kind = 'backup' AND coalesce(detail->>'repo', '1') = '1' ORDER BY id DESC LIMIT 1),
+        'offsite_backup', (SELECT jsonb_build_object('at', extract(epoch from finished_at), 'ok', ok)
+                        FROM ops.backup_runs WHERE kind = 'backup' AND detail->>'repo' = '2' ORDER BY id DESC LIMIT 1),
+        'last_restore_test', (SELECT jsonb_build_object('at', extract(epoch from finished_at), 'ok', ok)
+                        FROM ops.backup_runs WHERE kind = 'restore_test' ORDER BY id DESC LIMIT 1),
+        'archiving', (SELECT jsonb_build_object(
+                        'failing', coalesce(last_failed_time > coalesce(last_archived_time, 'epoch') AND last_failed_time > now() - interval '15 minutes', false),
+                        'waiting_mb', (SELECT coalesce(sum(size), 0) / 1048576 FROM pg_ls_waldir()))
+                        FROM pg_stat_archiver))") || return 0
+    psql -X -q -v ON_ERROR_STOP=1 -h "$SOCK" -U crm -d tfsc -v value="$summary" >/dev/null 2>&1 <<'SQL' || true
+INSERT INTO settings (key, value) VALUES ('ops:backups', :'value'::json)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+SQL
+}
+
 due() {  # prints full, diff or nothing
     info=$(pgbackrest --stanza="$STANZA" --repo=1 info --output=json) || return 1
     now=$(date +%s)
@@ -235,12 +257,13 @@ due() {  # prints full, diff or nothing
 }
 
 loop() {
-    until init; do log error "init failed; retrying in 60 s"; sleep 60; done
+    until init; do log error "init failed; retrying in 60 s"; publish || true; sleep 60; done
     while :; do
         type=$(due || true)
         if [ -n "$type" ]; then
             if backup "$type" && [ "$RESTORE_TEST" = 1 ]; then restore_test || true; fi
         fi
+        publish || true
         sleep 300
     done
 }
@@ -253,6 +276,7 @@ case "$cmd" in
     backup) backup "${1:-diff}" ;;
     restore-test) restore_test ;;
     status) status ;;
+    publish) publish ;;
     restore) restore_live "${1:-}" ;;
     *) echo "usage: tfsc-backup [loop|init|backup [full|diff|incr]|restore-test|status|restore [TIME]]" >&2; exit 2 ;;
 esac

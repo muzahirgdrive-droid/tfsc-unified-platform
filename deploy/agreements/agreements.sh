@@ -93,10 +93,42 @@ EOF
 }
 
 ensure_env_keys() {   # settings that later releases need: generated once, kept from then on
-  grep -q '^TFSC_SECRET_KEY=' "$ENV_FILE" && return 0
-  say "Adding TFSC_SECRET_KEY (encrypts the company mailbox passwords) to $ENV_FILE"
-  printf "# Added by agreements.sh on %s: encrypts the company mailbox passwords for e-signature email.\nTFSC_SECRET_KEY='%s'\n" "$(date -u +%Y-%m-%dT%H:%MZ)" "$(hexsecret)" >> "$ENV_FILE"
-  echo "Save the updated $ENV_FILE in your password manager."
+  if ! grep -q '^TFSC_SECRET_KEY=' "$ENV_FILE"; then
+    say "Adding TFSC_SECRET_KEY (encrypts the company mailbox passwords) to $ENV_FILE"
+    printf "# Added by agreements.sh on %s: encrypts the company mailbox passwords for e-signature email.\nTFSC_SECRET_KEY='%s'\n" "$(date -u +%Y-%m-%dT%H:%MZ)" "$(hexsecret)" >> "$ENV_FILE"
+    echo "Save the updated $ENV_FILE in your password manager."
+  fi
+  tune_env
+}
+
+tune_env() {   # how many processes and how much memory each part may use, from this server's size (written once; edit .env to change)
+  grep -q '^WEB_WORKERS=' "$ENV_FILE" && return 0
+  local cores mem_mb web gen copies buffers cache web_mem worker_mem
+  cores=$(nproc 2>/dev/null || echo 2)
+  mem_mb=$(( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1024 ))
+  if [ "$mem_mb" -ge 15000 ]; then        # 16 GB and more
+    web=$cores; [ "$web" -gt 8 ] && web=8; [ "$web" -lt 2 ] && web=2
+    gen=2; copies=2; buffers=3GB; cache=9GB; web_mem=4g; worker_mem=4g
+  elif [ "$mem_mb" -ge 7500 ]; then       # 8 GB
+    web=$cores; [ "$web" -gt 4 ] && web=4; [ "$web" -lt 2 ] && web=2
+    gen=2; copies=1; buffers=1GB; cache=4GB; web_mem=2g; worker_mem=2g
+  else                                    # 4 GB
+    web=2; gen=1; copies=1; buffers=256MB; cache=1GB; web_mem=1g; worker_mem=1500m
+  fi
+  say "Sizing for this server ($cores cores, $mem_mb MB of memory): $web web processes, $gen generation and $copies signed-copy workers"
+  {
+    echo "# Sizing, written by agreements.sh on $(date -u +%Y-%m-%dT%H:%MZ) for $cores cores and $mem_mb MB of memory. After changing"
+    echo "# the server's size, delete these lines and run: sudo ./agreements.sh update   (or edit the numbers and run: restart)"
+    echo "WEB_WORKERS=$web"
+    echo "WEB_THREADS=16"
+    echo "TFSC_GENERATION_WORKERS=$gen"
+    echo "TFSC_COMPLETION_WORKERS=$copies"
+    echo "PG_MAX_CONNECTIONS=200"
+    echo "PG_SHARED_BUFFERS=$buffers"
+    echo "PG_EFFECTIVE_CACHE=$cache"
+    echo "WEB_MEMORY=$web_mem"
+    echo "WORKER_MEMORY=$worker_mem"
+  } >> "$ENV_FILE"
 }
 
 open_firewall() {
@@ -120,12 +152,18 @@ build_images() {
 wait_ready() {
   say "Waiting for TFSC Agreements to start"
   local port tries=120; port=$(env_get TFSC_PORT); port=${port:-8765}
-  if [ "${1-}" = soft ]; then tries=60; fi   # an update steps back after 5 minutes instead of waiting 10
+  if [ "${1-}" = soft ]; then tries=48; fi   # an update steps back after 4 minutes instead of waiting 10
+  local n=0 worker
   for _ in $(seq 1 "$tries"); do
-    if curl -fsS -o /dev/null -H "Host: $(env_get TFSC_DOMAIN)" "http://127.0.0.1:$port/api/health" 2>/dev/null \
-       && [ "$(dc ps agreements-worker --format '{{.State}}' 2>/dev/null)" = running ]; then
-      echo "TFSC Agreements is up."
-      return 0
+    n=$((n + 1))
+    worker=$(dc ps agreements-worker --format '{{.State}} {{.Health}}' 2>/dev/null || true)
+    # up = the web application answers, and the background worker runs and has not been found unhealthy
+    if curl -fsS -o /dev/null -H "Host: $(env_get TFSC_DOMAIN)" "http://127.0.0.1:$port/api/health" 2>/dev/null; then
+      case "$worker" in running*unhealthy*) ;; running*) echo "TFSC Agreements is up."; return 0;; esac
+    fi
+    # a version that cannot start at all is recognised early (its log repeats the same failure), not after the full wait
+    if [ "${1-}" = soft ] && [ "$n" -ge 12 ] && dc logs --tail 40 agreements 2>/dev/null | grep -qE 'Traceback|ModuleNotFoundError|SyntaxError|ImportError'; then
+      echo "The new version reports an error while starting."; break
     fi
     sleep 5
   done
@@ -184,6 +222,12 @@ cmd_status() {
   check_public
   say "Last backups"
   dc exec -T backup tfsc-backup status 2>/dev/null | tail -n 15 || echo "(the backup service is not running)"
+  if [ ! -f "$COMPOSE_DIR/backup-offsite.env" ]; then
+    warn "Backups are kept on this server only. If its disk fails, the database and its backups are lost together. Set up the off-site copy: START-HERE.md, 'Off-site backups'."
+  fi
+  say "Disk"
+  df -h / 2>/dev/null | awk 'NR==2 {print "  " $4 " free of " $2 " (" $5 " used)"}'
+  docker system df 2>/dev/null | sed 's/^/  /' || true
 }
 
 cmd_signatures() {
@@ -206,50 +250,84 @@ cmd_signatures() {
 db_psql() { dc exec -T -u postgres postgres psql -U "${DB_SUPERUSER:-crm}" -d tfsc -v ON_ERROR_STOP=1 -Atq "$@"; }
 db_revision() { db_psql -c 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]'; }
 
-pre_update_copy() {   # a restorable copy of the database, taken while the current version keeps running
-  local name; name="pre-update-$(date -u +%Y%m%dT%H%M%SZ).dump"
+pre_update_copy() {   # a restorable, encrypted copy of the database, taken while the current version keeps running
+  local name size_kb free_kb; name="pre-update-$(date -u +%Y%m%dT%H%M%SZ).dump.enc"
   say "Saving a copy of the database before the update"
-  dc exec -T -u postgres postgres sh -c "umask 077 && pg_dump -U '${DB_SUPERUSER:-crm}' -d tfsc -Fc -f '/backups/$name'" \
-    || die "The database copy could not be saved, so nothing was changed: the current version is still running."
-  dc exec -T -u postgres postgres sh -c 'ls -1t /backups/pre-update-*.dump 2>/dev/null | tail -n +6 | xargs -r rm -f' || true
-  echo "Saved in the backups volume as $name (the 5 most recent copies are kept)."
+  # room for the copy: at least the size of the database again, plus a reserve
+  size_kb=$(db_psql -c "SELECT pg_database_size('tfsc') / 1024" 2>/dev/null | tr -d '[:space:]' || true)
+  free_kb=$(dc exec -T -u postgres postgres sh -c "df -Pk /backups | awk 'NR==2 {print \$4}'" 2>/dev/null | tr -d '[:space:]' || true)
+  if [ -n "$size_kb" ] && [ -n "$free_kb" ] && [ "$free_kb" -lt $((size_kb + 1048576)) ]; then
+    die "Not enough free disk space for the pre-update copy (database $((size_kb / 1024)) MB, free $((free_kb / 1024)) MB). Nothing was changed. Free some space or enlarge the disk, then run the update again."
+  fi
+  # encrypted with the backup passphrase (the same key as the nightly backups), so no readable copy of client data is left on disk
+  if dc exec -T -u postgres postgres sh -c 'command -v openssl >/dev/null'; then
+    dc exec -T -u postgres postgres sh -c "umask 077 && set -o pipefail && pg_dump -U '${DB_SUPERUSER:-crm}' -d tfsc -Fc | openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PGBACKREST_REPO1_CIPHER_PASS -out '/backups/$name.part' && mv '/backups/$name.part' '/backups/$name'" \
+      || die "The database copy could not be saved, so nothing was changed: the current version is still running."
+    # copies left readable by earlier releases are encrypted too; then the two most recent copies are kept
+    dc exec -T -u postgres postgres sh -c 'cd /backups && for f in pre-update-*.dump; do [ -f "$f" ] || continue; openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PGBACKREST_REPO1_CIPHER_PASS -in "$f" -out "$f.enc" && rm -f "$f"; done; rm -f pre-update-*.part; ls -1t pre-update-*.dump.enc 2>/dev/null | tail -n +3 | xargs -r rm -f' || true
+    echo "Saved (encrypted) in the backups volume as $name; the 2 most recent copies are kept."
+  else   # the database image of an earlier release has no encryption tool yet (the first update to this release)
+    name=${name%.enc}
+    dc exec -T -u postgres postgres sh -c "umask 077 && pg_dump -U '${DB_SUPERUSER:-crm}' -d tfsc -Fc -f '/backups/$name'" \
+      || die "The database copy could not be saved, so nothing was changed: the current version is still running."
+    echo "Saved in the backups volume as $name. The next update encrypts it."
+  fi
 }
 
-rollback() {   # back to the image that ran before this update; later database changes only add columns it ignores
-  local revision=$1
+migrate_first() {   # database changes are applied by the new version in a one-off container while the current version keeps serving
+  say "Applying database changes (the current version keeps running; changes only add, nothing is removed)"
+  if ! dc run --rm --no-deps -T agreements python -c "import database; database.init_db(); print('The database is ready for the new version.')"; then
+    docker tag tfsc-agreements:rollback tfsc-agreements:4 2>/dev/null || true
+    die "The database changes could not be applied. PostgreSQL undid them completely, nothing was switched, and the current version is still running. Send the lines above to support."
+  fi
+}
+
+rollback() {   # back to the image that ran before this update; later database changes only add things it ignores
   warn "The new version did not start. Going back to the version that was running before."
   docker image inspect tfsc-agreements:rollback >/dev/null 2>&1 || die "There is no previous version to go back to. See: ./agreements.sh logs agreements"
+  dc logs --tail 80 agreements agreements-worker > "$COMPOSE_DIR/last-failed-update.log" 2>&1 || true
   dc stop agreements agreements-worker || true
-  if [ -n "$revision" ]; then
-    db_psql -c "UPDATE alembic_version SET version_num = '$revision'" || warn "Could not set the database revision back to $revision."
-  fi
+  # The database stays as it is: the previous version runs on the newer database (it ignores what was added), and the next
+  # update finds the changes already made and does not repeat them.
   docker tag tfsc-agreements:rollback tfsc-agreements:4
   dc up -d
   if wait_ready soft; then
-    die "Back on the previous version: it is running and no data was lost. Send the output of './agreements.sh logs agreements' to support."
+    die "Back on the previous version: it is running and no data was lost. Send $COMPOSE_DIR/last-failed-update.log to support."
   fi
   die "The previous version did not start either. See 'When something is wrong' in README.md (restore the pre-update copy)."
+}
+
+cmd_rollback() {   # go back to the version that ran before the last update (it starts, but something is wrong with it)
+  [ "$(id -u)" = 0 ] || die "Run as root: sudo $0 rollback"
+  docker image inspect tfsc-agreements:rollback >/dev/null 2>&1 || die "There is no previous version to go back to."
+  confirm "Go back to the version that ran before the last update? Data is kept." || die "Nothing was changed."
+  docker tag tfsc-agreements:4 tfsc-agreements:undone
+  docker tag tfsc-agreements:rollback tfsc-agreements:4
+  dc up -d
+  wait_ready
+  echo "Back on the previous version. (The version you left is kept as tfsc-agreements:undone.)"
 }
 
 cmd_update() {
   [ "$(id -u)" = 0 ] || die "Run as root: sudo $0 update"
   [ -f "$ENV_FILE" ] || die "No settings in $ENV_FILE. Copy deploy/agreements/.env (and backup-offsite.env, if you use it) from the previous release folder first."
+  trap '' HUP   # a dropped SSH connection must not stop an update half way
   ensure_env_keys
   # Keep the running version's image so the update can step back to it.
   if docker image inspect tfsc-agreements:4 >/dev/null 2>&1; then docker tag tfsc-agreements:4 tfsc-agreements:rollback; fi
-  build_images   # the site keeps running on the current version while this builds
+  [ "$(dc ps postgres --format '{{.State}}' 2>/dev/null)" = running ] \
+    || die "The database is not running, so nothing was changed. Start it with: sudo $0 start"
   local revision=''
-  if dc up -d --wait postgres >/dev/null 2>&1 || [ "$(dc ps postgres --format '{{.State}}' 2>/dev/null)" = running ]; then
-    revision=$(db_revision)
-    pre_update_copy
-  else
-    die "The database is not running, so nothing was changed. Start it with: sudo $0 start"
-  fi
-  say "Restarting with the new version (database changes are applied automatically; signing links keep working)"
+  revision=$(db_revision || true)
+  pre_update_copy   # taken with the database that is running now, before anything changes
+  build_images      # the site keeps running on the current version while this builds
+  migrate_first
+  say "Restarting with the new version (signing links keep working)"
   dc up -d
-  if ! wait_ready soft; then rollback "$revision"; fi
+  if ! wait_ready soft; then rollback; fi
   docker image prune -f >/dev/null
   echo "Updated (database ${revision:-new} -> $(db_revision))."
+  cmd_status || true
 }
 
 cmd_help() {
@@ -262,6 +340,7 @@ Usage: $0 <command>
   backup             take a full backup now (encrypted), followed by the automatic restore test
   logs [service]     follow the logs (all services, or e.g. agreements, agreements-worker, edge)
   update             after unpacking a new release (as root): rebuild and restart, data is kept
+  rollback           go back to the version that ran before the last update (as root); data is kept
   restart | stop | start
 Settings: $ENV_FILE    Guide: README.md (START-HERE.md in the ZIP)
 EOF
@@ -282,6 +361,7 @@ main() {
     backup) dc exec -T backup sh -c 'tfsc-backup backup full && tfsc-backup restore-test' ;;
     logs) dc logs -f --tail 200 "$@" ;;
     update) cmd_update ;;
+    rollback) cmd_rollback ;;
     restart) dc restart ;;
     stop) dc stop ;;
     start) dc up -d ;;

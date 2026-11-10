@@ -120,11 +120,11 @@ def company_from(text: str) -> str:
         names = {pdf_facts.norm(x) for x in (e.get('name'), e.get('display'), e.get('short'), e.get('key')) if x}
         if key in names or name_key(text) in {name_key(x) for x in (e.get('name'), e.get('display'), e.get('short')) if x}:
             return e['name']
-    for e in ENTITIES.values():
-        short = pdf_facts.norm(e.get('short') or '')
-        if short and (short in key or key in short) and len(key) >= 3:
-            return e['name']
-    return ''
+    # Otherwise only an unmistakable match counts: the company's short name appears in the text, or the text is the start of
+    # exactly one company's name. "Billing" alone fits two companies, so it is left for the person to choose.
+    found = [e['name'] for e in ENTITIES.values()
+             if (short := pdf_facts.norm(e.get('short') or '')) and len(key) >= 3 and (short in key or short.startswith(key))]
+    return found[0] if len(found) == 1 else ''
 
 
 def date_from(value) -> str:
@@ -540,6 +540,12 @@ def commit(c, actor: dict, session: dict) -> dict:
     files = [dict(r) for r in c.execute(select(client_import_files.c.id, client_import_files.c.name, client_import_files.c.size, client_import_files.c.sha256,
                                                client_import_files.c.scan, client_import_files.c.pages, client_import_files.c.found)
                                         .where(client_import_files.c.import_id == session['id'])).mappings()]
+    # One import is committed once: a second click (or a second browser tab) waits here and then finds it gone.
+    lock = select(client_imports.c.id).where(client_imports.c.id == session['id'])
+    if c.dialect.name == 'postgresql':
+        lock = lock.with_for_update()
+    if not c.execute(lock).first():
+        raise HTTPException(404, 'This import was already completed. Open Clients to see the result.')
     v = compute(c, actor, session, files)
     if v['counts']['choose']:
         raise HTTPException(400, f"Choose a client for the {v['counts']['choose']} item{'s' if v['counts']['choose'] != 1 else ''} marked "
@@ -549,10 +555,13 @@ def commit(c, actor: dict, session: dict) -> dict:
     live = [it for it in v['items'] if it['match']['state'] in ('matched', 'new')]
     if not live:
         raise HTTPException(400, 'There is nothing to import yet. Upload signed PDFs or a spreadsheet first.')
+    today = dt.date.today().isoformat()
     for it in live:
         a = it.get('agreement')
         if a:
             sec.ensure_company(actor, a['entity'])
+            if a.get('signed_on') and a['signed_on'] > today:
+                raise HTTPException(400, f"A signed date in the future ({a['signed_on']}) cannot be right. Correct it in the spreadsheet or skip that row.")
     t = time.time()
     sheet_clients = v['sheet_clients']
     # new clients, oldest signature first, then numbered in that order
@@ -583,13 +592,31 @@ def commit(c, actor: dict, session: dict) -> dict:
         filled += fill_details(c, actor, sc['existing']['id'], details_of(sc['rows']), t)
     clients_now = {r['id']: dict(r) for r in c.execute(select(db.clients.c.id, db.clients.c.client_number, db.clients.c.test, db.clients.c.name).where(
         db.clients.c.id.in_(list({it['match']['client']['id'] for it in live if it['match'].get('client')} | set(created.values())) or ['']))).mappings()}
-    agreements = stored = 0
+    agreements = stored = already = 0
+    sha_of = {f['id']: f['sha256'] for f in files}
+    seen: set = set()
     for it in live:
         cid = it['match']['client']['id'] if it['match'].get('client') else created.get(it['match'].get('new_key'))
         if not cid or cid not in clients_now:
             continue
         a = it.get('agreement')
         file_id = None
+        # The same past agreement is recorded once: importing a spreadsheet again, a repeated row or a file already on the
+        # client's record adds nothing.
+        if a:
+            key = (cid, a['entity'], a['kind'], a['signed_on'] or '', a['reference'][:120], sha_of.get(it['file']['id'], '') if it['type'] == 'file' else '')
+            on_file = c.execute(select(client_agreements.c.id).where(
+                client_agreements.c.client_id == cid, client_agreements.c.entity == a['entity'], client_agreements.c.kind == a['kind'],
+                (client_agreements.c.signed_on == a['signed_on']) if a['signed_on'] else client_agreements.c.signed_on.is_(None),
+                client_agreements.c.reference == a['reference'][:120]).limit(1)).first()
+            if key in seen or on_file:
+                already += 1
+                continue
+            seen.add(key)
+        elif it['type'] == 'file':
+            if c.execute(select(client_files.c.id).where(client_files.c.client_id == cid, client_files.c.sha256 == sha_of.get(it['file']['id'], '')).limit(1)).first():
+                already += 1
+                continue
         if it['type'] == 'file':
             file_id = db.uid()
             note = f"Signed before this portal ({records.SOURCES.get(a['source'], 'Other') if a else 'imported'})"[:1000]
@@ -613,7 +640,8 @@ def commit(c, actor: dict, session: dict) -> dict:
         c.execute(update(db.clients).where(db.clients.c.id == cid).values(updated=t))
     c.execute(delete(client_import_files).where(client_import_files.c.import_id == session['id']))
     c.execute(delete(client_imports).where(client_imports.c.id == session['id']))
-    summary = {'clients_created': len(set(created.values())), 'agreements': agreements, 'files': stored, 'details_filled': filled, 'skipped': v['counts']['skip']}
+    summary = {'clients_created': len(set(created.values())), 'agreements': agreements, 'files': stored, 'details_filled': filled, 'skipped': v['counts']['skip'],
+               'already_on_file': already}
     db.log(c, actor, 'client.import_committed', detail=summary)
     return summary
 

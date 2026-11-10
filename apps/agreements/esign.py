@@ -1641,6 +1641,9 @@ def finalize(envelope_id: str) -> None:
                                                                                 certificate_sha256=esign_pdf.sha256(cert), lease_until=None, completion_error=None,
                                                                                 version=current['version'] + 1))
         c.execute(events.insert().values(**{k: v for k, v in completed_event.items() if k != 'label'}))
+        # people who only receive a copy get it with the completed email: they are done too, wherever they stood in the order
+        c.execute(update(recipients).where(recipients.c.envelope_id == envelope_id, recipients.c.role == 'cc', recipients.c.status.in_(('created', 'sent', 'delivered')))
+                  .values(status='completed'))
         envelope = dict(current, status='completed', completed_at=t, certificate=cert)
         refs, attached = completion_attachments(c, envelope)
         docs_names = [d['name'] for d in docs]

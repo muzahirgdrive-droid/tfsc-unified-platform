@@ -1,5 +1,10 @@
 # HTTPS for TFSC Agreements: Caddy obtains and renews the certificate for TFSC_DOMAIN (Let's Encrypt).
 {$TFSC_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy agreements:8000
+	# When the application restarts (an update), requests wait a few seconds for it instead of failing.
+	reverse_proxy agreements:8000 {
+		lb_try_duration 20s
+		lb_try_interval 500ms
+		fail_duration 5s
+	}
 }

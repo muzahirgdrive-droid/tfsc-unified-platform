@@ -4,11 +4,21 @@
 # Only Caddy's ports 80/443 are reachable from outside; Agreements listens on 127.0.0.1 for the installer's checks.
 name: tfsc-agreements
 
+# Sized for a server with 4 processor cores, 16 GB of memory and a 200 GB disk (the installer writes smaller values into
+# .env on a smaller server; every number below can be changed there):
+#   web        WEB_WORKERS processes (one per core), each serving WEB_THREADS requests at a time
+#   worker     TFSC_GENERATION_WORKERS + TFSC_COMPLETION_WORKERS processes, plus one for email and one for reminders/inbox
+#   database   PG_SHARED_BUFFERS of memory for PostgreSQL's own cache; the rest of the free memory is the file cache
+# Logs rotate (10 files of 20 MB per service), so they can never fill the disk.
+x-logging: &logging
+  driver: local
+  options: { max-size: "20m", max-file: "10" }
+
 x-agreements: &agreements
   image: tfsc-agreements:4
   build: { context: ../.., dockerfile: apps/agreements/Dockerfile }
   restart: unless-stopped
-  environment:
+  environment: &agreements-env
     TFSC_MODE: hosted
     TFSC_ORIGIN: https://${TFSC_DOMAIN:?set TFSC_DOMAIN}
     DATABASE_URL: postgresql+psycopg://tfsc:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/tfsc
@@ -28,9 +38,21 @@ x-agreements: &agreements
     SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
     SMTP_SSL: ${SMTP_SSL:-false}
     TFSC_LOG_FORMAT: json
-    DB_POOL_SIZE: "5"
+    # Automatic sign-out (HIPAA automatic logoff): staff after TFSC_IDLE_MINUTES without activity, signers after
+    # TFSC_SIGNER_IDLE_MINUTES. A session never lasts longer than TFSC_SESSION_HOURS.
+    TFSC_IDLE_MINUTES: ${TFSC_IDLE_MINUTES:-30}
+    TFSC_SIGNER_IDLE_MINUTES: ${TFSC_SIGNER_IDLE_MINUTES:-15}
+    TFSC_SESSION_HOURS: ${TFSC_SESSION_HOURS:-12}
+    # Emails one company mailbox may send per day before sending waits for tomorrow (Google Workspace allows 2,000).
+    TFSC_MAIL_DAILY_CAP: ${TFSC_MAIL_DAILY_CAP:-1800}
+    # Optional error and performance reporting to your own monitoring (leave empty to keep it off).
+    TFSC_SENTRY_DSN: ${TFSC_SENTRY_DSN:-}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   volumes: [agreements-data:/data, contracts:/contracts]
   depends_on: { postgres: { condition: service_healthy } }
+  init: true                     # reaps the helper processes LibreOffice leaves behind and passes stop signals on
+  pids_limit: 2000
+  logging: *logging
 
 services:
   # PostgreSQL 16 + pgBackRest: every WAL file is archived (encrypted) within a minute, so with the nightly backups the
@@ -48,8 +70,17 @@ services:
       PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_PASSPHRASE:?set BACKUP_PASSPHRASE}
     env_file: [{ path: ./backup-offsite.env, required: false }]   # optional off-site repository (PGBACKREST_REPO2_*)
     volumes: [postgres-data:/var/lib/postgresql/data, ./initdb:/docker-entrypoint-initdb.d:ro, backups:/backups, pg-socket:/var/run/postgresql]
-    command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=100", "-c", "shared_buffers=256MB",
+    # Memory settings follow the server (see the top of this file). random_page_cost 1.1 and effective_io_concurrency suit
+    # SSD disks. The database is never the process the system stops first when memory runs short.
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=${PG_MAX_CONNECTIONS:-200}", "-c", "shared_buffers=${PG_SHARED_BUFFERS:-3GB}",
+              "-c", "effective_cache_size=${PG_EFFECTIVE_CACHE:-9GB}", "-c", "work_mem=${PG_WORK_MEM:-16MB}", "-c", "maintenance_work_mem=${PG_MAINTENANCE_MEM:-512MB}",
+              "-c", "random_page_cost=1.1", "-c", "effective_io_concurrency=200", "-c", "wal_compression=on", "-c", "max_wal_size=2GB", "-c", "checkpoint_completion_target=0.9",
+              "-c", "max_parallel_workers_per_gather=2", "-c", "log_min_duration_statement=2000", "-c", "log_lock_waits=on",
               "-c", "archive_mode=on", "-c", "archive_command=pgbackrest --stanza=tfsc archive-push %p", "-c", "archive_timeout=60"]
+    shm_size: 1gb
+    oom_score_adj: -500
+    stop_grace_period: 60s
+    logging: *logging
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d crm"], interval: 5s, timeout: 5s, retries: 20 }
 
   # Weekly full + daily differential backup at BACKUP_HOUR (BACKUP_TZ), AES-256 encrypted, 14 days kept; after each
@@ -69,21 +100,59 @@ services:
     env_file: [{ path: ./backup-offsite.env, required: false }]
     volumes: [postgres-data:/var/lib/postgresql/data:ro, backups:/backups, pg-socket:/var/run/postgresql, restore-scratch:/restore]
     depends_on: { postgres: { condition: service_healthy } }
+    init: true
+    mem_limit: ${BACKUP_MEMORY:-2g}
+    logging: *logging
 
   # Scans files that clients attach to their email replies before they are kept.
   clamav:
     image: clamav/clamav:1.4.6
     restart: unless-stopped
     volumes: [clamav-db:/var/lib/clamav]
+    mem_limit: ${CLAMAV_MEMORY:-3g}
+    logging: *logging
 
   agreements:
     <<: *agreements
     ports: ["127.0.0.1:${TFSC_PORT:-8765}:8000"]
-    command: ["uvicorn", "portal:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*"]
+    environment:
+      <<: *agreements-env
+      # one database connection per request thread, a few spare (4 x 20 = 80 of the database's 200 connections)
+      DB_POOL_SIZE: ${WEB_THREADS:-16}
+      DB_POOL_OVERFLOW: "4"
+    command: ["uvicorn", "portal:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${WEB_WORKERS:-4}", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*",
+              "--timeout-keep-alive", "30", "--timeout-graceful-shutdown", "25"]
+    mem_limit: ${WEB_MEMORY:-4g}
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request as u;u.urlopen(u.Request('http://127.0.0.1:8000/api/health',headers={'Host':os.environ['TFSC_ORIGIN'].split('//',1)[1]}),timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 4
+      start_period: 90s
 
   agreements-worker:
     <<: *agreements
+    environment:
+      <<: *agreements-env
+      DB_POOL_SIZE: "3"
+      DB_POOL_OVERFLOW: "2"
+      # background work may take longer than a click: generous limits, but still limits
+      DB_STATEMENT_TIMEOUT_MS: "600000"
+      DB_LOCK_TIMEOUT_MS: "30000"
+      DB_IDLE_TX_TIMEOUT_MS: "900000"
+      TFSC_GENERATION_WORKERS: ${TFSC_GENERATION_WORKERS:-2}
+      TFSC_COMPLETION_WORKERS: ${TFSC_COMPLETION_WORKERS:-2}
     command: ["python", "worker.py"]
+    mem_limit: ${WORKER_MEMORY:-4g}
+    stop_grace_period: 130s       # a document being generated or a signed copy being prepared is finished first
+    healthcheck:
+      # email and reminders both reported within the last five minutes
+      test: ["CMD", "python", "-c", "import os,sys,time;sys.exit(0 if all(os.path.exists(p) and time.time()-os.path.getmtime(p)<300 for p in ('/data/.heartbeat-mail','/data/.heartbeat-sweep')) else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 4
+      start_period: 180s
 
   edge:
     image: caddy:2-alpine
@@ -92,6 +161,9 @@ services:
     ports: ["80:80", "443:443"]
     volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy-data:/data, caddy-config:/config]
     depends_on: [agreements]
+    init: true
+    mem_limit: 512m
+    logging: *logging
 
 volumes:
   postgres-data:

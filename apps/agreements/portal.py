@@ -19,7 +19,7 @@ import entities as entities_mod
 import static_assets
 from entities import ENTITIES, get_entity
 
-VERSION='5.0.0'
+VERSION='5.1.0'
 ORIGIN=os.getenv('TFSC_ORIGIN','http://127.0.0.1:8765').rstrip('/')
 if not db.LOCAL and (not ORIGIN.startswith('https://') or db.URL.startswith('sqlite')):
     raise RuntimeError('VPS mode requires TFSC_ORIGIN=https://your-domain and DATABASE_URL=postgresql+psycopg://...')
@@ -319,10 +319,18 @@ def download(id:str,request:Request):
         body=bytes(row['body']);name=row['name'];kind=row['kind']
     return Response(body,media_type='application/pdf' if kind=='pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',headers={'Content-Disposition':'attachment; filename="'+name.replace('"','')+'"'})
 
+def check_services(a,d):
+    """A person limited to certain services cannot put others on an agreement: not from the catalogue, and not by typing a
+    custom service (unless they were given that permission). The same rule applies to the preview and to generation."""
+    if not a.get('services'):return
+    blocked=[s.get('name') or s.get('id') for s in d.get('services',[]) if s.get('id') not in a['services']]
+    if blocked:raise HTTPException(403,'You are not permitted to offer: '+', '.join(blocked)+'.')
+    if d.get('custom_services') and not a.get('custom_services'):
+        raise HTTPException(403,'You are not permitted to add custom services. Ask your administrator to allow it under Users & permissions.')
 @app.post('/api/preview')
 def preview(payload:dict,request:Request):
     with db.engine.begin() as c:
-        a=sec.get_actor(request,c);d=legacy.validate(payload);sec.ensure_company(a,d['entity'])
+        a=sec.get_actor(request,c);d=legacy.validate(payload);sec.ensure_company(a,d['entity']);check_services(a,d)
         if d['id']:client_allowed(c,a,d['id']);db.log(c,a,'contract.previewed',d['id'])
     with db.engine.connect() as c:company=companies.profile(c,d['entity'],with_image=False)
     docs=legacy.build_documents(d,'TFSC-PREVIEW',company)
@@ -354,9 +362,7 @@ def generate(payload:dict,request:Request):
                 entities_mod.invalidate();signer=companies.profile(c,d['entity'],with_image=False)   # set a moment ago in another process
             if not (signer['signatory'] or '').strip() or not (signer['title'] or '').strip():
                 raise HTTPException(400,f"Add who signs for {get_entity(d['entity'])['short']} (name and title) in Admin › Company settings before generating agreements.")
-            if a.get('services'):   # a user limited to certain services cannot put others on an agreement
-                blocked=[s['name'] for s in d.get('services',[]) if s['id'] not in a['services']]
-                if blocked:raise HTTPException(403,'You are not permitted to offer: '+', '.join(blocked)+'.')
+            check_services(a,d)
             d['output_root']=str(output_path(d['output_root'],a))
             old=c.execute(select(db.jobs).where(db.jobs.c.owner_id==a['id'],db.jobs.c.key==key)).mappings().first()
             if old:return {'job_id':old['id'],'state':old['state']}
@@ -458,7 +464,7 @@ def create_user(payload:dict,request:Request):
         password=secrets.token_urlsafe(15)
         import company_admin
         services=company_admin.clean_user_services(payload.get('services')) if 'services' in payload else None
-        row=dict(id=db.uid(),email=valid_email(payload.get('email')),name=legacy.clean(payload.get('name'),'Name',True,150),password=sec.password_hash(password),role=role,admin_id=admin_id,companies=list(dict.fromkeys(companies)),active=True,reset_required=True,created=time.time(),services=services)
+        row=dict(id=db.uid(),email=valid_email(payload.get('email')),name=legacy.clean(payload.get('name'),'Name',True,150,typography=False),password=sec.password_hash(password),role=role,admin_id=admin_id,companies=list(dict.fromkeys(companies)),active=True,reset_required=True,created=time.time(),services=services,custom_services=payload.get('custom_services') is True)
         try:c.execute(db.users.insert().values(**row))
         except IntegrityError:raise HTTPException(409,'An account with this email already exists.')
         db.log(c,a,'user.created',detail={'user_id':row['id'],'role':role,'companies':companies,'admin_id':admin_id})
@@ -499,6 +505,7 @@ def update_user(id:str,payload:dict,request:Request):
         if 'services' in payload:
             import company_admin
             values['services']=company_admin.clean_user_services(payload['services'])
+        if 'custom_services' in payload:values['custom_services']=payload['custom_services'] is True
         if payload.get('reset_password'):
             temporary=secrets.token_urlsafe(15);values.update(password=sec.password_hash(temporary),reset_required=True)
         if not values:raise HTTPException(400,'No changes supplied.')

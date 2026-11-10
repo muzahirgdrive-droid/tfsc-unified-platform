@@ -21,7 +21,7 @@ def verify_absent(password):
     global _DUMMY
     if _DUMMY is None:_DUMMY=hasher.hash(secrets.token_urlsafe(24))
     verify(_DUMMY,password);return False
-def public(user):return {k:user[k] for k in ('id','email','name','role','admin_id','companies','active','reset_required')}|{'services':user.get('services')}
+def public(user):return {k:user[k] for k in ('id','email','name','role','admin_id','companies','active','reset_required')}|{'services':user.get('services'),'custom_services':bool(user.get('custom_services'))}
 def scope(actor,column):
     if actor['role']=='super_admin':return True
     if actor['role']=='admin':return column.in_(select(db.users.c.id).where(or_(db.users.c.id==actor['id'],db.users.c.admin_id==actor['id'])))
