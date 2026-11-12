@@ -81,6 +81,10 @@ async def boundary(request,call_next):
     response.headers['Referrer-Policy']='same-origin'
     response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()'
+    if response.headers.get('x-tfsc-frame')=='self':
+        # a PDF shown inside this application's own page (printing a signed document): framing by this site only
+        del response.headers['x-tfsc-frame'];response.headers['X-Frame-Options']='SAMEORIGIN'
+        response.headers['Content-Security-Policy']=response.headers['Content-Security-Policy'].replace("frame-ancestors 'none'","frame-ancestors 'self'")
     if not db.LOCAL:response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     response.headers['X-Request-Id']=rid
     route=getattr(request.scope.get('route'),'path','unmatched')
@@ -225,6 +229,10 @@ def favicon():return Response(status_code=204)
 def config(request:Request):
     with db.engine.connect() as c:
         a=sec.get_actor(request,c);people=companies.signatories(c);workspace=companies.public_workspace(c)
+        import doc_types as _doc_types
+        types=_doc_types.for_builder(c,a)
+    import catalog_admin
+    stored_catalog=catalog_admin.read()
     # A user may be limited to a subset of services (Admin > Users). Empty / absent means every service is allowed.
     allowed=a.get('services') or None
     def permit(services):
@@ -237,7 +245,8 @@ def config(request:Request):
         out.update(signatory=people[e['name']]['signatory'],title=people[e['name']]['title'],signature_available=people[e['name']]['source'] is not None)
         return out
     entities=[entity_public(e) for e in ENTITIES.values() if a['role']=='super_admin' or e['name'] in a['companies']]
-    return dict(catalog=permit(legacy.CATALOG),defaults=legacy.DEFAULTS,states=sorted(legacy.STATES),entities=entities,output_root=str(db.OUTPUT),version=VERSION,
+    models={k:{x:v[x] for x in ('label','billing','fields')} for k,v in catalog_admin.custom_models(stored_catalog).items()}
+    return dict(catalog=permit(catalog_admin.catalog(stored_catalog)),pricing_models=models,doc_types=types,defaults=legacy.DEFAULTS,states=sorted(legacy.STATES),entities=entities,output_root=str(db.OUTPUT),version=VERSION,
         user=sec.public(a),local=db.LOCAL,can_manage_signatures=a['role']=='super_admin',crm=bool(os.getenv('TFSC_CRM_URL')),workspace=workspace)
 
 def client_allowed(c,a,id):
@@ -554,8 +563,14 @@ import insights
 insights.install(app)
 import health
 health.install(app)
+import catalog_admin
+catalog_admin.install(app)
+import doc_types
+doc_types.install(app)
+import followups
+followups.install(app)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','verify.css','resilient.js','session.js'}
-PRIVATE={'app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
+PRIVATE={'catalog.js','followups.js','app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request,v:str=''):
     # Scripts and style sheets hold no data (every piece of data comes from /api, which checks the session), so they are

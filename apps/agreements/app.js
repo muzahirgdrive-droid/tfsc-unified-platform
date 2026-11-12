@@ -101,7 +101,13 @@
     return (category === "recurring" ? ["fte", "pte", "unit", "fixed", "consultancy"] : ["one_time", "two_installments"]).map(id => ({id, label: modelLabels[id]}));
   }
   function normalizeSelection(item, spec) {
-    return {...serviceDefaults(spec), ...item, id: spec.id, model: spec.models.some(m => m.id === item.model) ? item.model : spec.models[0].id};
+    const ok = model => spec.models.some(m => m.id === model);
+    const options = Array.isArray(item.options) && item.options.length > 1 ? item.options.filter(o => ok(o.model)) : [];
+    const base = options.length ? {...item, ...options[0]} : item;
+    const out = {...serviceDefaults(spec), ...base, id: spec.id, model: ok(base.model) ? base.model : spec.models[0].id};
+    delete out.options;
+    out.extra = options.slice(1).map(o => ({...serviceDefaults(spec), ...o, id: spec.id, _key: `${spec.id}-x-${o.model}`}));
+    return out;
   }
 
   function renderCatalog() {
@@ -117,7 +123,7 @@
       const checkbox = el("input");
       checkbox.type = "checkbox";
       checkbox.checked = state.selected.has(spec.id);
-      checkbox.disabled = !$("generate-services").checked;
+      checkbox.disabled = !servicesWanted();
       checkbox.addEventListener("change", () => {
         if (checkbox.checked) state.selected.set(spec.id, serviceDefaults(spec));
         else state.selected.delete(spec.id);
@@ -165,7 +171,7 @@
     input.value = owner[key] === undefined ? "" : owner[key];
     input.required = !!settings.required;
     if (settings.placeholder) input.placeholder = settings.placeholder;
-    input.disabled = !$("generate-services").checked;
+    input.disabled = !servicesWanted();
     const eventName = settings.options ? "change" : "input";
     input.addEventListener(eventName, () => {
       owner[key] = input.value;
@@ -185,6 +191,11 @@
   }
 
   function detailedPrice(item) {
+    if (customModel(item.model)) {
+      const def = customModel(item.model); const v = item.values || {};
+      const parts = def.fields.filter(f => v[f.key] !== undefined && v[f.key] !== "").map(f => `${f.label}: ${f.kind === "amount" ? money(v[f.key]) : f.kind === "percent" ? v[f.key] + "%" : v[f.key]}`);
+      return parts.length ? `${def.label} · ${parts.join(" · ")}` : `Enter the ${def.label.toLowerCase()} details.`;
+    }
     if (item.model === "rate_card") return `Government: ${money(item.government_rate)} · Commercial: ${money(item.commercial_rate)} per provider / application, upon request.`;
     const rate = numeric(item.rate), quantity = numeric(item.quantity, 1);
     if (!rate) return "Enter a rate to complete this service’s pricing.";
@@ -203,13 +214,69 @@
     return `${money(rate)} × ${quantity} = ${moneyCents(totalCents)} total project fee · One invoice on delivery / completion`;
   }
 
-  function priceFields(item, models) {
+  // A pricing model added under Admin › Services & pricing: the builder asks for exactly the fields it defines.
+  const customModel = id => (state.config?.pricing_models || {})[id];
+  function customFields(item, def) {
+    const grid = el("div", "field-grid"); item.values ||= {};
+    def.fields.forEach(f => {
+      const holder = {_key: `${item._key || item.id}-v`, id: item.id, [f.key]: item.values[f.key] ?? ""};
+      const settings = {required: !!f.required, onChange: value => { item.values[f.key] = value; refreshPrice(item); }};
+      if (f.kind === "choice") settings.options = [{id: "", label: "Choose…"}].concat((f.choices || []).map(c => ({id: c, label: c})));
+      else if (f.kind === "date") settings.type = "date";
+      else if (f.kind !== "text") Object.assign(settings, {type: "number", min: "0", max: f.kind === "percent" ? 100 : 1000000000});
+      grid.append(makeField(holder, f.key, f.label + (f.kind === "amount" ? " (USD)" : f.kind === "percent" ? " (%)" : ""), settings));
+    });
+    return grid;
+  }
+  function refreshPrice(item) { const line = document.querySelector(`[data-price-for="${CSS.escape(item._key || item.id)}"]`); if (line) line.textContent = detailedPrice(item); updateSummary(); }
+  const LETTERS = "ABCDE";
+  // Several pricing options on one agreement: Option A is the service item itself, B, C ... are kept in item.extra.
+  function pricingOptions(item, spec) {
+    const models = spec.models;
+    if (models.length < 2) return priceFields(item, models);
+    item.extra ||= [];
+    const wrap = el("div", "pricing-options");
+    const head = el("div", "field"); const label = el("label", "", "Pricing options on this agreement"); label.append(el("span", "required", " *"));
+    head.append(label, el("p", "field-note", "Tick one option, or several when the client wants to choose. Every ticked option is written into the agreement; the client marks the one they accept when signing."));
+    wrap.append(head);
+    const on = [item.model, ...item.extra.map(x => x.model)];
+    models.forEach(m => {
+      const index = on.indexOf(m.id), checked = index >= 0;
+      const box = el("div", "price-option" + (checked ? " on" : ""));
+      const top = el("label", "price-option-head"); const cb = el("input"); cb.type = "checkbox"; cb.checked = checked;
+      const title = el("span"); title.append(el("strong", "", checked && on.length > 1 ? `Option ${LETTERS[index]} · ${m.label}` : m.label));
+      top.append(cb, title); box.append(top);
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          if (item.extra.length >= 4) { cb.checked = false; announce("Offer at most five pricing options for one service.", true); return; }
+          item.extra.push({...serviceDefaults(spec), model: m.id, _key: `${item.id}-x-${m.id}`, hours: m.id === "pte" ? 20 : 40, values: {}});
+        } else if (m.id === item.model) {
+          if (!item.extra.length) { cb.checked = true; return; }
+          const next = item.extra.shift(); Object.assign(item, {...next, id: item.id, _key: undefined, extra: item.extra});
+        } else item.extra = item.extra.filter(x => x.model !== m.id);
+        markDirty(); renderSelected(); updateSummary();
+      });
+      if (checked) {
+        const owner = index === 0 ? item : item.extra[index - 1];
+        const inner = el("div", "price-option-body"); inner.append(priceFields(owner, [{id: m.id, label: m.label}], true)); box.append(inner);
+      }
+      wrap.append(box);
+    });
+    return wrap;
+  }
+  function priceFields(item, models, fixedModel = false) {
     const group = el("div");
     const modelField = makeField(item, "model", "Pricing model", {options: models, required: true, onChange: value => {
       if (value === "fte") item.hours = 40;
       if (value === "pte") item.hours = 20;
       renderSelected();
     }});
+    if (customModel(item.model)) {
+      if (!fixedModel) group.append(modelField);
+      const price = el("p", "service-pricing-line", detailedPrice(item)); price.dataset.priceFor = item._key || item.id;
+      group.append(price, customFields(item, customModel(item.model)));
+      return group;
+    }
     if (item.id === "website_development") {
       group.append(makeField(item, "website_kind", "Website type", {required: true, options: [{id:"wordpress",label:"WordPress website"},{id:"custom",label:"Custom website"}], onChange: value => {
         const old = value === "wordpress" ? "custom" : "wordpress";
@@ -219,7 +286,7 @@
         renderSelected();
       }}));
     }
-    group.append(modelField);
+    if (!fixedModel) group.append(modelField);
     const price = el("p", "service-pricing-line", detailedPrice(item));
     price.dataset.priceFor = item._key || item.id;
     group.append(price);
@@ -278,7 +345,7 @@
       header.append(title, remove);
       const body = el("div", "selected-service-body");
       if (addOn) body.append(addOnOption(addOn, spec.id));
-      body.append(priceFields(item, spec.models), makeField(item, "details", "Service parameters & agreed deliverables", {multiline: true, maxLength: SERVICE_TEXT_LIMIT, required: spec.id === "other", placeholder: serviceHints[spec.id] || "Describe the service parameters for this engagement.", note: "These details are added to this service’s standard scope and responsibilities."}));
+      body.append(pricingOptions(item, spec), makeField(item, "details", "Service parameters & agreed deliverables", {multiline: true, maxLength: SERVICE_TEXT_LIMIT, required: spec.id === "other", placeholder: serviceHints[spec.id] || "Describe the service parameters for this engagement.", note: "These details are added to this service’s standard scope and responsibilities."}));
       card.append(header, body);
       selected.append(card);
     });
@@ -315,7 +382,7 @@
   // pricing card and prints as its own service, right after Credentialing.
   function addOnOption(spec, parentId) {
     const option = el("label", "addon-option");
-    const box = el("input"); box.type = "checkbox"; box.checked = state.selected.has(spec.id); box.disabled = !$("generate-services").checked;
+    const box = el("input"); box.type = "checkbox"; box.checked = state.selected.has(spec.id); box.disabled = !servicesWanted();
     box.addEventListener("change", () => {
       if (box.checked) {
         const entries = [...state.selected.entries()].filter(([id]) => id !== spec.id), at = entries.findIndex(([id]) => id === parentId);
@@ -399,6 +466,8 @@
     return [...state.selected.values()].map(item => ({...item, name: item.id === "website_development" ? (item.website_kind === "custom" ? "Custom Website Development" : "WordPress Website Development") : state.catalog.find(spec => spec.id === item.id)?.name || item.id})).concat(state.custom);
   }
   function shortPrice(item) {
+    if (item.extra?.length) return `${item.extra.length + 1} options`;
+    if (customModel(item.model)) return customModel(item.model).label;
     if (item.model === "rate_card") return `${money(item.government_rate)} / ${money(item.commercial_rate)}`;
     if (!numeric(item.rate)) return "Rate needed";
     if (item.model === "percentage") return `${numeric(item.rate)}%`;
@@ -411,6 +480,7 @@
   // A custom company with its own services offers those; every other company (built-in, or custom with none of its own)
   // offers the standard catalogue.
   window.setCompanyCatalog = function() {
+    renderDocumentTypes(chosenDocuments().map(x => x[1]));
     const entry = (state.config?.entities || []).find(e => e.name === $("entity").value);
     const next = (entry && Array.isArray(entry.services) && entry.services.length) ? entry.services : (state.config?.catalog || []);
     state.catalog = next;
@@ -534,9 +604,37 @@
     updateSummary();
   }
   $("test-agreement").addEventListener("change", () => { markDirty(); testChanged(); });
-  function chosenDocuments() { return [["generate-baa", "baa", "BAA"], ["generate-services", "services", "Services"], ["generate-nda", "nda", "NDA"]].filter(([id]) => $(id).checked); }
+  function chosenDocuments() {
+    return [["generate-baa", "baa", "BAA"], ["generate-services", "services", "Services"], ["generate-nda", "nda", "NDA"]].filter(([id]) => $(id).checked && !$(id).closest("label").hidden)
+      .concat(customTypes().filter(t => $(`generate-${t.key}`)?.checked).map(t => [`generate-${t.key}`, t.key, t.title]));
+  }
+  // ------------------------------------------------------------------ agreement types added under Admin › Agreement types
+  const customTypes = () => (state.config?.doc_types || []).filter(t => !t.builtin && (!t.companies || t.companies.includes($("entity").value)));
+  function servicesWanted() { return ($("generate-services").checked && !$("generate-services").closest("label").hidden) || customTypes().some(t => t.services && $(`generate-${t.key}`)?.checked); }
+  state.customFields = {};
+  function renderDocumentTypes(checkedKeys) {
+    const box = document.querySelector(".document-options"); if (!box || !state.config) return;
+    const hidden = new Set((state.config.doc_types || []).filter(t => t.builtin && t.hidden).map(t => t.key));
+    [["generate-baa", "baa"], ["generate-services", "services"], ["generate-nda", "nda"]].forEach(([id, key]) => { const card = $(id).closest("label"); card.hidden = hidden.has(key); if (card.hidden) $(id).checked = false; });
+    box.querySelectorAll(".custom-doc").forEach(x => x.remove());
+    customTypes().forEach(t => {
+      const card = el("label", "document-card custom-doc"); const box2 = el("input"); box2.type = "checkbox"; box2.id = `generate-${t.key}`; box2.checked = (checkedKeys || []).includes(t.key);
+      const text = el("span"); text.append(el("strong", "", t.title), el("small", "", t.description || ""), el("em", "", "WORD + PDF"));
+      card.append(box2, el("span", "document-symbol", t.symbol || t.title[0]), text);
+      const wrap = el("div", "custom-doc custom-doc-fields"); wrap.hidden = !box2.checked;
+      (t.fields || []).forEach(f => {
+        const fieldBox = el("div", "field"); const id = `cf-${t.key}-${f.key}`; const label = el("label", "", f.label); label.htmlFor = id;
+        const input = el("input"); input.id = id; input.maxLength = 500; input.value = state.customFields[t.key]?.[f.key] || ""; input.required = box2.checked;
+        input.addEventListener("input", () => { (state.customFields[t.key] ||= {})[f.key] = input.value; markDirty(); });
+        fieldBox.append(label, input); wrap.append(fieldBox);
+      });
+      box2.addEventListener("change", () => { wrap.hidden = !box2.checked; wrap.querySelectorAll("input").forEach(i => { i.required = box2.checked; i.disabled = !box2.checked; }); markDirty(); documentSelectionChanged(); });
+      wrap.querySelectorAll("input").forEach(i => { i.disabled = !box2.checked; });
+      box.append(card); if (t.fields?.length) box.append(wrap);
+    });
+  }
   function updateSummary() {
-    const useBaa = $("generate-baa").checked, useServices = $("generate-services").checked;
+    const useBaa = $("generate-baa").checked, useServices = servicesWanted();
     const selected = useServices ? allSelected() : [];
     document.querySelector(".summary-entity").textContent = $("entity").value;
     $("summary-client").textContent = $("client_name").value.trim() || "New client";
@@ -562,6 +660,7 @@
       else if (["fixed", "consultancy"].includes(item.model)) monthly += priceCents(item.rate);
       else if (["one_time", "two_installments"].includes(item.model)) project += priceCents(item.rate, item.quantity);
       else variable = true;
+      if (item.extra?.length) variable = true;
     });
     if (monthly) { const row = el("div"); row.append(el("span", "", "Fixed monthly charges"), el("strong", "", moneyCents(monthly))); totals.append(row); }
     if (project) { const row = el("div"); row.append(el("span", "", "Project fees"), el("strong", "", moneyCents(project))); totals.append(row); }
@@ -570,7 +669,7 @@
   }
 
   function documentSelectionChanged() {
-    const serviceOn = $("generate-services").checked;
+    const serviceOn = servicesWanted();
     $("services-panel").hidden = !serviceOn;
     $("services-panel").querySelectorAll("input,select,textarea,button").forEach(control => { control.disabled = !serviceOn; });
     $("baa-date-options").hidden = !$("generate-baa").checked;
@@ -590,7 +689,14 @@
     if ($("generate-baa").checked) data.document_types.push("baa");
     if ($("generate-services").checked) data.document_types.push("services");
     if ($("generate-nda").checked) data.document_types.push("nda");
-    data.services = [...state.selected.values()].map(item => ({...item}));
+    customTypes().forEach(t => { if ($(`generate-${t.key}`)?.checked) data.document_types.push(t.key); });
+    data.custom_fields = {};
+    data.document_types.filter(k => k.startsWith("x_")).forEach(k => { data.custom_fields[k] = {...(state.customFields[k] || {})}; });
+    data.services = [...state.selected.values()].map(({extra, ...item}) => {
+      if (!extra?.length) return item;
+      // Option A is the item itself; every option carries its own model and price fields
+      return {...item, options: [item, ...extra].map(({_key, extra: _e, details, ...o}) => o)};
+    });
     data.include_signature = $("include-signature").checked;
     data.custom_services = state.custom.map(({_key, ...item}) => item);
     data.test = $("test-agreement").checked;
@@ -603,7 +709,7 @@
     }
     form.classList.add("was-validated");
     if (!chosenDocuments().length) { announce("Select the Business Associate Agreement, the Services Agreement, the Mutual NDA, or a combination.", true); window.studioNavigate?.("documents-panel"); $("generate-baa").focus(); return false; }
-    if ($("generate-services").checked && !state.selected.size && !state.custom.length) { announce("Select at least one service for the Services Agreement.", true); window.studioNavigate?.("services-panel"); $("services-panel").scrollIntoView({behavior: "smooth", block: "start"}); $("service-search").focus({preventScroll: true}); return false; }
+    if (servicesWanted() && !state.selected.size && !state.custom.length) { announce("Select at least one service for the Services Agreement.", true); window.studioNavigate?.("services-panel"); $("services-panel").scrollIntoView({behavior: "smooth", block: "start"}); $("service-search").focus({preventScroll: true}); return false; }
     if (!form.checkValidity()) {
       const invalid = [...form.querySelectorAll("input,select,textarea")].find(control => !control.disabled && !control.validity.valid);
       if (invalid) {
@@ -663,6 +769,8 @@
     $("generate-baa").checked = types.includes("baa");
     $("generate-services").checked = types.includes("services");
     $("generate-nda").checked = types.includes("nda");
+    state.customFields = resetServices ? {} : {...(data.custom_fields || {})};
+    renderDocumentTypes(types);
     if (resetServices) { $("effective_date").value = today(); $("baa_effective_date").value = today(); $("special_terms").value = ""; }
     $("test-agreement").checked = !!data.test && !resetServices; testChanged();
     $("separate-baa-date").checked = !!data.baa_effective_date && data.baa_effective_date !== data.effective_date && !resetServices;

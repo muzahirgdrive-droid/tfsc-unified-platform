@@ -33,7 +33,7 @@
   if(top==='activity'&&user.role!=='user')return go('activity','activity',()=>window.activityShow?.());
   if(top==='admin'&&user.role!=='user'){
    if(a==='users')return go('users','admin',loadUsers);
-   if(user.role==='super_admin'){if(a==='mailboxes')return go('mailboxes','admin',()=>window.esignShowMailboxes?.());if(['companies','email-trust','workspace'].includes(a))return go('admin','admin',()=>window.adminShow?.(a));}
+   if(user.role==='super_admin'){if(a==='mailboxes')return go('mailboxes','admin',()=>window.esignShowMailboxes?.());if(['companies','email-trust','workspace'].includes(a))return go('admin','admin',()=>window.adminShow?.(a));if(['services','agreement-types','system'].includes(a))return go('admin','admin',()=>window.catalogShow?.(a));}
    return go('users','admin',loadUsers);}
   const denied={activity:'the Activity log',admin:'the Admin screens'}[top];
   go('home','home',async()=>{await window.homeShow?.();if(denied){$('app-error').textContent='You do not have access to '+denied+'. Ask an administrator if you need it.';$('app-error').hidden=false;}});void b;}
@@ -58,7 +58,7 @@
   if(ws.help_email){$('help-email-link').textContent=ws.help_email;$('help-email-link').href='mailto:'+ws.help_email;$('help-email-button').href='mailto:'+ws.help_email+'?subject='+encodeURIComponent((ws.portal_name||'TFSC Agreements')+' support');}
   $('copyright').textContent=`© ${ws.year||new Date().getFullYear()} ${ws.copyright_holder||'TFSC Agreements'}. All rights reserved.`;
   if(c.crm&&!$('nav-review')){const review=elem('a','Agreement review');review.href='/reviews';review.id='nav-review';$('topnav').insertBefore(review,$('nav-admin'));}
-  window.clientsReady?.(c);window.esignReady?.(c);window.homeReady?.(c);window.reportsReady?.(c);window.adminReady?.(c);
+  window.clientsReady?.(c);window.esignReady?.(c);window.homeReady?.(c);window.reportsReady?.(c);window.adminReady?.(c);window.catalogReady?.(c);
   if(!c.local){$('folder-explanation').textContent='Choose a folder in managed server storage. Download completed documents to save a copy on your computer.';const note=document.querySelector('.privacy-note p');if(note)note.textContent='Agreements are kept in your secure workspace and its managed storage.';}
   const params=new URLSearchParams(location.search);const envelope=params.get('envelope');
   if(envelope&&/^[a-f0-9]{32}$/.test(envelope))history.replaceState(null,'','/#/envelope/'+envelope);

@@ -133,6 +133,14 @@
     </form>
   </dialog>
 
+  <dialog id="print-dialog" class="dialog" aria-labelledby="print-title">
+    <form method="dialog">
+      <header class="dialog-head"><div><h2 id="print-title">Print your documents</h2><p id="print-intro">Only the documents are printed, never this page. Choose one document or all of them.</p></div><button type="submit" value="cancel" class="x" aria-label="Close">×</button></header>
+      <div class="dialog-body"><p class="print-sep">One document</p><div id="print-docs"></div><p class="print-sep">The whole envelope</p><div id="print-all-wrap"></div><p class="alert" id="print-error" hidden></p></div>
+      <div class="dialog-actions"><button type="submit" value="cancel" class="btn btn-ghost">Cancel</button><button type="button" id="print-go" class="btn btn-primary">Print</button></div>
+    </form>
+  </dialog>
+  <iframe id="print-frame" class="print-frame" title="Document being printed" aria-hidden="true" tabindex="-1"></iframe>
   <dialog id="decline-dialog" class="dialog" aria-labelledby="decline-title">
     <form method="dialog">
       <header class="dialog-head"><div><h2 id="decline-title">Decline to sign</h2><p>The sender will be notified and the documents will be closed. Tell them why.</p></div><button type="submit" value="cancel" class="x" aria-label="Close">×</button></header>

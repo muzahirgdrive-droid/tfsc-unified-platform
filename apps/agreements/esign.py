@@ -81,7 +81,7 @@ LABELS = {
     'reminder': 'Reminder sent', 'expiring': 'Expiration warning sent', 'expired': 'Envelope expired', 'completed': 'Envelope completed',
     'bounced': 'Email undeliverable', 'mail_failed': 'Email could not be sent', 'replied': 'Reply received by email', 'portal_session': 'Opened from a TFSC Agreements account',
     'saved': 'Saved to finish later', 'reassigned': 'Assigned to someone else', 'host_session': 'In-person signing started by the host',
-    'attachment': 'Attachment uploaded', 'removed': 'Recipient removed', 'downloaded': 'Downloaded the documents', 'links_off': 'Recipient links turned off',
+    'attachment': 'Attachment uploaded', 'removed': 'Recipient removed', 'downloaded': 'Downloaded the documents', 'printed': 'Printed the documents', 'links_off': 'Recipient links turned off',
     'links_on': 'Recipient links turned back on', 'marked_test': 'Marked as a test envelope', 'marked_real': 'Marked as a real envelope',
 }
 
@@ -370,6 +370,15 @@ def _default_setup(c, envelope: dict, contract: dict, box: dict) -> None:
             add_field(c, envelope['id'], doc['id'], client['id'], anchors['page'], kind, esign_pdf.placement(anchor, kind), required)
         if company:
             add_field(c, envelope['id'], doc['id'], company['id'], anchors['page'], 'signature', esign_pdf.placement(anchors['company']['signature'], 'signature'), True)
+        # A service offered with several fee options: the client marks the option they accept (required to finish).
+        import revised_content
+        offered = {revised_content.service_name(s): s['options'] for s in payload.get('services', []) if len(s.get('options') or []) > 1}
+        if offered and (doc['agreement'] == 'services' or str(doc['agreement']).startswith('x_')):
+            for spot in esign_pdf.fee_option_spots(bytes(doc['pdf'])):
+                name = spot['service'] if spot['service'] in offered else (next(iter(offered)) if len(offered) == 1 else None)
+                if name:
+                    add_field(c, envelope['id'], doc['id'], client['id'], spot['page'], 'dropdown', spot['box'], True, label=f'Fee option for {name}'[:100],
+                              options={'choices': [f'Option {revised_content.LETTERS[i]}' for i in range(len(offered[name]))]})
 
 
 def _client_signer(c, envelope: dict, client: dict) -> None:
@@ -1916,6 +1925,10 @@ def list_envelopes(c, actor: dict, box: str, q: str, page: int, entity: str = ''
                                                                                   envelopes.c.id.in_(waiting_for(actor)))).scalar()
     counts['test'] = c.execute(select(func.count()).select_from(envelopes).where(visible(actor), envelopes.c.status != 'template', envelopes.c.test.is_(True))).scalar()
     out = summary(c, rows[:50])
+    import followups
+    notes = followups.latest_for_envelopes(c, [e['id'] for e in out])
+    for e in out:
+        e['followups'] = notes.get(e['id'], {'count': 0, 'latest': None})
     if box == 'action' and out:
         hosting = {x[0] for x in c.execute(select(recipients.c.envelope_id).where(recipients.c.envelope_id.in_([e['id'] for e in out]), recipients.c.role == 'in_person',
                                                                                  recipients.c.host_id == actor['id'], recipients.c.status.in_(OPEN_STATUSES)))}
@@ -2532,7 +2545,7 @@ def install(app) -> None:  # noqa: C901  (route table)
         return Response(png, media_type='image/png', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
     @app.get('/sign/r/{recipient_id}/document/{document_id}')
-    def sign_document(recipient_id: str, document_id: str, request: Request):
+    def sign_document(recipient_id: str, document_id: str, request: Request, inline: int = 0):
         ip, ua = _actor_info(request)
         with write_tx() as c:
             _, r, envelope, row = _signer_doc(c, request, recipient_id, document_id)
@@ -2540,7 +2553,29 @@ def install(app) -> None:  # noqa: C901  (route table)
             body = bytes(row['final_pdf'] if completed else row['pdf'])
             name = re.sub(r'\.pdf$', '', row['name'], flags=re.I) + (' (completed)' if completed else '') + '.pdf'
             record(c, envelope['id'], 'downloaded', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'document': name})
-        return Response(body, media_type='application/pdf', headers={'Content-Disposition': 'attachment; filename="' + name.replace('"', '') + '"'})
+        return Response(body, media_type='application/pdf', headers=_pdf_headers(name, inline))
+
+    def _pdf_headers(name: str, inline) -> dict:
+        """inline=1: shown inside the signing page to print it (only this site may frame it); otherwise a download."""
+        safe = name.replace('"', '')
+        return {'Content-Disposition': f'inline; filename="{safe}"', 'X-TFSC-Frame': 'self'} if inline else {'Content-Disposition': f'attachment; filename="{safe}"'}
+
+    @app.get('/sign/r/{recipient_id}/print-all')
+    def sign_print_all(recipient_id: str, request: Request):
+        """Every document of the envelope in one PDF, for printing; with the Certificate of Completion at the end once everyone
+        has signed. Before that, the documents as they stand (the signed copies are prepared when the last person signs)."""
+        ip, ua = _actor_info(request)
+        with write_tx() as c:
+            _, r, envelope = signer_session(c, request, recipient_id)
+            completed = envelope['status'] == 'completed'
+            parts = [bytes(x[1] if completed and x[1] else x[0]) for x in c.execute(select(documents.c.pdf, documents.c.final_pdf).where(
+                documents.c.envelope_id == envelope['id'], documents.c.source != 'attachment').order_by(documents.c.position))]
+            if not parts:
+                raise HTTPException(404, 'There is nothing to print.')
+            if completed and envelope['certificate']:
+                parts.append(bytes(envelope['certificate']))
+            record(c, envelope['id'], 'printed', r['name'], recipient_id=r['id'], ip=ip, ua=ua, detail={'documents': len(parts)})
+        return Response(esign_pdf.combine(parts), media_type='application/pdf', headers=_pdf_headers(f"Documents {envelope['ref']}.pdf", 1))
 
     @app.get('/sign/r/{recipient_id}/completed')
     def sign_completed(recipient_id: str, request: Request):

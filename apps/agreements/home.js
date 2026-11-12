@@ -102,7 +102,6 @@
     right.append(strip, el("p", "home-period", "Completed: last 6 months"));
     hero.append(intro, right);
     view.append(hero);
-    if (config?.user?.role === "super_admin") { const sys = el("section", "sys-status-strip"); sys.hidden = true; sys.setAttribute("aria-label", "System status"); view.append(sys); systemStatus(sys); }
 
     const head = el("div", "page-head"); head.style.margin = "24px 0 0";
     const title = el("div"); title.append(el("h2", "", "Last 6 months"));

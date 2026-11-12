@@ -269,6 +269,30 @@ def placement(anchor: dict, kind: str) -> dict:
     return {'x': round(x, 1), 'y': round(base - 13, 1), 'w': 150.0, 'h': 16.0}
 
 
+def fee_option_spots(raw: bytes, prefix: str = 'Fee option selected by Client for') -> list[dict]:
+    """Where a Services Agreement asks the client to mark the fee option they accept: one line per service that offers
+    several options ("Fee option selected by Client for <service>: ______"). Display space, like execution_anchors."""
+    reader = PdfReader(io.BytesIO(raw), strict=False)
+    out = []
+    for index, page in enumerate(reader.pages):
+        if int(page.rotation or 0) % 360:
+            continue
+        height, bottom = float(page.mediabox.height), float(page.mediabox.bottom)
+        width = float(page.mediabox.width)
+        spans = _spans(page)
+        for sx, sy, text in spans:
+            if not text.startswith(prefix):
+                continue
+            label = text.split(':', 1)[0] + ':'
+            service = label[len(prefix):].strip(' :')
+            x = sx + label_width(label) + 2
+            base = height - (sy - bottom)
+            if x + 150 > width - 36:          # the blank wrapped onto the next line
+                x, base = sx, base + 15
+            out.append({'page': index + 1, 'service': service, 'box': {'x': round(x, 1), 'y': round(base - 13, 1), 'w': 150.0, 'h': 16.0}})
+    return out
+
+
 # ------------------------------------------------------------------ suggested fields for any document
 # Labels that mark where a signer acts. A label counts when its line is short and leaves room to fill in (a colon, a run of
 # underscores, or nothing after it); "Name: Naeem Abbas" is already filled and is skipped.

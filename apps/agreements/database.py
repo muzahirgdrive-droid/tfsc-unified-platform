@@ -87,6 +87,18 @@ companies=Table('companies',meta,Column('key',String(40),primary_key=True),
     Column('left',Integer,nullable=False),Column('right',Integer,nullable=False),
     Column('services',JSON,nullable=False),Column('doc_types',JSON,nullable=False),Column('active',Boolean,nullable=False,default=True),
     Column('created',Float,nullable=False),Column('created_by',String(32),ForeignKey('users.id'),nullable=True),Column('updated',Float,nullable=False))
+# Follow-up notes: what someone did to move an agreement forward (a call, an email, a meeting), with the date and who wrote
+# it. Everyone who can see the client sees its notes. Notes are never edited or deleted, like the activity log.
+followups=Table('followup_notes',meta,Column('id',String(32),primary_key=True),
+    Column('client_id',String(32),ForeignKey('clients.id'),nullable=True),
+    Column('envelope_id',String(32),nullable=True),Column('contract_id',String(64),nullable=True),
+    Column('channel',String(20),nullable=False),Column('body',Text,nullable=False),
+    Column('next_on',String(10),nullable=True),
+    Column('author_id',String(32),ForeignKey('users.id'),nullable=True),Column('author_name',String(150),nullable=False),
+    Column('created',Float,nullable=False))
+Index('ix_followups_client_created',followups.c.client_id,followups.c.created)
+Index('ix_followups_envelope',followups.c.envelope_id)
+Index('ix_followups_contract',followups.c.contract_id)
 Index('ix_client_owner_updated',clients.c.owner_id,clients.c.updated,clients.c.id)
 Index('ix_clients_client_number',clients.c.client_number,unique=True)
 Index('ix_contract_client_created',contracts.c.client_id,contracts.c.created,contracts.c.id)

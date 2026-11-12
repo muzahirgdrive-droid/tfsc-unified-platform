@@ -343,6 +343,8 @@
       if (x.file) files.append(link(x.file.url, x.source === "manual" ? "Signed scan" : "Signed PDF"));
       if (x.origin === "generated") files.append(button("Send for signature", () => window.esignFromContract(x.contract_id), "text-button"));
       if (x.envelope_id && x.status !== "signed") files.append(button("Open", () => window.esignOpen(x.envelope_id), "text-button"));
+      if (x.status !== "signed" && (x.envelope_id || x.contract_id))
+        files.append(button("Follow up", () => window.tfscFollowups?.open(x.envelope_id ? {envelope_id: x.envelope_id, title: x.title || "Agreement", onSaved: ctx.reload} : {contract_id: x.contract_id, title: x.title || "Agreement", onSaved: ctx.reload}), "text-button"));
       if (x.origin === "past" && x.editable) {
         const acts = el("div", "rc-row-actions");
         acts.append(button("Change", () => addPast(ctx.client, x, ctx.reload), "text-button"), button("Remove", async () => {

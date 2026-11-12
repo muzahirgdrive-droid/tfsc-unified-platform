@@ -118,7 +118,7 @@
     const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist");
     const counts = d.counts, signed = counts.envelopes.completed || 0, waiting = (counts.envelopes.sent || 0) + (counts.envelopes.completing || 0);
     const baas = ag.items.filter(x => ["baa", "services", "nda"].includes(x.kind) && x.status === "signed").length;
-    [["overview", "Overview"], ["agreements", "Agreements", ag.items.length], ["baas", "Signed agreements", baas], ["contacts", "Contacts", d.contacts.length], ["documents", "Documents"],
+    [["overview", "Overview"], ["agreements", "Agreements", ag.items.length], ["baas", "Signed agreements", baas], ["contacts", "Contacts", d.contacts.length], ["followups", "Follow-ups"], ["documents", "Documents"],
       ["signatures", "Signatures", waiting ? `${waiting} waiting` : undefined], ["generated", "Generated", counts.contracts], ["activity", "Activity"]].forEach(([key, label, n]) => {
       const t = button(label, () => { state.tab = key; return profile(id); }, ""); if (n !== undefined) t.append(el("em", "", n));
       t.setAttribute("role", "tab"); t.setAttribute("aria-selected", String(state.tab === key)); tabs.append(t);
@@ -131,6 +131,7 @@
       if (!c.test) body.classList.add("flush");
       R.agreementsTable(body, ag, records, state.tab === "baas" ? x => ["baa", "services", "nda"].includes(x.kind) && x.status === "signed" : null);
     } else if (state.tab === "overview") overview(body, d, signed, waiting);
+    else if (state.tab === "followups") body.append(window.tfscFollowups.panel({client_id: c.id, title: c.name}));
     else if (state.tab === "contacts") contacts(body, d);
     else if (state.tab === "documents") await documents(body, id);
     else if (state.tab === "signatures") await signatures(body, id);

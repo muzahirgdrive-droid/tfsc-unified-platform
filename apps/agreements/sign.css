@@ -371,3 +371,16 @@ body.has-rail .sign-footer{padding-right:calc(var(--rail) + 16px)}
 #decline-reason{width:100%;min-height:110px;box-sizing:border-box;font:inherit;padding:10px 12px}
 /* Touch screens: comfortable targets */
 @media (pointer:coarse){.finish,.glass,.dialog button{min-height:44px}}
+
+/* Print: the chooser, and the hidden frame the chosen PDF is printed from. The page itself never prints the screens. */
+.print-frame{position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none}
+.print-sep{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#5b6779;font-weight:700;margin:14px 0 8px}
+.print-sep:first-child{margin-top:0}
+.print-choice{display:flex;gap:12px;align-items:center;border:1px solid #d9e0ec;border-radius:12px;padding:12px 14px;margin:0 0 8px;cursor:pointer}
+.print-choice:has(input:checked){border-color:#3b2fd6;background:#f5f4ff}
+.print-choice input{width:18px;height:18px;flex:none;margin:0}
+.print-choice b{display:block;font-size:15px;color:#101828}.print-choice small{display:block;color:#5b6779;font-size:13px;margin-top:2px}
+.row-actions{margin-left:auto;display:flex;gap:16px;align-items:center}
+.row-print{background:none;border:0;color:#3b2fd6;font:inherit;font-weight:600;cursor:pointer;padding:6px 2px}
+.done-row .row-actions .go{margin-left:0}
+@media print{.done-card,.notice-card,.consent,.dialog,#print-dialog{display:none!important}}

@@ -246,6 +246,13 @@
     title.append(document.createTextNode(e.subject || "(no subject)")); text.append(title);
     const people = e.recipients.filter(p => p.role !== "cc").map(p => p.name || p.email).join(", ");
     text.append(el("small", "", [people ? `To: ${people}` : "No recipients yet", e.client].filter(Boolean).join(" · ")));
+    // the latest follow-up note, so everyone sees at a glance what was last done
+    if (e.followups?.latest) {
+      const n = e.followups.latest; const fu = el("small", "fu-last");
+      fu.append(el("b", "", `Follow-up ${window.tfscFollowups?.when(n.created) || ""}`), document.createTextNode(` · ${n.author}: ${n.body.length > 110 ? n.body.slice(0, 110) + "…" : n.body}`));
+      if (e.followups.count > 1) fu.append(el("span", "fu-count", ` (${e.followups.count} notes)`));
+      text.append(fu);
+    }
     s.append(text); subject.append(s);
     const status = el("td"); const cell = el("div", "status-cell"); cell.append(chip(e.status));
     if (e.status === "sent" || e.status === "completing") {
@@ -261,6 +268,8 @@
     else if (e.status === "completed") actions.append(link(`/api/esign/envelopes/${e.id}/combined`, "Download", "button button-quiet button-sm"));
     else if (e.status === "sent") actions.append(button("Resend", async () => { await api(`/api/esign/envelopes/${e.id}/resend`, {}); ok("Sent again to everyone who has not finished."); }, "button button-quiet button-sm"));
     else if (e.status === "draft") actions.append(button("Continue", () => openEditor(e.id), "button button-quiet button-sm"));
+    if (["sent", "completing", "draft", "declined", "expired"].includes(e.status) && list.box !== "templates")
+      actions.append(button(e.followups?.count ? `Follow up (${e.followups.count})` : "Follow up", () => window.tfscFollowups?.open({envelope_id: e.id, title: e.subject || "Envelope", onSaved: () => showList(list.box)}), "button button-quiet button-sm"));
     actions.querySelectorAll("a").forEach(a => a.addEventListener("click", event => event.stopPropagation()));
     tr.append(subject, status, change, actions);
     return tr;
@@ -430,6 +439,7 @@
     });
     people.append(tl);
     main.append(people);
+    if (e.status !== "template" && window.tfscFollowups) main.append(window.tfscFollowups.panel({envelope_id: e.id, title: e.subject}));
 
     const history = el("section", "card");
     const tabs = el("div", "tabs"); tabs.setAttribute("role", "tablist");

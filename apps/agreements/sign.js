@@ -230,14 +230,40 @@
     if (!handBack) (S.state.documents || []).forEach(d => {
       const a = el("a", "done-row"); a.href = `document/${encodeURIComponent(d.id)}`; a.setAttribute("download", "");
       const text = el("div"); text.append(el("b", "", shortDoc(d.name)), el("small", "", `${d.pages} page${d.pages === 1 ? "" : "s"}${completed ? " · completed" : ""}`));
-      a.append(el("span", "pdf-ic", "PDF"), text, el("span", "go", "Download")); rows.append(a);
+      const go = el("span", "row-actions"); const pr = el("button", "row-print", "Print"); pr.type = "button";
+      pr.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); printPdf(`document/${encodeURIComponent(d.id)}?inline=1`); });
+      go.append(pr, el("span", "go", "Download"));
+      a.append(el("span", "pdf-ic", "PDF"), text, go); rows.append(a);
     });
     const links = $("done-links"); links.replaceChildren();
     if (completed) links.append(link("completed", "Download completed documents", "btn btn-primary"));
     if (handBack) { const back = el("a", "btn btn-primary", "Host: back to TFSC Agreements"); back.href = "/"; links.append(back); }
-    else { const print = el("button", "btn btn-ghost", "Print"); print.type = "button"; print.addEventListener("click", () => window.print()); links.prepend(print); }
+    else { const print = el("button", "btn btn-ghost", completed ? "Print all signed documents" : "Print"); print.type = "button"; print.addEventListener("click", openPrint); links.prepend(print); }
     $("done-note").textContent = S.state.ref ? `Envelope ${S.state.ref} · A tamper-evident record of every step is kept with the documents.` : "";
     show("done-card", true); show("guide", false); show("top-actions", false);
+  }
+  // Printing prints the documents themselves (one, or all of them with the certificate once everyone has signed), never this page.
+  function openPrint() {
+    const docs = (S.state.documents || []).filter(d => d.source !== "attachment");
+    const done = !!S.state.completed;
+    const radio = (value, title, sub, checked) => {
+      const label = el("label", "print-choice"); const input = el("input"); input.type = "radio"; input.name = "print-choice"; input.value = value; input.checked = checked;
+      const text = el("span"); text.append(el("b", "", title), el("small", "", sub)); label.append(input, text); return label;
+    };
+    $("print-docs").replaceChildren(...docs.map(d => radio(`document/${encodeURIComponent(d.id)}?inline=1`, shortDoc(d.name), `${done ? "Signed copy" : "Document"} · ${d.pages} page${d.pages === 1 ? "" : "s"}`, false)));
+    const pages = docs.reduce((n, d) => n + (d.pages || 0), 0);
+    $("print-all-wrap").replaceChildren(radio("print-all", done ? "All signed documents, with the Certificate of Completion" : "All documents",
+      done ? `${docs.map(d => shortDoc(d.name)).join(", ")}, then the certificate at the end` : `${pages} pages. The Certificate of Completion is added once everyone has signed.`, true));
+    $("print-error").hidden = true;
+    $("print-dialog").showModal();
+  }
+  function printPdf(url) {
+    const frame = $("print-frame");
+    frame.onload = () => {
+      try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+      catch (e) { window.open(url, "_blank", "noopener"); }
+    };
+    frame.src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
   }
   function link(href, text, cls) { const a = el("a", cls, text); a.href = href; a.setAttribute("download", ""); return a; }
 
@@ -721,8 +747,13 @@
         "Open the link in your email again to continue where you left off, before the documents expire. Your signature is applied only when you select Finish.");
     } catch (e) { if (e.message) error(e.message); }
   });
-  $("print").addEventListener("click", () => { closeMenu(); window.print(); });
-  $("rail-print").addEventListener("click", () => window.print());
+  $("print").addEventListener("click", () => { closeMenu(); openPrint(); });
+  $("rail-print").addEventListener("click", openPrint);
+  $("print-go").addEventListener("click", () => {
+    const chosen = $("print-dialog").querySelector('input[name="print-choice"]:checked');
+    if (!chosen) return;
+    $("print-dialog").close(); printPdf(chosen.value);
+  });
   function downloads() {
     closeMenu();
     const dialog = el("dialog", "dialog"); const form = el("form"); form.method = "dialog";
