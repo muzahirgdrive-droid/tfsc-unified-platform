@@ -19,7 +19,7 @@ import entities as entities_mod
 import static_assets
 from entities import ENTITIES, get_entity
 
-VERSION='5.1.0'
+VERSION='5.2.0'
 ORIGIN=os.getenv('TFSC_ORIGIN','http://127.0.0.1:8765').rstrip('/')
 if not db.LOCAL and (not ORIGIN.startswith('https://') or db.URL.startswith('sqlite')):
     raise RuntimeError('VPS mode requires TFSC_ORIGIN=https://your-domain and DATABASE_URL=postgresql+psycopg://...')

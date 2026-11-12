@@ -362,7 +362,35 @@ docker compose --env-file .env exec -u postgres postgres sh -c 'openssl enc -d -
 docker compose --env-file .env start agreements agreements-worker
 ```
 
-### This update (November 10, 2026: release 5.1, the audit fixes) also
+### This update (November 12, 2026: release 5.2, your review of November 12) also
+
+Nothing you have is changed: every client, client number, generated agreement, envelope, signing link, signature, signed
+copy, certificate and BAA stays exactly as it is. The database change (0013) adds one table (follow-up notes) and sets the
+side margins for agreements generated from now on.
+
+- **Printing after signing:** Print no longer prints the screen. Each signed document has its own Print, and "Print all"
+  prints every signed document with the Certificate of Completion at the end (before everyone has signed: the documents
+  as they stand). Ctrl+P on the signing page prints no screens either.
+- **Margins:** every company's agreements now use 0.65 inch on the left and right, as Scribe Align's always have (House of
+  RCM had 1 inch; Extended Health 0.8; Quantum, MedEquity, 3E Medical Billing and Billing Nest 0.75). Letterhead artwork,
+  top and bottom margins and the footer are unchanged. Agreements generated before the update keep their margins.
+- **Admin › Services & pricing:** add a service, change its name, scope, responsibilities and exclusions, retire it, and
+  choose which pricing models it may use. Add your own pricing models (for example "Percentage of net collections" with
+  a minimum fee): you choose what the builder asks for and how it reads on the agreement.
+- **Several fee options on one agreement:** in Create agreement, tick more than one pricing option for a service. The
+  agreement lists them as Option A, B ... and the client chooses one when signing (a required choice on the signing page,
+  recorded with the signed copy).
+- **Admin › Agreement types:** add your own agreement (for example a staffing agreement) by uploading its wording as a
+  Word file. It gets the company letterhead, margins, footer and signature block, and appears in Create agreement for the
+  companies you tick. The BAA, Services Agreement and NDA are built in and can only be hidden, never changed here.
+- **Follow-up notes:** a "Follow up" button on Waiting for others, Drafts and the client record's agreements, a notes card
+  on every envelope, and a "Follow-ups" tab on each client. Post how you followed up (phone, email, meeting...), what
+  happened and, if agreed, the next follow-up date. Everyone who can see the client sees the notes with the author, date
+  and time. The latest note shows in the Agreements list.
+- **System check moved to Admin:** Home no longer shows the system status. Admin › System check shows everything; when
+  something stops working, a red dot appears on the Admin menu.
+
+### The November 10, 2026 update (release 5.1, the audit fixes) also
 
 Nothing you have is changed: every client, client number, generated agreement, envelope, signing link, signature, signed
 copy, certificate, BAA and mailbox setting stays exactly as it is. The database change (0012) only adds columns and

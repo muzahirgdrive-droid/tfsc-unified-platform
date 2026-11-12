@@ -153,7 +153,7 @@ def child(lane):
     """One lane in its own process. SIGTERM (a stop, a restart, an update) lets the task in hand finish, then the process ends."""
     signal.signal(signal.SIGTERM,lambda *_:stopping.set());signal.signal(signal.SIGINT,lambda *_:stopping.set())
     import telemetry
-    telemetry.configure('tfsc-agreements-worker','5.1.0',not db.LOCAL,engine=db.engine)
+    telemetry.configure('tfsc-agreements-worker','5.2.0',not db.LOCAL,engine=db.engine)
     logging.getLogger('tfsc.worker').info('worker lane %s started (pid %s)',lane,os.getpid())
     if lane=='generate':generation_loop()
     else:
@@ -190,7 +190,7 @@ if __name__=='__main__':
     import telemetry
     logging.basicConfig(level=logging.INFO) if not logging.getLogger().handlers else None
     if db.LOCAL or db.engine.dialect.name!='postgresql' or os.getenv('TFSC_WORKER_PROCESSES','1')=='0':
-        telemetry.configure('tfsc-agreements-worker','5.1.0',not db.LOCAL,engine=db.engine)
+        telemetry.configure('tfsc-agreements-worker','5.2.0',not db.LOCAL,engine=db.engine)
         signal.signal(signal.SIGTERM,lambda *_:stopping.set())
         run()
     else:supervise()
