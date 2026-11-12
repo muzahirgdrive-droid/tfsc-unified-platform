@@ -50,6 +50,29 @@ def service_name(s):
         return 'WordPress Website Development' if s.get('website_kind','wordpress')=='wordpress' else 'Custom Website Development'
     return s['name']
 
+OPTION_LABEL='Fee option selected by Client for'
+LETTERS='ABCDE'
+
+
+def fee_description(s):
+    """One pricing option in words (the standard wording, or the wording of a model added under Admin)."""
+    if s.get('model_def'):
+        import catalog_admin
+        return catalog_admin.fee_text(s['model_def'], s.get('values') or {})
+    if s['model']=='rate_card':
+        return f"{original._money(s['government_rate'])} per provider per application for government payers; {original._money(s['commercial_rate'])} for commercial payers, when asked by Client."
+    if s['model']=='percentage':
+        return original._plain_number(s['rate'])+'% of total monthly net collections, as defined in Section 5.1; invoiced monthly in arrears.'
+    return original._fee_description(s)
+
+
+def fee_rows(s):
+    options=s.get('options') or []
+    if len(options)>1:
+        return [[f'Option {LETTERS[i]}', fee_description(dict(original._service_record(s),**o))] for i,o in enumerate(options)]
+    return [[service_name(s), fee_description(s)]]
+
+
 def build_services(data, contract_id):
     # Legacy blocks supply the unchanged common terms, selected by applicability.
     prior=original.build_services(data,contract_id)
@@ -75,7 +98,9 @@ def build_services(data, contract_id):
             scope[3]=scope[3].replace('described in Section 1.1,',f'described in Section 1.{i},')
         scopes.append(scope)
         out.append(B('h2',f'1.{i} {service_name(s)}'))
-        if s['id'] in source_scopes:
+        if s.get('responsibilities_admin'):   # wording set under Admin > Services & pricing
+            scope[1], scope[2] = s['responsibilities_admin'], ''
+        if s['id'] in source_scopes and not s.get('scope_custom'):
             for source_block in source_scopes[s['id']]['scope']:
                 b=deepcopy(source_block)
                 b['text']=b['text'].replace('PRACTICE NAME',data['client_name'])
@@ -109,6 +134,14 @@ def build_services(data, contract_id):
     out += [B('h1','3. Fees'),B('h2','3.1 Initial Setup'),B('p','There is no charge for the initial set up of the services.')]
     for i,s in enumerate(chosen,2):
         out.append(B('h2',f'3.{i} {service_name(s)}'))
+        if len(s.get('options') or [])>1:
+            out.append(B('p','The Client may choose one of the following fee options for this service. The option the Client selects when signing this Agreement applies for its term.'))
+            out.append({'type':'table','headers':['Option','Fee (USD, unless stated as a percentage)'],'rows':fee_rows(s)})
+            out.append(B('p',f'{OPTION_LABEL} {service_name(s)}: ______________________'))
+            continue
+        if s.get('model_def'):
+            out.append({'type':'table','headers':['Service','Fee (USD, unless stated as a percentage)'],'rows':fee_rows(s)})
+            continue
         if s['model']=='rate_card':
             out.append(B('p','The Credentialing services will be provided when asked by Client on the following rates.'))
             rows=[['Credentialing/provider/application (for Govt. Payers)',original._money(s['government_rate'])],['Credentialing/provider/application (for Commercial Payers)',original._money(s['commercial_rate'])]]

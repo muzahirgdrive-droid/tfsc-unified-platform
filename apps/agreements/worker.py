@@ -78,7 +78,7 @@ def process(job):
         docs=legacy.build_documents(payload,cid,company);files=[]
         for doc in docs:
             sub=stage/doc['title'];sub.mkdir()
-            stem=legacy.DOCUMENT_STEMS[doc['type']]+' '+cid
+            stem=doc.get('stem',legacy.DOCUMENT_STEMS.get(doc['type'],'DOC'))+' '+cid
             word=sub/(stem+'.docx');pdf=sub/(stem+'.pdf')
             generate_docx(doc['blocks'],doc['data'],cid,word);convert_to_pdf(word,pdf)
             for path in (word,pdf):

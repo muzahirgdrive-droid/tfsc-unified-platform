@@ -132,13 +132,25 @@ def service_value(item, custom=False, catalog=None):
             # billed per unit it is a recurring service; as a one-time project it is on demand
             out['category'] = 'on_demand' if item.get('model') in ('one_time', 'two_installments') else 'recurring'
         # A custom company's own services carry their scope, responsibilities and exclusions into the document.
-        for extra in ('scope', 'responsibilities', 'exclusions'):
+        for extra in ('scope', 'responsibilities', 'exclusions', 'responsibilities_admin', 'scope_custom'):
             if spec.get(extra):
                 out[extra] = spec[extra]
         allowed = [m['id'] for m in spec['models']]
     out['model'] = item.get('model')
     if out['model'] not in allowed:
         raise ValueError(f"Select a valid pricing model for {out['name']}.")
+    import catalog_admin
+    model_def = catalog_admin.custom_models().get(out['model'])
+    if model_def:
+        # a pricing model added under Admin > Services & pricing: its definition travels with the agreement, so a later
+        # change to the model never changes an agreement already generated
+        out['model_def'] = {k: model_def[k] for k in ('label', 'billing', 'fields', 'wording')}
+        out['values'] = catalog_admin.validate_values(model_def, item.get('values'), out['name'])
+        amounts = [out['values'][f['key']] for f in model_def['fields'] if f['kind'] in ('amount', 'percent') and out['values'].get(f['key']) not in (None, '')]
+        out['rate'] = amounts[0] if amounts else 0
+        out['quantity'] = 1
+        out['details'] = clean(item.get('details'), 'Service details', False, SERVICE_TEXT_LIMIT)
+        return out
     if out['model']=='rate_card':
         out['government_rate']=number(item.get('government_rate'),'Government payer application rate')
         out['commercial_rate']=number(item.get('commercial_rate'),'Commercial payer application rate')
@@ -157,6 +169,21 @@ def service_value(item, custom=False, catalog=None):
     out['milestone1'] = clean(item.get('milestone1'), 'First invoice milestone', out['model']=='two_installments', 300)
     out['milestone2'] = clean(item.get('milestone2'), 'Second invoice milestone', out['model']=='two_installments', 300)
     out['installment_percent'] = number(item.get('installment_percent'), 'First installment percentage', default=50, maximum=99.99)
+    return out
+
+
+def priced(item, catalog):
+    """A selected service with one pricing option, or several the client chooses from when signing (``options``)."""
+    options = item.get('options') if isinstance(item, dict) else None
+    if not isinstance(options, list) or len(options) < 2:
+        return service_value(item, catalog=catalog)
+    if len(options) > 5:
+        raise ValueError('Offer at most five pricing options for one service.')
+    chosen = [service_value(dict(item, **(o if isinstance(o, dict) else {}), id=item.get('id')), catalog=catalog) for o in options]
+    if len({c['model'] for c in chosen}) != len(chosen):
+        raise ValueError(f"Each pricing option for {chosen[0]['name']} must use a different pricing model.")
+    out = dict(chosen[0])
+    out['options'] = [{k: v for k, v in c.items() if k not in ('options', 'scope', 'responsibilities', 'exclusions', 'responsibilities_admin', 'details')} for c in chosen]
     return out
 
 
@@ -190,9 +217,28 @@ def validate(payload, draft=False):
     data['effective_date'] = date_value(payload.get('effective_date'), 'Effective date')
     data['baa_effective_date'] = date_value(payload.get('baa_effective_date') or data['effective_date'], 'BAA effective date')
     types = payload.get('document_types', [])
-    if not isinstance(types,list) or any(x not in DOCUMENT_TITLES for x in types):
+    if not isinstance(types,list) or any(not isinstance(x,str) or (x not in DOCUMENT_TITLES and not re.fullmatch(r'x_[a-f0-9]{8}',x)) for x in types):
         raise ValueError('Select the Business Associate Agreement, the Services Agreement, the Mutual NDA, or a combination.')
     data['document_types'] = list(dict.fromkeys(types))
+    # Agreement types added under Admin > Agreement types: their wording is copied into the agreement now, so a later
+    # change to the type never changes this agreement.
+    custom_types = [x for x in data['document_types'] if x not in DOCUMENT_TITLES]
+    data['custom_types'], data['custom_fields'] = {}, {}
+    if custom_types:
+        import database as _db
+        import doc_types
+        with _db.engine.connect() as c:
+            stored = doc_types.read(c)['custom']
+        raw_fields = payload.get('custom_fields') if isinstance(payload.get('custom_fields'), dict) else {}
+        for key in custom_types:
+            t = stored.get(key)
+            if not t or not t.get('active'):
+                raise ValueError('An agreement type that was selected is no longer available. Reload the page.')
+            if t.get('companies') and entity['name'] not in t['companies']:
+                raise ValueError(f"{t['title']} is not available for {entity['short']}.")
+            data['custom_types'][key] = {k: t[k] for k in ('title', 'prefix', 'blocks', 'fields', 'services') if k in t}
+            given = raw_fields.get(key) if isinstance(raw_fields.get(key), dict) else {}
+            data['custom_fields'][key] = {f['key']: clean(given.get(f['key']), f['label'], not draft, 500) for f in t.get('fields', [])}
     if not data['document_types'] and not draft:
         raise ValueError('Select at least one agreement to generate.')
     raw_services, raw_custom = payload.get('services',[]), payload.get('custom_services',[])
@@ -202,10 +248,11 @@ def validate(payload, draft=False):
         # Incomplete pricing is allowed in a saved draft; generation always validates it.
         data['services'] = raw_services
         data['custom_services'] = raw_custom
-    elif 'services' in data['document_types']:
+    elif 'services' in data['document_types'] or any(t.get('services') for t in data['custom_types'].values()):
         # A custom company offers its own services; built-in companies use the standard catalogue.
-        effective = {s['id']: s for s in entity['services']} if entity.get('services') else CATALOG_MAP
-        data['services'] = [service_value(s, catalog=effective) for s in raw_services]
+        import catalog_admin
+        effective = {s['id']: s for s in entity['services']} if entity.get('services') else catalog_admin.catalog_map()
+        data['services'] = [priced(s, effective) for s in raw_services]
         data['custom_services'] = [service_value(s,True) for s in raw_custom]
         if not data['services'] and not data['custom_services']:
             raise ValueError('Select at least one service for a Services Agreement.')
@@ -265,8 +312,13 @@ def build_documents(data, contract_id, company=None):
             if meta.exists(): current['_signature_crop']=json.loads(meta.read_text()).get('crop')
         if kind=='baa':
             current['effective_date'] = data['baa_effective_date']
-        builder = {'baa':build_baa,'services':build_services,'nda':build_nda}[kind]
-        documents.append(dict(type=kind,title=DOCUMENT_TITLES[kind],blocks=builder(current,contract_id),data=current))
+        if kind in DOCUMENT_TITLES:
+            builder = {'baa':build_baa,'services':build_services,'nda':build_nda}[kind]
+            documents.append(dict(type=kind,title=DOCUMENT_TITLES[kind],stem=DOCUMENT_STEMS[kind],blocks=builder(current,contract_id),data=current))
+        else:
+            import doc_types
+            t=dict(data['custom_types'][kind],_key=kind)
+            documents.append(dict(type=kind,title=t['title'],stem=t.get('prefix') or 'DOC',blocks=doc_types.build(t,current,contract_id),data=current))
     return documents
 
 
@@ -300,7 +352,7 @@ def generate(data):
         for doc in documents:
             subfolder = temp_dir/doc['title']
             subfolder.mkdir()
-            stem = DOCUMENT_STEMS[doc['type']]+' '+contract_id
+            stem = doc.get('stem', DOCUMENT_STEMS.get(doc['type'], 'DOC'))+' '+contract_id
             docx_path = subfolder/(stem+'.docx')
             pdf_path = subfolder/(stem+'.pdf')
             generate_docx(doc['blocks'],doc['data'],contract_id,docx_path)
