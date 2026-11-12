@@ -66,7 +66,7 @@ class Catalog(Base):
         self.assertIn(model, [m['id'] for m in catalog_admin.catalog_map()['ar_denials']['models']])
         # the builder may now offer FTE and the new model together; the agreement lists both and asks the client to choose
         payload = dict(data(), entity=SCRIBE, document_types=['services'], services=[{'id': 'ar_denials', 'model': 'fte', 'rate': 1500, 'quantity': 2, 'hours': 40,
-                       'options': [{'model': 'fte', 'rate': 1500, 'quantity': 2, 'hours': 40}, {'model': model, 'values': {'percentage': 6, 'minimum_monthly_fee': 2500}}]}])
+                       'options': [{'id': 'ar_denials', 'model': 'fte', 'rate': 1500, 'quantity': 2, 'hours': 40}, {'id': 'ar_denials', 'model': model, 'values': {'percentage': 6, 'minimum_monthly_fee': 2500}}]}])   # as the builder sends them
         d = legacy.validate(payload)
         self.assertEqual([o['model'] for o in d['services'][0]['options']], ['fte', model])
         blocks = legacy.build_documents(d, 'SA-TEST')[0]['blocks']

@@ -98,7 +98,7 @@
         const payload = {name: name.value, description: desc.value, category: cat.value, scope: scope.value, responsibilities: resp.value, exclusions: excl.value,
           models: [...models.querySelectorAll("input:checked")].map(i => i.value), active: on.querySelector("input").checked};
         const d = await api(s ? `/api/admin/catalog/services/${encodeURIComponent(s.id)}` : "/api/admin/catalog/services", payload);
-        await services(d.id); window.tfscToast?.("Saved. New agreements use it from now on.");
+        window.tfscCatalogChanged = true; await services(d.id); window.tfscToast?.("Saved. New agreements use it from now on.");
       } catch (e) { msg(note, e.message); }
     }));
     box.replaceChildren(c);
@@ -134,7 +134,7 @@
         const fields = [...list.querySelectorAll(".cat-field-row")].map(r => { const [l, ch] = r.querySelectorAll('input[type="text"]'); return {label: l.value, kind: r.querySelector("select").value, required: r.querySelector('input[type="checkbox"]').checked, choices: ch.value.split(",").map(x => x.trim()).filter(Boolean)}; });
         const d = await api(m ? `/api/admin/catalog/models/${encodeURIComponent(m.id)}` : "/api/admin/catalog/models", {label: label.value, billing: billing.value, fields, wording: wording.value});
         msg(preview, "Example on the agreement: " + d.preview, true);
-        tab = "models"; await services(d.id); window.tfscToast?.("Pricing model saved. Tick it on the services that may use it.");
+        window.tfscCatalogChanged = true; tab = "models"; await services(d.id); window.tfscToast?.("Pricing model saved. Tick it on the services that may use it.");
       } catch (e) { msg(note, e.message); }
     }));
     $("cat-editor").replaceChildren(c);
@@ -152,7 +152,7 @@
     d.builtin.forEach(t => {
       const row = el("tr"); const name = el("td"); name.append(el("span", "cat-sym", t.title[0]), el("b", "", t.title));
       const sw = toggle("", !t.hidden); sw.querySelector("input").setAttribute("aria-label", `Show ${t.title} in the builder`);
-      sw.querySelector("input").addEventListener("change", async e => { try { await api(`/api/admin/doc-types/builtin/${t.key}`, {hidden: !e.target.checked}); window.tfscToast?.("Saved."); } catch (err) { e.target.checked = !e.target.checked; window.tfscToast?.(err.message); } });
+      sw.querySelector("input").addEventListener("change", async e => { try { await api(`/api/admin/doc-types/builtin/${t.key}`, {hidden: !e.target.checked}); window.tfscCatalogChanged = true; window.tfscToast?.("Saved."); } catch (err) { e.target.checked = !e.target.checked; window.tfscToast?.(err.message); } });
       const on = el("td"); on.append(sw);
       row.append(name, el("td", "cat-lock", "🔒 Built in"), el("td", "", "All companies"), on); row.style.cursor = "default"; tbody.append(row);
     });
@@ -201,7 +201,7 @@
           const raw = await new Promise((ok, bad) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result).split(",")[1]); rd.onerror = bad; rd.readAsDataURL(file.files[0]); });
           payload.file = raw; payload.file_name = file.files[0].name;
         }
-        const d = await api("/api/admin/doc-types", payload);
+        const d = await api("/api/admin/doc-types", payload); window.tfscCatalogChanged = true;
         await types(d.key); window.tfscToast?.("Saved.");
       } catch (e) { msg(note, e.message); }
     }));

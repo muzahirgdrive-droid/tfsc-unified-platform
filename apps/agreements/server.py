@@ -179,7 +179,7 @@ def priced(item, catalog):
         return service_value(item, catalog=catalog)
     if len(options) > 5:
         raise ValueError('Offer at most five pricing options for one service.')
-    chosen = [service_value(dict(item, **(o if isinstance(o, dict) else {}), id=item.get('id')), catalog=catalog) for o in options]
+    chosen = [service_value({**item, **(o if isinstance(o, dict) else {}), 'id': item.get('id')}, catalog=catalog) for o in options]
     if len({c['model'] for c in chosen}) != len(chosen):
         raise ValueError(f"Each pricing option for {chosen[0]['name']} must use a different pricing model.")
     out = dict(chosen[0])
