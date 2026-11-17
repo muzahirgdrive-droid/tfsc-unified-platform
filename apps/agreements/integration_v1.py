@@ -31,6 +31,7 @@ import json
 import logging
 import re
 import secrets
+import threading
 import time
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -508,6 +509,7 @@ def enabled(c) -> bool:
 
 
 _INDEXES_READY = {'for': None}
+_INDEX_LOCK = threading.Lock()
 
 
 def ensure_indexes() -> None:
@@ -516,16 +518,28 @@ def ensure_indexes() -> None:
     engine = db.engine
     if engine.dialect.name != 'postgresql' or _INDEXES_READY['for'] is engine:
         return
-    with engine.connect() as c:
-        c = c.execution_options(isolation_level='AUTOCOMMIT')
-        for index in SOURCE_INDEXES:
-            name, table = index.name, index.table.name
-            valid = c.execute(text('SELECT i.indisvalid FROM pg_class x JOIN pg_index i ON i.indexrelid = x.oid WHERE x.relname = :n'), {'n': name}).scalar()
-            if valid is False:
-                c.exec_driver_sql(f'DROP INDEX CONCURRENTLY IF EXISTS {name}')
-            if valid is not True:
-                c.exec_driver_sql(f'CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} ON {table} (updated)')
-    _INDEXES_READY['for'] = engine
+    # one builder at a time, across threads and processes: another one that is already building is left to finish, and
+    # this run carries on without waiting (the publisher works without the indexes, only slower)
+    if not _INDEX_LOCK.acquire(blocking=False):
+        return
+    try:
+        with engine.connect() as c:
+            c = c.execution_options(isolation_level='AUTOCOMMIT')
+            if not c.execute(text('SELECT pg_try_advisory_lock(:k)'), {'k': LOCK_KEY + 1}).scalar():
+                return
+            try:
+                for index in SOURCE_INDEXES:
+                    name, table = index.name, index.table.name
+                    valid = c.execute(text('SELECT i.indisvalid FROM pg_class x JOIN pg_index i ON i.indexrelid = x.oid WHERE x.relname = :n'), {'n': name}).scalar()
+                    if valid is False:
+                        c.exec_driver_sql(f'DROP INDEX CONCURRENTLY IF EXISTS {name}')
+                    if valid is not True:
+                        c.exec_driver_sql(f'CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} ON {table} (updated)')
+            finally:
+                c.execute(text('SELECT pg_advisory_unlock(:k)'), {'k': LOCK_KEY + 1})
+        _INDEXES_READY['for'] = engine
+    finally:
+        _INDEX_LOCK.release()
 
 
 def retention(c, now: dt.datetime) -> int:
@@ -559,6 +573,7 @@ def publish_once(force_sweep: bool = False) -> int:
             log.exception('integration feed: client %s could not be published', client_id)
             failed.append(client_id)
     with db.engine.begin() as c:
+        _lock(c)   # the same lock as publishing: two runs never write this bookkeeping at the same moment
         state = dict(_setting(c, SETTING_STATE, {}) or {})
         state.update(last_run=started, retry=failed[:500])
         if published:

@@ -425,8 +425,9 @@ class Feed(Base):
             self.assertEqual(self.post('/api/admin/integrations/tokens', {'name': 'x'}).status_code, 403)
         with db.engine.connect() as c:
             stored = c.execute(select(feed.tokens.c.token_hash)).scalars().all()
+            audit = [dict(r) for r in c.execute(select(db.audit)).mappings()]
         self.assertEqual(stored, [hashlib.sha256(self.token.encode()).hexdigest()])
-        self.assertNotIn(self.token, json.dumps([dict(r) for r in db.engine.connect().execute(select(db.audit)).mappings()], default=str))
+        self.assertNotIn(self.token, json.dumps(audit, default=str))
 
     def test_without_a_token_nothing_runs_and_nothing_is_published(self):
         with db.engine.begin() as c:
