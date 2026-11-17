@@ -77,7 +77,7 @@
         }));
         row.append(name, el("td", "", when(k.created)), used, status, act); tbody.append(row);
       });
-      table.append(thead, tbody); tb.append(table);
+      table.append(thead, tbody); const scroll = el("div", "int-scroll"); scroll.append(table); tb.append(scroll);
     } else tb.append(el("p", "cat-note", "No token yet."));
     v.append(tc);
   }

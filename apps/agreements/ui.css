@@ -1024,5 +1024,6 @@ input.is-locked{background:var(--surface-2,#f3f5f8);color:var(--ink-2,#3b4658);c
 .int-create label{font-size:12.5px;font-weight:600;color:#34466b}
 .int-create input{max-width:260px;border:1px solid #cfd8e6;border-radius:9px;padding:9px 11px;font:inherit;font-size:13.5px}
 .int-by{display:inline!important;margin-left:4px}
+.int-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.int-scroll .cat-table{min-width:640px}
 .cat-table td.cat-bad{color:#b3261e;font-weight:700}
 @media (max-width:820px){.int-facts{grid-template-columns:minmax(0,1fr)}.int-create,.int-token{flex-wrap:wrap}}
