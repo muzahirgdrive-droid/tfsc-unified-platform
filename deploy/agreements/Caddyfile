@@ -1,6 +1,14 @@
 # HTTPS for TFSC Agreements: Caddy obtains and renews the certificate for TFSC_DOMAIN (Let's Encrypt).
 {$TFSC_DOMAIN} {
 	encode zstd gzip
+	# Release 5.3: the read-only feed for TFS Onboarding and Client Success (OCS) is not served to the internet. OCS on this
+	# server reads it over the private network tfsc-link (http://agreements:8000/api/integration/v1). OCS on another server:
+	# put that server's address in .env as TFSC_INTEGRATION_ALLOW (e.g. 203.0.113.10/32) and run ./agreements.sh restart.
+	@integration {
+		path /api/integration/*
+		not remote_ip {$TFSC_INTEGRATION_ALLOW:255.255.255.255/32}
+	}
+	respond @integration 404
 	# When the application restarts (an update), requests wait a few seconds for it instead of failing.
 	reverse_proxy agreements:8000 {
 		lb_try_duration 20s
@@ -8,3 +16,7 @@
 		fail_duration 5s
 	}
 }
+
+# Release 5.3: other systems on this server (OCS) add their own sites here as one file each (written by their installer),
+# so they share this HTTPS entry point without changing this file. Nothing there: nothing changes.
+import /etc/caddy/sites/*.caddy

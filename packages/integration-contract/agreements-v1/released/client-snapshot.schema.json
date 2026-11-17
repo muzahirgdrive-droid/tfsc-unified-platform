@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfsc.example/contracts/agreements-integration/v1/client-snapshot.schema.json",
+  "title": "ClientSnapshot v1",
+  "description": "Everything OCS needs to know about one client of TFS Agreements that has at least one signed agreement. A snapshot is the complete current state, never a difference. Consumers must ignore properties they do not know.",
+  "type": "object",
+  "required": ["contract", "client_ref", "client_number", "legal_name", "state", "is_test", "agreements", "snapshot_hash", "generated_at"],
+  "properties": {
+    "contract": {"const": "tfsc.agreements.integration/1"},
+    "client_ref": {"type": "string", "minLength": 8, "maxLength": 64, "description": "Opaque, permanent id of the client in TFS Agreements. Never shown to people."},
+    "client_number": {"type": "string", "pattern": "^CL-[0-9]{4,}$", "description": "The permanent client number. Never changes, never reused."},
+    "legal_name": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Exactly as written on the client's agreements."},
+    "address": {"type": "string", "maxLength": 1000},
+    "phone": {"type": "string", "maxLength": 60},
+    "email": {"type": "string", "maxLength": 200},
+    "website": {"type": "string", "maxLength": 300},
+    "state": {"enum": ["active", "trashed", "purged"], "description": "active: normal. trashed: in the 30-day Trash. purged: details wiped in TFS Agreements; signed agreements are kept."},
+    "is_test": {"type": "boolean", "description": "Always false in the feed: test clients and test agreements are never published. Present so a consumer can assert it."},
+    "contacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["contact_ref", "name"],
+        "properties": {
+          "contact_ref": {"type": "string"},
+          "name": {"type": "string", "maxLength": 150},
+          "title": {"type": "string", "maxLength": 150},
+          "email": {"type": "string", "maxLength": 200},
+          "phone": {"type": "string", "maxLength": 60},
+          "role": {"enum": ["signatory", "billing", "compliance", "other"]}
+        }
+      }
+    },
+    "agreements": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Every signed agreement of the client, oldest first. Signed means: an envelope completed by every signer, or a past agreement filed on the client's record with a signed date or a signed copy.",
+      "items": {"$ref": "#/$defs/agreement"}
+    },
+    "snapshot_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "SHA-256 of the canonical JSON of this object without snapshot_hash and generated_at. Equal hash = nothing changed."},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "agreement": {
+      "type": "object",
+      "required": ["agreement_ref", "origin", "kind", "title", "company", "signed_on", "services", "documents"],
+      "properties": {
+        "agreement_ref": {"type": "string", "minLength": 8, "maxLength": 80, "description": "Opaque, permanent id of this signed agreement. One per signed document."},
+        "origin": {"enum": ["portal_signed", "filed_past"], "description": "portal_signed: generated and signed electronically in TFS Agreements. filed_past: signed before or outside the portal and filed on the client's record."},
+        "kind": {"enum": ["baa", "services", "nda", "custom", "other"]},
+        "custom_kind": {"type": "string", "maxLength": 80, "description": "For kind custom: the key of the agreement type."},
+        "title": {"type": "string", "maxLength": 200},
+        "reference": {"type": "string", "maxLength": 120, "description": "The agreement reference printed on the document, or the envelope reference, or the DocuSign/Jotform id of a past agreement."},
+        "company": {
+          "type": "object",
+          "required": ["key", "legal_name"],
+          "properties": {
+            "key": {"type": "string", "description": "Stable key of the contracting company."},
+            "legal_name": {"type": "string", "description": "Exactly as on the agreement, e.g. SCRIBE ALIGN LLC."}
+          }
+        },
+        "signed_on": {"type": ["string", "null"], "format": "date", "description": "The date the last client signer signed (company time zone), or the signed date written on a past agreement. null only for a filed past agreement whose date is unknown."},
+        "effective_on": {"type": ["string", "null"], "format": "date"},
+        "completed_at": {"type": ["string", "null"], "format": "date-time"},
+        "governing_state": {"type": "string"},
+        "client_signers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {"type": "string"}, "title": {"type": "string"}, "email": {"type": "string"},
+              "signed_at": {"type": ["string", "null"], "format": "date-time"}
+            }
+          }
+        },
+        "company_signer": {
+          "type": "object",
+          "properties": {"name": {"type": "string"}, "title": {"type": "string"}}
+        },
+        "terms": {
+          "type": "object",
+          "description": "Commercial terms stated once for the agreement.",
+          "properties": {
+            "notice_days": {"type": ["integer", "null"]},
+            "payment_days": {"type": ["integer", "null"]},
+            "cure_days": {"type": ["integer", "null"]},
+            "special_terms": {"type": "string"}
+          }
+        },
+        "services": {
+          "type": "array",
+          "description": "The services on a Services Agreement (or a custom agreement that carries services). Empty for BAA and NDA, and for past agreements whose services were not recorded.",
+          "items": {"$ref": "#/$defs/service"}
+        },
+        "documents": {
+          "type": "array",
+          "description": "The files of this agreement. Fetch each with GET /documents/{document_ref}.",
+          "items": {
+            "type": "object",
+            "required": ["document_ref", "role", "filename", "sha256", "size"],
+            "properties": {
+              "document_ref": {"type": "string"},
+              "role": {"enum": ["signed_copy", "certificate"]},
+              "filename": {"type": "string"},
+              "mime": {"type": "string"},
+              "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "size": {"type": "integer", "minimum": 0},
+              "pages": {"type": ["integer", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["service_id", "name", "is_custom", "pricing"],
+      "properties": {
+        "service_id": {"type": "string", "description": "Stable id of the service in the TFS Agreements catalogue (e.g. medical_billing), or custom_<hash> for a service typed on this agreement."},
+        "name": {"type": "string", "description": "The service's name as printed on the agreement."},
+        "is_custom": {"type": "boolean"},
+        "category": {"enum": ["recurring", "on_demand", ""]},
+        "details": {"type": "string", "description": "Service parameters and agreed deliverables as typed."},
+        "pricing": {"$ref": "#/$defs/pricing"},
+        "options": {
+          "type": "array",
+          "description": "Present when the agreement offered several fee options for this service. Option A is first.",
+          "items": {
+            "type": "object",
+            "required": ["letter", "pricing"],
+            "properties": {"letter": {"type": "string", "pattern": "^[A-E]$"}, "pricing": {"$ref": "#/$defs/pricing"}}
+          }
+        },
+        "selected_option": {"type": ["string", "null"], "pattern": "^[A-E]$", "description": "The option the client chose when signing. When set, `pricing` equals that option's pricing."}
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "required": ["model", "summary"],
+      "properties": {
+        "model": {"type": "string", "description": "percentage | fte | pte | unit | fixed | consultancy | one_time | two_installments | rate_card | custom:<id>. Consumers must accept unknown models and fall back to summary."},
+        "summary": {"type": "string", "description": "One readable line stating the price exactly as agreed, e.g. \"6% of net collections\". Always present; the safe fallback for any consumer."},
+        "rate": {"type": ["string", "null"], "pattern": "^-?[0-9]+(\\.[0-9]+)?$", "description": "Decimal as a string. Percent for percentage; USD otherwise."},
+        "rate_unit": {"enum": ["percent", "per_month", "per_hour", "per_unit", "flat", ""]},
+        "quantity": {"type": ["string", "null"]},
+        "weekly_hours": {"type": ["string", "null"]},
+        "unit": {"type": "string"},
+        "government_rate": {"type": ["string", "null"]},
+        "commercial_rate": {"type": ["string", "null"]},
+        "installment_percent": {"type": ["string", "null"]},
+        "milestones": {"type": "array", "items": {"type": "string"}},
+        "values": {"type": "object", "description": "For a custom pricing model: the values of its fields by key."}
+      }
+    }
+  }
+}

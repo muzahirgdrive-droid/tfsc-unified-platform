@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfsc.example/contracts/agreements-integration/v1/changes.schema.json",
+  "title": "Changes page v1",
+  "type": "object",
+  "required": ["contract", "instance_id", "head_seq", "changes", "has_more"],
+  "properties": {
+    "contract": {"const": "tfsc.agreements.integration/1"},
+    "instance_id": {"type": "string", "description": "Identifies this TFS Agreements installation. A consumer that sees it change must stop and ask an administrator."},
+    "head_seq": {"type": "integer", "minimum": 0, "description": "The newest sequence number published."},
+    "has_more": {"type": "boolean"},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seq", "kind", "client_ref", "published_at"],
+        "properties": {
+          "seq": {"type": "integer", "minimum": 1, "description": "Strictly increasing, no gaps, assigned by one publisher."},
+          "kind": {"enum": ["client.snapshot", "client.withdrawn"], "description": "client.snapshot: the client's complete current state. client.withdrawn: the client no longer has any signed, non-test agreement to publish (for example its only agreement was marked as a test)."},
+          "client_ref": {"type": "string"},
+          "published_at": {"type": "string", "format": "date-time"},
+          "snapshot": {"$ref": "client-snapshot.schema.json"}
+        },
+        "if": {"properties": {"kind": {"const": "client.snapshot"}}},
+        "then": {"required": ["snapshot"]}
+      }
+    }
+  }
+}

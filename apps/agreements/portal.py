@@ -19,7 +19,7 @@ import entities as entities_mod
 import static_assets
 from entities import ENTITIES, get_entity
 
-VERSION='5.2.0'
+VERSION='5.3.0'
 ORIGIN=os.getenv('TFSC_ORIGIN','http://127.0.0.1:8765').rstrip('/')
 if not db.LOCAL and (not ORIGIN.startswith('https://') or db.URL.startswith('sqlite')):
     raise RuntimeError('VPS mode requires TFSC_ORIGIN=https://your-domain and DATABASE_URL=postgresql+psycopg://...')
@@ -46,7 +46,10 @@ async def boundary(request,call_next):
     host=request.headers.get('host','')
     allowed={urlsplit(ORIGIN).netloc}
     if db.LOCAL:allowed.add('localhost:'+str(urlsplit(ORIGIN).port or 80))
-    if host not in allowed:return JSONResponse({'error':'Invalid application host.'},403)
+    # The integration feed (integration_v1.py) is read by OCS over the private network as http://agreements:8000 and is
+    # authorised by its own bearer token, never by a browser session, so the host check that protects sessions does not apply.
+    feed=request.method in ('GET','HEAD') and request.url.path.startswith('/api/integration/v1/')
+    if host not in allowed and not feed:return JSONResponse({'error':'Invalid application host.'},403)
     if request.method not in ('GET','HEAD'):
         if request.headers.get('origin') not in (None,ORIGIN) or request.headers.get('sec-fetch-site')=='cross-site':
             return JSONResponse({'error':'Request origin was rejected.'},403)
@@ -569,8 +572,10 @@ import doc_types
 doc_types.install(app)
 import followups
 followups.install(app)
+import integration_v1
+integration_v1.install(app)   # read-only feed for OCS (/api/integration/v1, release 5.3)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','verify.css','resilient.js','session.js'}
-PRIVATE={'catalog.js','followups.js','app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
+PRIVATE={'integrations.js','catalog.js','followups.js','app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request,v:str=''):
     # Scripts and style sheets hold no data (every piece of data comes from /api, which checks the session), so they are

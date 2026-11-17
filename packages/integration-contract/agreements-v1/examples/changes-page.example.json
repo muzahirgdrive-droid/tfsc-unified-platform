@@ -1,0 +1,114 @@
+{
+  "contract": "tfsc.agreements.integration/1",
+  "instance_id": "agr-7f3c2a9e41d04b6f",
+  "head_seq": 4127,
+  "has_more": false,
+  "changes": [
+    {
+      "seq": 4126,
+      "kind": "client.snapshot",
+      "client_ref": "8baaadbceee34d968a21ab91bec5b423",
+      "published_at": "2026-11-15T14:02:11Z",
+      "snapshot": {
+        "contract": "tfsc.agreements.integration/1",
+        "client_ref": "8baaadbceee34d968a21ab91bec5b423",
+        "client_number": "CL-0001",
+        "legal_name": "Northside Family Clinic, PLLC",
+        "address": "400 Lake Ave, Reno, NV 89501",
+        "phone": "(775) 555-0142",
+        "email": "office@northsidefamily.test",
+        "website": "https://northsidefamily.test",
+        "state": "active",
+        "is_test": false,
+        "contacts": [
+          {"contact_ref": "c1f0a3", "name": "Dr. Rebecca Moore, MD", "title": "Owner", "email": "rebecca.moore@northsidefamily.test", "phone": "(775) 555-0143", "role": "signatory"},
+          {"contact_ref": "c1f0a4", "name": "Dana Whitfield", "title": "Office Manager", "email": "dana@northsidefamily.test", "phone": "", "role": "billing"}
+        ],
+        "agreements": [
+          {
+            "agreement_ref": "env-59d3a66c4647-doc1",
+            "origin": "portal_signed",
+            "kind": "baa",
+            "title": "Business Associate Agreement",
+            "reference": "TFSC-137A6B591E4C0086725D5E33D7926F",
+            "company": {"key": "scribe_align", "legal_name": "SCRIBE ALIGN LLC"},
+            "signed_on": "2026-03-02",
+            "effective_on": "2026-03-01",
+            "completed_at": "2026-03-02T18:41:07Z",
+            "governing_state": "Nevada",
+            "client_signers": [{"name": "Dr. Rebecca Moore, MD", "title": "Owner", "email": "rebecca.moore@northsidefamily.test", "signed_at": "2026-03-02T18:40:55Z"}],
+            "company_signer": {"name": "Naeem Abbas", "title": "Chief Executive Officer"},
+            "terms": {},
+            "services": [],
+            "documents": [
+              {"document_ref": "d-7a1e0c55", "role": "signed_copy", "filename": "Business Associate Agreement - Northside Family Clinic, PLLC.pdf", "mime": "application/pdf", "sha256": "3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8550", "size": 446866, "pages": 6},
+              {"document_ref": "d-7a1e0c57", "role": "certificate", "filename": "Certificate of Completion - 59D3A66C-4647.pdf", "mime": "application/pdf", "sha256": "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a", "size": 69009, "pages": 2}
+            ]
+          },
+          {
+            "agreement_ref": "env-59d3a66c4647-doc2",
+            "origin": "portal_signed",
+            "kind": "services",
+            "title": "Services Agreement",
+            "reference": "TFSC-137A6B591E4C0086725D5E33D7926F",
+            "company": {"key": "scribe_align", "legal_name": "SCRIBE ALIGN LLC"},
+            "signed_on": "2026-03-02",
+            "effective_on": "2026-03-01",
+            "completed_at": "2026-03-02T18:41:07Z",
+            "governing_state": "Nevada",
+            "client_signers": [{"name": "Dr. Rebecca Moore, MD", "title": "Owner", "email": "rebecca.moore@northsidefamily.test", "signed_at": "2026-03-02T18:40:55Z"}],
+            "company_signer": {"name": "Naeem Abbas", "title": "Chief Executive Officer"},
+            "terms": {"notice_days": 30, "payment_days": 15, "cure_days": 10, "special_terms": ""},
+            "services": [
+              {
+                "service_id": "medical_billing", "name": "Medical Billing, Including Coding", "is_custom": false, "category": "recurring", "details": "",
+                "pricing": {"model": "percentage", "summary": "5% of net collections", "rate": "5", "rate_unit": "percent"},
+                "options": [
+                  {"letter": "A", "pricing": {"model": "percentage", "summary": "5% of net collections", "rate": "5", "rate_unit": "percent"}},
+                  {"letter": "B", "pricing": {"model": "fte", "summary": "1 full-time resource at $1,400.00 per month (40 hours a week)", "rate": "1400.00", "rate_unit": "per_month", "quantity": "1", "weekly_hours": "40"}}
+                ],
+                "selected_option": "A"
+              },
+              {
+                "service_id": "credentialing", "name": "Credentialing and Enrollment", "is_custom": false, "category": "on_demand", "details": "Up to 8 payers for two providers.",
+                "pricing": {"model": "rate_card", "summary": "$150.00 per government payer application; $200.00 per commercial payer application", "rate": "150.00", "rate_unit": "per_unit", "government_rate": "150.00", "commercial_rate": "200.00"},
+                "selected_option": null
+              }
+            ],
+            "documents": [
+              {"document_ref": "d-7a1e0c56", "role": "signed_copy", "filename": "Services Agreement - Northside Family Clinic, PLLC.pdf", "mime": "application/pdf", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "size": 512300, "pages": 9},
+              {"document_ref": "d-7a1e0c57", "role": "certificate", "filename": "Certificate of Completion - 59D3A66C-4647.pdf", "mime": "application/pdf", "sha256": "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a", "size": 69009, "pages": 2}
+            ]
+          },
+          {
+            "agreement_ref": "past-2f6b01d9c0aa",
+            "origin": "filed_past",
+            "kind": "services",
+            "title": "Services Agreement (DocuSign, 2025)",
+            "reference": "DS-4411-AB20",
+            "company": {"key": "scribe_align", "legal_name": "SCRIBE ALIGN LLC"},
+            "signed_on": "2025-06-12",
+            "effective_on": "2025-07-01",
+            "completed_at": null,
+            "governing_state": "",
+            "client_signers": [{"name": "Rebecca Moore", "title": "", "email": "", "signed_at": null}],
+            "company_signer": {"name": "Naeem Abbas", "title": ""},
+            "terms": {},
+            "services": [],
+            "documents": [
+              {"document_ref": "f-91c2aa07", "role": "signed_copy", "filename": "Northside Services Agreement 2025.pdf", "mime": "application/pdf", "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "size": 388112, "pages": null}
+            ]
+          }
+        ],
+        "snapshot_hash": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "generated_at": "2026-11-15T14:02:11Z"
+      }
+    },
+    {
+      "seq": 4127,
+      "kind": "client.withdrawn",
+      "client_ref": "0d5b1f6e2a9c4b7e8f10a3c2d4e6f809",
+      "published_at": "2026-11-15T14:05:40Z"
+    }
+  ]
+}

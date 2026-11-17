@@ -208,7 +208,9 @@ def collect(c, fresh: bool = False) -> list[dict]:
     if not fresh and _cache['items'] is not None and now - _cache['at'] < 20:
         return _cache['items']
     items = [item('database', 'Database', 'ok', 'Connected.')]
-    for check in (lambda: check_workers(c, now), lambda: check_mail(c, now), lambda: check_queues(c, now), lambda: check_scanner(now), lambda: check_backups(c, now), check_disk):
+    import integration_v1
+    for check in (lambda: check_workers(c, now), lambda: check_mail(c, now), lambda: check_queues(c, now), lambda: check_scanner(now), lambda: check_backups(c, now), check_disk,
+                  lambda: integration_v1.health_items(c, now)):
         try:
             items += check()
         except Exception as exc:  # noqa: BLE001  (a check that cannot run is itself a finding, never an error page)

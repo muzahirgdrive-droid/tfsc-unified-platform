@@ -32,7 +32,7 @@ jobs:
         with: {python-version: "3.12", cache: pip}
       - name: Install
         run: |
-          pip install -r apps/crm-api/requirements-dev.txt -r apps/agreements/requirements.txt
+          pip install -r apps/crm-api/requirements-dev.txt -r apps/agreements/requirements.txt -r apps/agreements/requirements-test.txt
           pip install -e packages/refine/python -e packages/bridge-contract/python
       - name: Lint (v2 code)
         run: ruff check .

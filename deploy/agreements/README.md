@@ -362,6 +362,31 @@ docker compose --env-file .env exec -u postgres postgres sh -c 'openssl enc -d -
 docker compose --env-file .env start agreements agreements-worker
 ```
 
+### This update (November 17, 2026: release 5.3, the connection to TFS Onboarding and Client Success)
+
+Nothing you have is changed, and nothing you do in TFS Agreements works differently: every client, client number,
+agreement, envelope, signing link, signature, signed copy, certificate and mailbox stays exactly as it is. Until you
+create an integration token (below) nothing new runs at all.
+
+- **A read-only feed for TFS Onboarding and Client Success (OCS).** Every client with a signed agreement (signed here,
+  or filed as a past agreement) is offered to OCS by itself: the client number, the exact legal name, contacts, every
+  signed agreement with its services, prices and the fee option the client chose, the signers, the signed PDF and the
+  Certificate of Completion. Test clients and test agreements are never offered. OCS can only read; it cannot change
+  anything in TFS Agreements.
+- **Admin › Integrations** (Super Admin): create the token OCS uses (shown once, with a Copy button), see when it was last
+  used and from where, revoke it at any time, see how many clients are offered and when the last change went out, and
+  "Publish everything again" (it only adds; nothing is removed). Admin › System check gains one line, "Integration feed
+  (OCS)", once a token exists.
+- **The database change (0014)** adds three tables (the feed, what was last offered per client, the tokens) and two
+  settings, and nothing else. On the server the worker then builds four small indexes in the background without
+  blocking anyone (`CREATE INDEX CONCURRENTLY`).
+- **Sharing this server's HTTPS address with OCS.** The installer now creates two Docker networks (`tfsc-edge`,
+  `tfsc-link`) and the folder `/opt/tfsc-edge/sites`. OCS's installer puts one file there so it is served under its own
+  web address by the same Caddy; OCS reads the feed over the private network `tfsc-link`. The feed is never served to
+  the internet. If OCS runs on another server, put that server's address in `.env`, for example
+  `TFSC_INTEGRATION_ALLOW='203.0.113.10/32'`, then `sudo ./agreements.sh restart`.
+- How to connect the two systems once: CONNECTING.md in the OCS package (create the token here, give it to OCS).
+
 ### This update (November 12, 2026: release 5.2, your review of November 12) also
 
 Nothing you have is changed: every client, client number, generated agreement, envelope, signing link, signature, signed

@@ -20,6 +20,7 @@ import client_trash
 import database as db
 import esign
 import housekeeping
+import integration_v1
 import mailer
 
 log = logging.getLogger('tfsc.esign.worker')
@@ -29,7 +30,8 @@ LANES = {
     'mail': (('mail', 0, mailer.dispatch_once),),
     'complete': (('complete', 0, esign.complete_due),),
     'sweep': (('sweep', 60, esign.sweep), ('inbox', 30, mailer.poll_inboxes), ('trash', 3600, client_trash.purge_once),
-              ('tidy', 3600, housekeeping.run), ('seal', 120, esign.seal_backfill)),
+              ('tidy', 3600, housekeeping.run), ('seal', 120, esign.seal_backfill),
+              ('feed', integration_v1.EVERY, integration_v1.publish_once)),   # the OCS feed; does nothing until a token exists
 }
 ALL = tuple(task for lane in LANES.values() for task in lane)
 HEARTBEAT_EVERY = 15

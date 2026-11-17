@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfsc.example/contracts/agreements-integration/v1/catalog.schema.json",
+  "title": "Catalog v1",
+  "description": "Reference lists, so a consumer can map services and companies before it meets them on an agreement.",
+  "type": "object",
+  "required": ["contract", "companies", "services"],
+  "properties": {
+    "contract": {"const": "tfsc.agreements.integration/1"},
+    "companies": {"type": "array", "items": {"type": "object", "required": ["key", "legal_name", "active"], "properties": {"key": {"type": "string"}, "legal_name": {"type": "string"}, "short_name": {"type": "string"}, "governing_state": {"type": "string"}, "active": {"type": "boolean"}}}},
+    "services": {"type": "array", "items": {"type": "object", "required": ["service_id", "name", "active"], "properties": {"service_id": {"type": "string"}, "name": {"type": "string"}, "category": {"enum": ["recurring", "on_demand", ""]}, "pricing_models": {"type": "array", "items": {"type": "string"}}, "active": {"type": "boolean"}}}},
+    "agreement_types": {"type": "array", "items": {"type": "object", "required": ["kind", "title"], "properties": {"kind": {"type": "string"}, "custom_kind": {"type": "string"}, "title": {"type": "string"}}}}
+  }
+}

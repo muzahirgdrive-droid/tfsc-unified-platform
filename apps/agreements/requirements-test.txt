@@ -1,0 +1,1 @@
+jsonschema==4.25.1   # tests only: the integration feed is checked against the frozen contract (packages/integration-contract)

@@ -191,6 +191,15 @@ print_key() {
   echo "Setup key: ${key:-(already used: the Super Admin exists)}"
 }
 
+shared_entry() {   # release 5.3: the networks and the folder another system on this server (OCS) uses to share this HTTPS entry
+  # point and read the feed; compose.yaml refers to them, so they must exist before the stack starts. Harmless without OCS.
+  local net
+  for net in tfsc-edge tfsc-link; do
+    docker network inspect "$net" >/dev/null 2>&1 || docker network create "$net" >/dev/null || die "Could not create the Docker network $net."
+  done
+  mkdir -p /opt/tfsc-edge/sites || die "Could not create /opt/tfsc-edge/sites."
+}
+
 cmd_install() {
   [ "$(id -u)" = 0 ] || die "Run the installer as root: sudo $0 install"
   check_host
@@ -203,6 +212,7 @@ cmd_install() {
   fi
   open_firewall
   build_images
+  shared_entry
   say "Starting TFSC Agreements"
   dc up -d
   wait_ready
@@ -303,6 +313,7 @@ cmd_rollback() {   # go back to the version that ran before the last update (it 
   confirm "Go back to the version that ran before the last update? Data is kept." || die "Nothing was changed."
   docker tag tfsc-agreements:4 tfsc-agreements:undone
   docker tag tfsc-agreements:rollback tfsc-agreements:4
+  shared_entry
   dc up -d
   wait_ready
   echo "Back on the previous version. (The version you left is kept as tfsc-agreements:undone.)"
@@ -313,6 +324,7 @@ cmd_update() {
   [ -f "$ENV_FILE" ] || die "No settings in $ENV_FILE. Copy deploy/agreements/.env (and backup-offsite.env, if you use it) from the previous release folder first."
   trap '' HUP   # a dropped SSH connection must not stop an update half way
   ensure_env_keys
+  shared_entry      # before anything starts from the new compose.yaml (the one-off migration container joins tfsc-link)
   # Keep the running version's image so the update can step back to it.
   if docker image inspect tfsc-agreements:4 >/dev/null 2>&1; then docker tag tfsc-agreements:4 tfsc-agreements:rollback; fi
   [ "$(dc ps postgres --format '{{.State}}' 2>/dev/null)" = running ] \
@@ -364,7 +376,7 @@ main() {
     rollback) cmd_rollback ;;
     restart) dc restart ;;
     stop) dc stop ;;
-    start) dc up -d ;;
+    start) shared_entry; dc up -d ;;
     help|-h|--help) cmd_help ;;
     *) cmd_help; exit 2 ;;
   esac

@@ -114,6 +114,9 @@ services:
   agreements:
     <<: *agreements
     ports: ["127.0.0.1:${TFSC_PORT:-8765}:8000"]
+    # Release 5.3: tfsc-link is the private network OCS (TFS Onboarding and Client Success) reads the feed over, as
+    # http://agreements:8000/api/integration/v1. Created by agreements.sh; nothing else is shared.
+    networks: [default, tfsc-link]
     environment:
       <<: *agreements-env
       # one database connection per request thread, a few spare (4 x 20 = 80 of the database's 200 connections)
@@ -156,13 +159,22 @@ services:
   edge:
     image: caddy:2-alpine
     restart: unless-stopped
-    environment: { TFSC_DOMAIN: "${TFSC_DOMAIN}" }
+    # TFSC_INTEGRATION_ALLOW: addresses that may read the feed through this entry point (OCS on another server). Empty:
+    # nobody from outside (255.255.255.255/32 matches no one).
+    environment: { TFSC_DOMAIN: "${TFSC_DOMAIN}", TFSC_INTEGRATION_ALLOW: "${TFSC_INTEGRATION_ALLOW:-255.255.255.255/32}" }
     ports: ["80:80", "443:443"]
-    volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy-data:/data, caddy-config:/config]
+    # Release 5.3: /etc/caddy/sites holds one site file per system that shares this HTTPS entry point (OCS writes ocs.caddy);
+    # tfsc-edge is the network those systems' web servers join. Both are created by agreements.sh.
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, /opt/tfsc-edge/sites:/etc/caddy/sites:ro, caddy-data:/data, caddy-config:/config]
+    networks: [default, tfsc-edge]
     depends_on: [agreements]
     init: true
     mem_limit: 512m
     logging: *logging
+
+networks:
+  tfsc-edge: { external: true, name: tfsc-edge }
+  tfsc-link: { external: true, name: tfsc-link }
 
 volumes:
   postgres-data:
