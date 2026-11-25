@@ -1027,3 +1027,104 @@ input.is-locked{background:var(--surface-2,#f3f5f8);color:var(--ink-2,#3b4658);c
 .int-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.int-scroll .cat-table{min-width:640px}
 .cat-table td.cat-bad{color:#b3261e;font-weight:700}
 @media (max-width:820px){.int-facts{grid-template-columns:minmax(0,1fr)}.int-create,.int-token{flex-wrap:wrap}}
+/* Release 5.4: Reminders (Admin › Reminders, the Reminder centre, the Reminders card on an envelope, the signer's stop page) */
+#admin-view .rem-tabs+.cat-card,#admin-view .rem-grid .cat-card{margin-top:0}#admin-view .rem-grid .cat-card+.cat-card,.rem-grid>div>.cat-card{margin-top:14px}
+.rem-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 20px;overflow-x:auto}
+.rem-tabs a{padding:10px 14px;font-size:14px;font-weight:600;color:var(--ink-3);text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.rem-tabs a[aria-current]{color:var(--ink);border-color:var(--primary)}
+.rem-tabs .n{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--surface-3);color:var(--ink-2);font-size:11px;margin-left:6px}
+.rem-grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:20px;align-items:start}
+.rem-policy{display:block;border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:#fff;margin-bottom:10px;text-decoration:none;color:inherit}
+.rem-policy.on{border-color:var(--primary);background:var(--primary-soft);box-shadow:inset 3px 0 0 var(--primary)}
+.rem-policy strong{display:flex;justify-content:space-between;gap:8px;font-size:14.5px;color:var(--ink)}
+.rem-policy p{margin:4px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.45}
+.rem-policy .uses{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.rem-wide{width:100%;margin-bottom:14px}
+.rem-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:#eef3fb;color:#34466b;border:1px solid #d9e3f2;white-space:nowrap;vertical-align:middle}
+.rem-chip.green{background:var(--success-soft);color:var(--success);border-color:#bfe5cd}.rem-chip.amber{background:var(--warning-soft);color:var(--warning);border-color:#f3d3a3}
+.rem-chip.red{background:var(--danger-soft);color:var(--danger);border-color:#f1c4bf}.rem-chip.grey{background:#f3f4f6;color:#5b6779;border-color:#e2e7ef}
+.rem-chip.violet{background:#f0edff;color:#5b3fd6;border-color:#d9d0ff}
+.rem-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px}
+.rem-f label{display:block;font-size:12.5px;font-weight:600;color:#34466b;margin-bottom:5px}
+.rem-f+.rem-f{margin-top:12px}.rem-form .rem-f+.rem-f{margin-top:0}
+.rem-input{width:100%;border:1px solid #cfd8e6;border-radius:9px;padding:9px 11px;font:inherit;font-size:13.5px;background:#fff;color:var(--ink);min-height:40px}
+.rem-note{font-size:12px;color:var(--ink-3);margin:5px 0 0;line-height:1.45}
+.rem-pad{padding:12px 18px 0}
+.rem-sect{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:700;margin:22px 0 10px}
+.rem-sect:first-child{margin-top:0}
+.rem-days{display:flex;gap:6px;flex-wrap:wrap}
+.rem-day{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:13px;color:var(--ink-2);cursor:pointer;background:#fff}
+.rem-day:has(input:checked){border-color:var(--primary);background:var(--primary-soft);color:var(--ink)}
+.rem-switch{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid #eef2f8;cursor:pointer}
+.rem-switch:first-child{border-top:0}
+.rem-switch input{margin-top:3px;width:17px;height:17px;flex:none}
+.rem-switch .t strong{display:block;font-size:14px;color:var(--ink)}.rem-switch .t span{display:block;font-size:12.5px;color:var(--ink-3);margin-top:2px;line-height:1.45}
+.rem-error{background:var(--danger-soft);color:var(--danger);border:1px solid #f1c4bf;border-radius:9px;padding:10px 12px;font-size:13px;margin:14px 0 0}
+.rem-guard{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #eef2f8;font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.rem-guard:first-child{border-top:0}
+.rem-guard .ic{flex:none;width:26px;height:26px;border-radius:8px;background:var(--success-soft);color:var(--success);display:grid;place-items:center;font-weight:800;font-size:13px}
+.rem-guard strong{color:var(--ink)}
+.rem-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.rem-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.rem-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.rem-tile strong{display:block;font-size:24px;color:var(--ink);margin-top:4px}
+.rem-tile small{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+.rem-tile.warn{border-color:#f3d3a3;background:#fffaf2}
+.rem-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 18px;border-bottom:1px solid #eef2f8;background:#fafbfe}
+.rem-filters .rem-input{width:auto;min-width:220px;min-height:34px;padding:6px 10px;font-size:13px}
+.rem-bulk{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 18px;background:var(--primary-soft);border-bottom:1px solid var(--primary-line);font-size:13.5px;color:var(--ink)}
+.rem-empty{padding:26px 18px;margin:0;font-size:13.5px;color:var(--ink-3);text-align:center}
+.rem-scroll{overflow-x:auto}
+.rtable{width:100%;border-collapse:collapse;font-size:13.5px}
+.rtable th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#5b6779;text-align:left;padding:10px 14px;background:#f7f9fd;border-bottom:1px solid #e0e7f0;white-space:nowrap}
+.rtable td{padding:12px 14px;border-bottom:1px solid #eef2f8;vertical-align:middle;color:#1f2a44}
+.rtable b{color:#111b5d}.rtable small{display:block;color:#5b6779;font-size:12px;margin-top:2px}
+.rtable .act{white-space:nowrap;text-align:right}
+.rtable .act .button+.button{margin-left:6px}
+.rem-card .card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.rem-card-top{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;margin-left:auto}.rem-card-top .button{white-space:nowrap}
+@media (max-width:720px){.rem-card-top{flex-wrap:wrap;margin-left:0}}
+.rem-card-top select{border:1px solid #cfd8e6;border-radius:9px;padding:6px 10px;font:inherit;font-size:13px;background:#fff;max-width:260px}
+.rem-rule{margin:0 0 6px}
+.rem-card .notice{margin:8px 0}
+.rem-person{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 0;border-top:1px solid #eef2f8}
+.rem-av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font-weight:700;font-size:14px}
+.rem-person h4{margin:0;font-size:15px;color:var(--ink);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rem-em{font-size:12.5px;color:var(--ink-3);margin-top:2px;overflow-wrap:anywhere}
+.rem-steps{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 0}
+.rem-steps li{display:flex;align-items:center;font-size:12.5px;color:var(--ink-2)}
+.rem-steps li:after{content:"";width:14px;height:2px;background:#cfd7e3;margin:0 5px}
+.rem-steps li:last-child:after{display:none}
+.rem-steps .k{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:8px;background:#f3f5f9;border:1px solid var(--line)}
+.rem-steps .k.done{background:var(--success-soft);border-color:#bfe5cd;color:var(--success)}
+.rem-steps .k.next{background:var(--primary-soft);border-color:var(--primary-line);color:var(--primary-2);font-weight:600}
+.rem-pacts{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.rem-pacts .row{display:flex;gap:8px;align-items:center}
+.rem-toggle{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;color:var(--ink-2);font-weight:600;cursor:pointer}
+.rem-toggle input{width:17px;height:17px}
+.rem-more{position:relative}
+.rem-more>summary{list-style:none;cursor:pointer}.rem-more>summary::-webkit-details-marker{display:none}
+.rem-menu{position:absolute;right:0;top:calc(100% + 4px);width:250px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px;z-index:20}
+.rem-menu-item{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:7px;font:inherit;font-size:13.5px;color:var(--ink);cursor:pointer}
+.rem-menu-item:hover,.rem-menu-item:focus-visible{background:var(--surface-3)}
+.rem-dialog .dialog-body .rem-f{margin-top:12px}
+.rem-dialog-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:18px}
+.rem-who{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.rem-who-title{margin:4px 0 2px;font-size:13px;font-weight:650;color:var(--ink)}
+.rem-who .switch-row:first-of-type{border-top:0}
+@media (max-width:1100px){.rem-grid{grid-template-columns:minmax(0,1fr)}.rem-form{grid-template-columns:1fr 1fr}.rem-tiles{grid-template-columns:1fr 1fr}}
+@media (max-width:720px){.rem-form{grid-template-columns:minmax(0,1fr)}
+  .rem-person{grid-template-columns:40px minmax(0,1fr)}.rem-pacts{grid-column:1 / -1;align-items:stretch}.rem-pacts .row{flex-wrap:wrap}
+  .rtable thead{display:none}.rtable tr{display:block;border-bottom:1px solid #eef2f8;padding:8px 0}.rtable td{display:block;border:0;padding:4px 14px}.rtable .act{text-align:left}
+  .rem-filters .rem-input{min-width:0;width:100%}}
+/* the page a signer sees after "Stop reminders" in a reminder email */
+.stop-page{margin:0;min-height:100vh;background:#f3f5f9;display:grid;place-items:center;padding:24px;font-family:var(--font,system-ui,sans-serif)}
+.stop-wrap{width:100%;max-width:460px}
+.stop-card{background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(16,32,64,.12);padding:30px 26px;text-align:center}
+.stop-card h1{margin:4px 0 10px;font-size:21px;color:#111b5d}
+.stop-card p{margin:0 0 12px;font-size:14.5px;color:#34466b;line-height:1.55}
+.stop-card form{margin-top:18px}
+.stop-card .button{min-width:200px}
+.stop-ok{width:52px;height:52px;border-radius:50%;background:#e7f6ee;color:#137a43;display:grid;place-items:center;margin:0 auto 12px;font-size:26px;font-weight:800}
+.rem-save{margin-top:14px}
+.rem-days{margin-top:2px}

@@ -30,11 +30,12 @@
   if(top==='clients')return go('history','clients',()=>window.clientsShow?.(/^[a-f0-9]{32}$|^import$|^baa-register$|^trash$/.test(a)?a:undefined));
   if(top==='create'&&window.tfscCatalogChanged){window.tfscCatalogChanged=false;location.reload();return;}   // services, pricing or agreement types changed in Admin
   if(top==='create'){const from=document.body.dataset.view;return go('builder','create',()=>window.createEnter?.(from));}
+  if(top==='reminders')return go('admin','agreements',()=>window.remindersShowCentre?.(['sent','held','attention'].includes(a)?a:'upcoming'));
   if(top==='reports')return go('reports','reports',()=>window.reportsShow?.(a||'insights'));
   if(top==='activity'&&user.role!=='user')return go('activity','activity',()=>window.activityShow?.());
   if(top==='admin'&&user.role!=='user'){
    if(a==='users')return go('users','admin',loadUsers);
-   if(user.role==='super_admin'){if(a==='mailboxes')return go('mailboxes','admin',()=>window.esignShowMailboxes?.());if(['companies','email-trust','workspace'].includes(a))return go('admin','admin',()=>window.adminShow?.(a));if(['services','agreement-types','system'].includes(a))return go('admin','admin',()=>window.catalogShow?.(a));if(a==='integrations')return go('admin','admin',()=>window.integrationsShow?.());}
+   if(user.role==='super_admin'){if(a==='mailboxes')return go('mailboxes','admin',()=>window.esignShowMailboxes?.());if(['companies','email-trust','workspace'].includes(a))return go('admin','admin',()=>window.adminShow?.(a));if(['services','agreement-types','system'].includes(a))return go('admin','admin',()=>window.catalogShow?.(a));if(a==='integrations')return go('admin','admin',()=>window.integrationsShow?.());if(a==='reminders')return go('admin','admin',()=>window.remindersShowAdmin?.(['optouts','guards'].includes(b)?b:'rules'));}
    return go('users','admin',loadUsers);}
   const denied={activity:'the Activity log',admin:'the Admin screens'}[top];
   go('home','home',async()=>{await window.homeShow?.();if(denied){$('app-error').textContent='You do not have access to '+denied+'. Ask an administrator if you need it.';$('app-error').hidden=false;}});void b;}

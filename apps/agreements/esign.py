@@ -83,6 +83,11 @@ LABELS = {
     'saved': 'Saved to finish later', 'reassigned': 'Assigned to someone else', 'host_session': 'In-person signing started by the host',
     'attachment': 'Attachment uploaded', 'removed': 'Recipient removed', 'downloaded': 'Downloaded the documents', 'printed': 'Printed the documents', 'links_off': 'Recipient links turned off',
     'links_on': 'Recipient links turned back on', 'marked_test': 'Marked as a test envelope', 'marked_real': 'Marked as a real envelope',
+    # 5.4 reminders and email delivery
+    'mail_uncertain': 'Email accepted by the mail server, delivery not confirmed', 'reminders_off': 'Reminders switched off',
+    'reminders_on': 'Reminders switched back on', 'reminders_paused': 'Reminders paused', 'reminders_resumed': 'Reminders resumed',
+    'reminder_skipped': 'Next reminder skipped', 'reminders_stopped': 'Reminders stopped by the recipient', 'reminder_rule': 'Reminder rule changed',
+    'reminders_exhausted': 'Sender told: not signed after the last reminder', 'mail_resolved': 'Unconfirmed email resolved',
 }
 
 
@@ -246,6 +251,11 @@ def settings_value(payload: dict | None, current: dict | None = None) -> dict:
     for key in FLAGS:
         if payload and key in payload:
             out[key] = payload[key] is True
+    if payload and 'reminder_rule' in payload:
+        rule = str(payload['reminder_rule'] or '')
+        if rule and not re.fullmatch(r'[a-z0-9_-]{1,40}', rule):
+            raise ValueError('Choose a reminder rule from the list.')
+        out['reminder_rule'] = rule
     # the warning comes before the expiration: a warning period as long as the expiry would email "expires soon" at once
     if out.get('expire_days') and out.get('warn_days', 0) >= out['expire_days']:
         out['warn_days'] = max(0, out['expire_days'] - 1)
@@ -470,7 +480,9 @@ def recipient_row(c, envelope: dict, item: dict, i: int, existing: dict) -> dict
     return dict(id=old['id'] if old else db.uid(), envelope_id=envelope['id'], role=role, role_name=clean(item.get('role_name'), 'Role', 60) or f'Recipient {i + 1}',
                 routing_order=order, name=name, email=address, access_code=None if role == 'in_person' else code, note=clean(item.get('note'), 'Private message', 1000),
                 status='created', auth_failures=0, delivery='pending', reminders_sent=0, created=old['created'] if old else now(),
-                host_id=host_for(c, envelope, item.get('host_id')) if role == 'in_person' else None)
+                host_id=host_for(c, envelope, item.get('host_id')) if role == 'in_person' else None,
+                reminders_off=(item['reminders_off'] is True) if 'reminders_off' in item else bool(old and old.get('reminders_off')),
+                reminders_off_source=('sender' if item.get('reminders_off') is True else None) if 'reminders_off' in item else (old or {}).get('reminders_off_source'))
 
 
 def field_options(kind: str, raw) -> tuple[dict, dict | None]:
@@ -688,7 +700,7 @@ def expires_label(envelope: dict) -> str:
     return dt.datetime.fromtimestamp(envelope['expires_at'], tz).strftime('%B %d, %Y').replace(' 0', ' ')
 
 
-def recipient_email(c, envelope: dict, r: dict, kind: str) -> None:
+def recipient_email(c, envelope: dict, r: dict, kind: str, extra: dict | None = None) -> None:
     entity = get_entity(envelope['entity'])
     box = mailer.load(c, envelope['entity'])
     owner = user_row(c, envelope['owner_id'])
@@ -696,6 +708,7 @@ def recipient_email(c, envelope: dict, r: dict, kind: str) -> None:
     ctx = dict(entity=entity, box=box, subject=envelope['subject'], message=envelope['message'], note=r['note'], role=r['role'], recipient_name=r['name'] or r['email'],
                sender_name=entity['display'], sender_email=box['address'] or owner['email'], documents=docs, access_code=bool(r['access_code']),
                expires=expires_label(envelope), url=sign_url(issue_token(c, r['id'])))
+    ctx.update(extra or {})
     subject, body, html_body = mailer.compose(kind, ctx)
     mailer.enqueue(c, envelope['entity'], kind, [r['email']], subject, body, html_body, envelope_id=envelope['id'], recipient_id=r['id'])
 
@@ -935,7 +948,8 @@ def mask_email(address: str) -> str:
 
 LOCKED_STATUSES = DONE_STATUSES + INACTIVE + ('declined',)
 KEEP_ON_CORRECT = ('status', 'sent_at', 'delivered_at', 'consent_at', 'signature_png', 'initials_png', 'signature_kind', 'delivery', 'delivery_error',
-                   'reminders_sent', 'last_reminder_at', 'progress', 'auth_failures', 'routing_order', 'created')
+                   'reminders_sent', 'last_reminder_at', 'progress', 'auth_failures', 'routing_order', 'created',
+                   'reminders_paused_until', 'reminder_anchor', 'reminder_final_notice_at')
 
 
 def correct_layout(c, actor: dict, envelope: dict, layout: dict, ip: str, ua: str) -> None:
@@ -1675,12 +1689,7 @@ def _due(envelope: dict, pending: list[dict], t: float) -> bool:
         return True
     if s.get('warn_days') and not envelope['expiry_warned'] and envelope['expires_at'] and envelope['expires_at'] - s['warn_days'] * 86400 <= t and pending:
         return True
-    if s.get('reminder_every'):
-        for r in pending:
-            since = r['last_reminder_at'] or r['sent_at'] or envelope['sent_at']
-            if since + (s['reminder_every'] if r['last_reminder_at'] else s['reminder_delay']) * 86400 <= t and r['reminders_sent'] < 12:
-                return True
-    return False
+    return False        # reminders: reminders.run() (release 5.4)
 
 
 def settle() -> int:
@@ -1729,22 +1738,17 @@ def sweep() -> int:
             pending = [dict(r) for r in c.execute(select(recipients).where(recipients.c.envelope_id == envelope['id'], recipients.c.status.in_(OPEN_STATUSES),
                                                                            recipients.c.role.notin_(('cc', 'in_person')))).mappings()]
             if s.get('warn_days') and not envelope['expiry_warned'] and envelope['expires_at'] and envelope['expires_at'] - s['warn_days'] * 86400 <= t:
+                import reminders
                 for r in pending:
+                    if not reminders.may_email(c, envelope, r):     # switched off, paused, on the do-not-remind list, undeliverable
+                        continue
                     recipient_email(c, envelope, r, 'expiring')
                     record(c, envelope['id'], 'expiring', 'TFSC Agreements', recipient_id=r['id'], detail={'to': r['email']})
                 c.execute(update(envelopes).where(envelopes.c.id == envelope['id']).values(expiry_warned=True))
                 count += 1
                 continue
-            if not s.get('reminder_every'):
-                continue
-            for r in pending:
-                since = r['last_reminder_at'] or r['sent_at'] or envelope['sent_at']
-                gap = (s['reminder_every'] if r['last_reminder_at'] else s['reminder_delay']) * 86400
-                if since + gap <= t and r['reminders_sent'] < 12 and r['delivery'] != 'bounced':
-                    recipient_email(c, envelope, r, 'reminder')
-                    c.execute(update(recipients).where(recipients.c.id == r['id']).values(last_reminder_at=t, reminders_sent=r['reminders_sent'] + 1))
-                    record(c, envelope['id'], 'reminder', 'TFSC Agreements', recipient_id=r['id'], detail={'to': r['email'], 'number': r['reminders_sent'] + 1})
-                    count += 1
+    import reminders
+    count += reminders.run(t)
     return count
 
 
@@ -1826,7 +1830,7 @@ def detail(c, actor: dict, envelope: dict) -> dict:
     people = []
     for r in rs:
         item = {k: r[k] for k in ('id', 'role', 'role_name', 'routing_order', 'name', 'email', 'note', 'status', 'sent_at', 'delivered_at', 'signed_at', 'declined_at',
-                                  'decline_reason', 'delivery', 'delivery_error', 'reminders_sent', 'auth_method', 'host_id', 'reassigned_to')}
+                                  'decline_reason', 'delivery', 'delivery_error', 'reminders_sent', 'auth_method', 'host_id', 'reassigned_to', 'reminders_off')}
         item['has_access_code'] = bool(r['access_code'])
         item['saved_progress'] = bool(r['progress'])
         if r['role'] == 'in_person' and r['auth_method']:

@@ -361,8 +361,48 @@ def build_message(box: dict, row: dict, attachments: list[tuple[str, bytes]]) ->
     return msg
 
 
-def _send_over(smtp, msg: EmailMessage, rcpts: list[str]) -> dict:
+def _tracked_data(smtp, msg, on_handover=None):
+    """smtplib's DATA step, recording how far it got (release 5.4).
+
+    Once the whole message, with its closing ".", has been sent, the mail server may deliver it even if its "250 OK" never
+    arrives (a slow server, a dropped connection). From that moment the email must never be sent again by itself: doing
+    that is what sent signers the same email over and over. `_tfsc_stage` tells the caller which side of that line a
+    failure happened on; `on_handover` stores the moment in the database first, so a crash right after is safe too."""
+    smtp.putcmd('data')
+    code, repl = smtp.getreply()
+    if code != 354:
+        raise smtplib.SMTPDataError(code, repl)
+    if isinstance(msg, str):
+        msg = smtplib._fix_eols(msg).encode('ascii')
+    q = smtplib._quote_periods(msg)
+    if q[-2:] != smtplib.bCRLF:
+        q = q + smtplib.bCRLF
+    q = q + b'.' + smtplib.bCRLF
+    if on_handover:
+        on_handover()
+    smtp._tfsc_stage = 'uploading'
+    smtp.send(q)
+    smtp._tfsc_stage = 'handed'
+    return smtp.getreply()
+
+
+def handover_timeout(size: int) -> float:
+    """How long to wait for the server's answers on one message: longer for large ones (signed copies with PDFs), whose
+    final "250 OK" can take a while because the provider scans the attachments first."""
+    return min(300.0, SMTP_TIMEOUT + 15.0 * size / 1_000_000)
+
+
+def _send_over(smtp, msg: EmailMessage, rcpts: list[str], on_handover=None) -> dict:
     """Send on an open connection. Returns the addresses the server refused (when at least one was accepted)."""
+    smtp._tfsc_stage = None
+    smtp.data = lambda body: _tracked_data(smtp, body, on_handover)
+    try:
+        size = len(msg.as_bytes())
+    except Exception:  # noqa: BLE001  (sizing is only for the timeout)
+        size = 0
+    sock = getattr(smtp, 'sock', None)
+    if sock is not None:
+        sock.settimeout(handover_timeout(size))
     refused = smtp.send_message(msg, to_addrs=rcpts)
     if refused and len(refused) == len(rcpts):
         raise smtplib.SMTPRecipientsRefused(refused)
@@ -529,7 +569,11 @@ def dispatch_once(limit: int = LANE_BATCH) -> int:
     """
     now = time.time()
     with db.engine.begin() as c:
-        # an email whose sending was cut off (a restart) goes back in line; that try counts
+        # an email whose sending was cut off (a restart) goes back in line; that try counts. One that had already been handed to
+        # the mail server may have been delivered: it is never sent again by itself, a person decides (Reminder centre).
+        c.execute(update(outbox).where(outbox.c.state == 'sending', outbox.c.lease_until < now, outbox.c.handed_at.isnot(None))
+                  .values(state='uncertain', attempts=outbox.c.attempts + 1, lease_until=None,
+                          last_error='Sending was interrupted after the email was handed to the mail server; it may have been delivered.'))
         c.execute(update(outbox).where(outbox.c.state == 'sending', outbox.c.lease_until < now).values(state='queued', attempts=outbox.c.attempts + 1))
         paused = {r[0] for r in c.execute(select(mailboxes.c.entity).where(mailboxes.c.paused_until > now))}
         due = [r[0] for r in c.execute(select(outbox.c.entity).where(outbox.c.state == 'queued', outbox.c.next_attempt <= now).distinct())]
@@ -623,8 +667,18 @@ def _send_lane(entity: str, rows: list[dict]) -> None:
                     files = attachment_bytes(c, r['attachments'])
                     ref = c.execute(select(envelopes.c.ref).where(envelopes.c.id == r['envelope_id'])).scalar() if r['envelope_id'] else None
                 msg = build_message(box, dict(r, envelope_ref=ref), files)
-                refused = _send_over(smtp, msg, r['to_addrs'] + r['cc_addrs'] + r['bcc_addrs'])
+                refused = _send_over(smtp, msg, r['to_addrs'] + r['cc_addrs'] + r['bcc_addrs'], on_handover=lambda rid=r['id']: _mark_handed(rid))
             except Exception as exc:  # noqa: BLE001
+                stage = getattr(smtp, '_tfsc_stage', None)
+                if stage == 'handed' and not isinstance(exc, smtplib.SMTPResponseException):
+                    # the server has the whole message but never confirmed it: probably delivered, so never resent by itself
+                    _uncertain(r, exc)
+                    sent += 1
+                    if rows[i + 1:]:          # the connection is gone: the rest wait for the next pass, not counted
+                        _pause(entity, 'connect', _describe(exc), rows[i + 1:])
+                    break
+                if stage in (None, 'uploading') or isinstance(exc, smtplib.SMTPResponseException):
+                    _clear_handed(r['id'])      # the closing "." never reached the server, or the server answered "not accepted"
                 if _quota(exc):
                     daily = bool(re.search(r'5\.4\.5|daily', _reply_text(exc), re.I))
                     _pause(entity, 'daily' if daily else 'quota', _describe(exc), rows[i:])
@@ -647,6 +701,32 @@ def _send_lane(entity: str, rows: list[dict]) -> None:
         if sent:
             with db.engine.begin() as c:
                 c.execute(update(mailboxes).where(mailboxes.c.entity == entity).values(sent_day=today, sent_count=already + sent))
+
+
+def _mark_handed(outbox_id: str) -> None:
+    with db.engine.begin() as c:
+        c.execute(update(outbox).where(outbox.c.id == outbox_id).values(handed_at=time.time()))
+
+
+def _clear_handed(outbox_id: str) -> None:
+    with db.engine.begin() as c:
+        c.execute(update(outbox).where(outbox.c.id == outbox_id, outbox.c.state == 'sending').values(handed_at=None))
+
+
+def _uncertain(r: dict, exc: Exception) -> None:
+    """Handed to the mail server, but its confirmation never came. Not sent again by itself: it waits in the Reminder centre
+    under "Needs a look" for a person to mark it delivered or send it once more."""
+    reason = 'Accepted by the mail server, but it did not confirm delivery: ' + _describe(exc)
+    log.warning('email %s (%s) was handed to the mail server without a confirmation: %s', r['id'], r['kind'], _describe(exc))
+    with db.engine.begin() as c:
+        c.execute(update(outbox).where(outbox.c.id == r['id']).values(state='uncertain', attempts=r['attempts'] + 1, lease_until=None, last_error=reason[:2000]))
+        if r['recipient_id']:
+            c.execute(update(recipients).where(recipients.c.id == r['recipient_id'], recipients.c.delivery.in_(['pending', 'failed']))
+                      .values(delivery='sent', delivery_error=None))
+        if r['envelope_id']:
+            import esign
+            esign.record(c, r['envelope_id'], 'mail_uncertain', 'TFSC Agreements', recipient_id=r['recipient_id'],
+                         detail={'to': ', '.join(r['to_addrs']), 'kind': r['kind']})
 
 
 def _failed(r: dict, exc: Exception, *, final: bool = False, mailbox_error: bool = True) -> None:
@@ -759,7 +839,7 @@ def _workspace() -> dict:
 
 
 def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = None, button: tuple[str, str] | None = None, security_note: bool = False,
-           link_text: bool = False) -> str:
+           link_text: bool = False, badge: str = '', stop_url: str = '') -> str:
     """The branded email: logo and a secure-document badge, a hero in the company's website colours with the call to action, the
     message, a security panel, then contacts and the company footer. Tables and inline styles, so Gmail and Outlook render it."""
     key, color, accent, dark = entity['key'], entity['color'], entity['accent'], entity.get('dark', INK)
@@ -792,7 +872,12 @@ def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = No
     if ws.get('help_email'):
         help_email = esc(ws['help_email'])
         extras.append(('Trouble opening or signing?', f'Please email <a href="mailto:{help_email}" style="color:{color};text-decoration:none;">{help_email}</a> with your concern.'))
+    if stop_url:
+        extras.append(('Already in touch with us about this, or not the right person?',
+                       f'<a href="{esc(stop_url)}" style="color:{color};">Stop reminders for this envelope</a>. You can still review and sign at any time with the button above.'))
     extra_html = ''.join(f'<p style="margin:0 0 14px 0;"><strong style="color:#0F1B2D;">{t}</strong><br>{x}</p>' for t, x in extras)
+    badge_html = (f'<div style="margin:0 0 12px 0;"><span style="display:inline-block;padding:4px 12px;border-radius:999px;background:rgba(255,255,255,.14);'
+                  f'border:1px solid rgba(255,255,255,.35);color:#FFFFFF;{font}font-size:12px;font-weight:700;letter-spacing:.3px;">{esc(badge)}</span></div>') if badge else ''
     trust = esc(ws.get('trust_line') or '')
     year = time.gmtime().tm_year
     return f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>{esc(headline)}</title></head>
@@ -808,7 +893,7 @@ def layout(entity: dict, headline: str, body_html: str, *, box: dict | None = No
 <tr><td style="padding:0 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
 <td align="center" bgcolor="{color}" style="background:{color};background-image:linear-gradient(135deg,{dark} 0%,{color} 70%);border-radius:12px;padding:36px 30px 34px 30px;">
 <img src="cid:doc.{key}@tfsc" alt="" width="60" height="64" style="display:block;margin:0 auto 18px auto;border:0;">
-<div style="{font}font-size:21px;line-height:29px;font-weight:600;color:#FFFFFF;">{esc(headline)}</div>{button_html}</td></tr></table></td></tr>
+{badge_html}<div style="{font}font-size:21px;line-height:29px;font-weight:600;color:#FFFFFF;">{esc(headline)}</div>{button_html}</td></tr></table></td></tr>
 <tr><td style="padding:28px 32px 14px 32px;font-size:14px;line-height:22px;color:#1F2A3D;">{body_html}</td></tr>
 {panel}
 <tr><td style="padding:14px 32px 10px 32px;font-size:12.5px;line-height:19px;color:#5B6475;">{extra_html}</td></tr>
@@ -895,6 +980,38 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         if ctx.get('access_code'):
             lines += ['', 'You will need the access code the sender gave you to open these documents.']
         lines += ['', f"Open the documents: {ctx['url']}"]
+        if kind == 'reminder' and ctx.get('reminder_number'):
+            lines.insert(0, f"Reminder {ctx['reminder_number']}" + (f" of {ctx['reminder_max']}" if ctx.get('reminder_max') else ''))
+        if kind == 'reminder' and ctx.get('stop_url'):
+            lines += ['', f"Already in touch with us about this, or not the right person? Stop reminders for this envelope: {ctx['stop_url']}"]
+    elif kind == 'reminder_digest':
+        security = True
+        items = ctx['items']
+        subject = 'Reminder: ' + ctx.get('subject', f'{len(items)} documents are waiting for you')
+        headline = f'Reminder: {sender} is waiting for your signature on {len(items)} envelopes.'
+        initials = ''.join(w[0] for w in str(sender).split()[:2]).upper() or '·'
+        body = (f'<p style="margin:0 0 14px 0;">Hello <strong>{esc(ctx["recipient_name"])}</strong>, these documents are waiting for you. '
+                'Each has its own button.</p>')
+        lines = [headline, '', f"{ctx['recipient_name']}, these documents are waiting for you:"]
+        for n, item in enumerate(items, 1):
+            label = f"Reminder {item['number']}" + (f" of {item['max']}" if item.get('max') and item['number'] <= item['max'] else '')
+            stop = (f'<br><a href="{esc(item["stop_url"])}" style="color:#5B6475;font-size:12px;">Stop reminders for this envelope</a>' if item.get('stop_url') else '')
+            due = f'<br><span style="color:#5B6475;font-size:12.5px;">Please complete this by {esc(item["expires"])}.</span>' if item.get('expires') else ''
+            body += (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E8F1;border-radius:10px;margin:0 0 12px 0;">'
+                     f'<tr><td style="padding:14px 16px;"><div style="font-size:11.5px;color:#5B6475;font-weight:700;letter-spacing:.3px;">{esc(label)}</div>'
+                     f'<div style="font-size:15px;font-weight:700;color:#0F1B2D;margin:4px 0 6px 0;">{esc(item["subject"])}</div>'
+                     f'<div style="font-size:13px;color:#3D4B63;">{esc(", ".join(item["documents"]))}</div>{due}'
+                     f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 4px 0;"><tr><td bgcolor="{entity["accent"]}" '
+                     f'style="background:{entity["accent"]};border-radius:7px;"><a href="{esc(item["url"])}" target="_blank" style="display:inline-block;padding:10px 22px;'
+                     f'font-size:13px;font-weight:700;color:{INK};text-decoration:none;">REVIEW AND SIGN</a></td></tr></table>{stop}</td></tr></table>')
+            lines += ['', f"{n}. {item['subject']} ({label})", '   ' + ', '.join(item['documents']), f"   Open: {item['url']}"]
+            if item.get('stop_url'):
+                lines.append(f"   Stop reminders for this envelope: {item['stop_url']}")
+        body = (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;"><tr>'
+                f'<td width="44" valign="middle"><div style="width:38px;height:38px;border-radius:19px;background:{entity["color"]};color:#FFFFFF;font-family:Arial,sans-serif;'
+                f'font-size:14px;line-height:38px;text-align:center;font-weight:700;">{esc(initials)}</div></td>'
+                f'<td valign="middle" style="padding-left:10px;"><strong style="font-size:15px;color:#0F1B2D;">{esc(sender)}</strong><br>'
+                f'<a href="mailto:{esc(ctx.get("sender_email", ""))}" style="color:#5B6475;text-decoration:none;font-size:13px;">{esc(ctx.get("sender_email", ""))}</a></td></tr></table>') + body
     elif kind == 'completed':
         subject = 'Completed: ' + subject
         headline = 'All parties have completed the documents.'
@@ -935,10 +1052,11 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
                     'declined': f'{who} declined to sign.', 'bounced': f'The email to {who} could not be delivered.',
                     'failed': f'The email to {who} could not be sent.', 'replied': f'{who} replied by email.', 'voided': 'The envelope was voided.',
                     'expired': 'The envelope expired before it was completed.', 'auth_failed': f'{who} entered a wrong access code too many times.',
-                    'reassigned': f'{who} assigned the documents to someone else.'}[event]
+                    'reassigned': f'{who} assigned the documents to someone else.', 'reminders_stopped': f'{who} stopped reminders for this envelope.',
+                    'reminders_exhausted': f'{who} has not signed after the last reminder.'}[event]
         subject = {'viewed': 'Viewed: ', 'signed': 'Signed: ', 'completed': 'Completed: ', 'declined': 'Declined: ', 'bounced': 'Undeliverable: ',
                    'failed': 'Not sent: ', 'replied': 'Reply received: ', 'voided': 'Voided: ', 'expired': 'Expired: ', 'auth_failed': 'Access code failed: ',
-                   'reassigned': 'Reassigned: '}[event] + subject
+                   'reassigned': 'Reassigned: ', 'reminders_stopped': 'Reminders stopped: ', 'reminders_exhausted': 'Not signed after reminders: '}[event] + subject
         button = ('OPEN IN TFSC AGREEMENTS', ctx['url'])
         body = f'<p style="margin:0 0 12px 0;">Envelope {esc(ctx["ref"])}: "{esc(ctx["subject"])}"</p>'
         if ctx.get('detail'):
@@ -948,7 +1066,11 @@ def compose(kind: str, ctx: dict) -> tuple[str, str, str]:
         lines = [headline, '', f'Envelope {ctx["ref"]}: "{ctx["subject"]}"'] + ([ctx['detail']] if ctx.get('detail') else []) + ['', f"Open: {ctx['url']}"]
     else:
         raise ValueError('Unknown email kind.')
-    html_body = layout(entity, headline, body, box=box, button=button, security_note=security, link_text=kind in ('invite', 'reminder', 'corrected', 'expiring'))
+    badge = ''
+    if kind == 'reminder' and ctx.get('reminder_number'):
+        badge = f"Reminder {ctx['reminder_number']}" + (f" of {ctx['reminder_max']}" if ctx.get('reminder_max') else '')
+    html_body = layout(entity, headline, body, box=box, button=button, security_note=security, link_text=kind in ('invite', 'reminder', 'corrected', 'expiring'),
+                       badge=badge, stop_url=(ctx.get('stop_url') or '') if kind == 'reminder' else '')
     return subject[:300], '\n'.join(lines) + text_footer(entity, box, security), html_body
 
 

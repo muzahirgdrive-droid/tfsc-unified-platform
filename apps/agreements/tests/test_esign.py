@@ -368,10 +368,18 @@ class Lifecycle(Base):
         self.assertIn('mailbox is not connected', r.json()['error'])
 
     def test_reminders_expiry_warning_and_expiry(self):
+        # 5.4: reminders follow a rule (reminders.py); this one reminds after 1 day, then every 2, at any hour on any day,
+        # which is the schedule the per-envelope settings of earlier releases gave this test.
+        import reminders
+        with db.engine.begin() as c:
+            c.execute(reminders.rules.insert().values(id='daily', name='Every day', description='', first_after=1, every=2, max_count=12,
+                                                      weekdays=list(range(7)), hour_from=0, hour_to=24, combine=True, skip_opened_hours=0,
+                                                      remind_viewers=False, allow_signer_stop=True, notify_sender_after_last=False, active=True,
+                                                      builtin=False, created=0, updated=0))
         env, _ = self.prepare()
         self.post(f"/api/esign/envelopes/{env['id']}/draft", {'recipients': [dict(env['recipients'][0], name='Jane Example')],
                                                               'fields': [dict(f, recipient=f['recipient_id']) for f in env['fields']],
-                                                              'settings': {'reminder_delay': 1, 'reminder_every': 2, 'expire_days': 5, 'warn_days': 1}})
+                                                              'settings': {'reminder_rule': 'daily', 'expire_days': 5, 'warn_days': 1}})
         self.post(f"/api/esign/envelopes/{env['id']}/send")
         start = time.time()
         subjects = lambda: [m['msg']['Subject'] for m in self.smtp.to('jane@client.test')]  # noqa: E731

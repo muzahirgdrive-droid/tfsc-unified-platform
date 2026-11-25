@@ -19,7 +19,7 @@ import entities as entities_mod
 import static_assets
 from entities import ENTITIES, get_entity
 
-VERSION='5.3.0'
+VERSION='5.4.0'
 ORIGIN=os.getenv('TFSC_ORIGIN','http://127.0.0.1:8765').rstrip('/')
 if not db.LOCAL and (not ORIGIN.startswith('https://') or db.URL.startswith('sqlite')):
     raise RuntimeError('VPS mode requires TFSC_ORIGIN=https://your-domain and DATABASE_URL=postgresql+psycopg://...')
@@ -574,8 +574,10 @@ import followups
 followups.install(app)
 import integration_v1
 integration_v1.install(app)   # read-only feed for OCS (/api/integration/v1, release 5.3)
+import reminders
+reminders.install(app)        # reminder rules, do-not-remind list, Reminder centre, signer stop link (release 5.4)
 PUBLIC={'styles.css','tfsc.css','portal.css','ui.css','marks.css','login.js','sign.js','sign.css','verify.js','verify.css','resilient.js','session.js'}
-PRIVATE={'integrations.js','catalog.js','followups.js','app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
+PRIVATE={'reminders.js','integrations.js','catalog.js','followups.js','app.js','format_guard.js','studio.js','portal.js','reviews.js','esign.js','esign.css','clients.js','clients.css','home.js','reports.js','admin.js','records.js','records.css'}
 @app.get('/{name}')
 def static_file(name:str,request:Request,v:str=''):
     # Scripts and style sheets hold no data (every piece of data comes from /api, which checks the session), so they are

@@ -243,8 +243,10 @@ and downloaded each document, and when.
    Services Agreement - Client name" (one agreement: only that one), marked **Automatic** and updated whenever you add
    or remove a document. Type your own and it is marked **Yours** and sent exactly as you typed it, in the invitation,
    the reminders and the completed copy; **Use the automatic subject again** goes back.
-   **Options**: the documents **never expire** unless you choose an expiry; reminders; attaching the completed
-   documents to the final email; whether recipients may assign the documents to someone else. **Send**.
+   **Options**: the documents **never expire** unless you choose an expiry; **Reminders** (the company's default
+   rule, or another rule from Admin › Reminders) and **Who is reminded** (switch off anyone who should not be
+   reminded); attaching the completed documents to the final email; whether recipients may assign the documents to
+   someone else. **Send**.
 5. The client receives an email in the company's colours from the company's compliance mailbox, sent in the company's
    registered name ("Extended Health Services Inc. sent you documents to review and sign"), never the name of the
    person who prepared it; the signing page, the reminders and the Certificate of Completion name the company the same
@@ -259,7 +261,11 @@ and downloaded each document, and when.
    never holds it up (unless a signing order puts them before a signer). Everyone, including viewers and copy
    recipients, then receives the completed documents and the Certificate of Completion by email, and the compliance
    mailbox gets a copy.
-7. Follow progress under **Agreements** (Action required, Waiting for others, Expiring soon, Completed, Drafts, All
+7. **Reminders** (release 5.4): the envelope's **Reminders** card shows, per person, the reminders sent and the next
+   ones with their dates. Switch reminders off or on for one person, **Remind now** (at most once a day), pause until
+   a date, skip the next reminder, change the rule or pause the whole envelope. **Agreements > Reminders** lists every
+   reminder about to go out, everything sent, everything paused or off, and **Needs a look**.
+   Follow progress under **Agreements** (Action required, Waiting for others, Expiring soon, Completed, Drafts, All
    sent, Declined, Voided, Expired): who has viewed and signed, email delivery, client replies, the history.
    **Resend**, **Correct**, and under **More**: copy into a new envelope, save as template, void. Signing links never
    expire on their own; after completion the links in recipients' emails keep opening the completed documents until you
@@ -362,7 +368,44 @@ docker compose --env-file .env exec -u postgres postgres sh -c 'openssl enc -d -
 docker compose --env-file .env start agreements agreements-worker
 ```
 
-### This update (November 17, 2026: release 5.3, the connection to TFS Onboarding and Client Success)
+### This update (November 25, 2026: release 5.4, reminders you control, and no more repeated emails)
+
+Nothing you have is changed: every client, agreement, envelope, signing link, signature, signed copy, certificate,
+mailbox and the connection to TFS Onboarding and Client Success (OCS) stay exactly as they are. The feed OCS reads is
+not touched.
+
+- **The repeated emails are fixed.** Cause: when the mail server took the email but answered "received" slowly (after
+  the 20 seconds the app waited), the email was treated as not sent and was sent again on the next try, without that
+  try being counted, so it could repeat for ever. Now the app notes the moment the email's content is handed over. An
+  email handed over is never sent again by itself: without the server's confirmation it is marked "Not confirmed" and
+  waits under **Agreements > Reminders > Needs a look**, where you **Mark as delivered** or **Send once more**. Large
+  emails (signed copies with PDFs) are also given longer to be confirmed. Admin › System check shows a line while any
+  email needs a look.
+- **Reminders follow rules** (Admin › Reminders, Super Admin): **Standard** (first after 2 working days, then every 3,
+  at most 4, Monday to Friday 9:00 to 17:00 in the company's time zone, then the sender is told), **Gentle**, **Firm**
+  and **Off**, and any rule you add. Each company has a default rule (Standard for all to start with); the sender can
+  choose another when sending. A change to a rule applies to envelopes already out from their next reminder.
+- **Who receives reminders**: switch them off or on for one person on one envelope, pause until a date, skip the next
+  one, **Remind now**; pause a whole envelope; **Pause all reminders** for everyone (Admin › Reminders). The
+  **do-not-remind list** (Super Admin) stops all reminders to a person, for every company or one, always or until a
+  date, with a reason. Each reminder email says "Reminder 2 of 4" and has a **Stop reminders** link: the person
+  confirms on a page (opening the link alone does nothing, so mail scanners cannot trigger it), the sender is told at
+  once, and the person can still sign.
+- **Safety guards no rule can switch off**: at most one automatic email a day per person per company and two in all
+  (several envelopes from one company go in one email); nothing new while an earlier reminder to the same person is
+  still waiting to go out; never to an address that bounced, never after the person signed, declined or was replaced.
+  After the last reminder the sender is told once ("not signed after 4 reminders") instead of the signer being emailed
+  again.
+- **Envelopes already out** move to their company's default rule (Standard), and the reminders they already received
+  count. An envelope that had reminders set to Off stays off. Senders are not told about envelopes that reached their
+  last reminder before this update (no flood of notices on the first day).
+- **Who can do what**: senders manage reminders on their own envelopes, Admins on their team's, the Super Admin on all;
+  only the Super Admin changes rules, company defaults, the do-not-remind list and the pause for everyone.
+- **The database change (0015)** adds two tables (rules, do-not-remind list), five columns on envelope recipients and
+  one on the email queue, and four rules. Nothing existing is changed or removed.
+- No SMS or WhatsApp reminders in this release.
+
+### This update (November 17, 2026: release 5.3, the connection to TFS Onboarding and Client Success) also
 
 Nothing you have is changed, and nothing you do in TFS Agreements works differently: every client, client number,
 agreement, envelope, signing link, signature, signed copy, certificate and mailbox stays exactly as it is. Until you

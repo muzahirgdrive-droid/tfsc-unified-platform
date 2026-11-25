@@ -98,6 +98,14 @@ recipients = Table(
     Column('progress', JSON, nullable=True),                  # values saved with "Finish later"
     Column('host_id', String(32), nullable=True),             # in-person signing: the user who hosts it
     Column('reassigned_to', String(32), nullable=True),       # "Assign to someone else": the new recipient
+    # 5.4 reminders (reminders.py): switched off for this person on this envelope (by whom: sender | signer | staff), paused
+    # until a moment, the point the schedule counts from after "skip the next reminder", and when the sender was told that
+    # the last reminder went unanswered.
+    Column('reminders_off', Boolean, nullable=False, default=False, server_default=false()),
+    Column('reminders_off_source', String(12), nullable=True),
+    Column('reminders_paused_until', Float, nullable=True),
+    Column('reminder_anchor', Float, nullable=True),
+    Column('reminder_final_notice_at', Float, nullable=True),
 )
 Index('ix_esign_rcpt_email', recipients.c.email, recipients.c.status)
 Index('ix_esign_rcpt_lower_email', func.lower(recipients.c.email), recipients.c.status)
@@ -213,13 +221,16 @@ outbox = Table(
     Column('html', Text, nullable=False),
     Column('attachments', JSON, nullable=False),
     Column('message_id', String(250), nullable=False, unique=True),
-    Column('state', String(12), nullable=False),              # queued | sending | sent | failed | bounced
+    Column('state', String(12), nullable=False),              # queued | sending | sent | failed | bounced | uncertain (5.4)
     Column('attempts', Integer, nullable=False),
     Column('next_attempt', Float, nullable=False),
     Column('lease_until', Float, nullable=True),
     Column('last_error', Text, nullable=True),
     Column('created', Float, nullable=False),
     Column('sent_at', Float, nullable=True),
+    # 5.4: when the message content was handed to the mail server. Set: the email may have been delivered, so it is never sent
+    # again by itself (state 'uncertain' when no confirmation came).
+    Column('handed_at', Float, nullable=True),
 )
 Index('ix_mail_outbox_queue', outbox.c.state, outbox.c.next_attempt)
 Index('ix_mail_outbox_entity_queue', outbox.c.entity, outbox.c.state, outbox.c.next_attempt)

@@ -35,7 +35,8 @@
   const images = new Map();  // page images reused across editor renders, so nothing is downloaded twice
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; }
-  function button(text, fn, cls = "button button-quiet") { const b = el("button", cls, text); b.type = "button"; b.addEventListener("click", event => { event.stopPropagation(); Promise.resolve().then(() => fn(event)).catch(fail); }); return b; }
+  // A button does nothing while its action is still running: a double click never sends an email twice.
+  function button(text, fn, cls = "button button-quiet") { const b = el("button", cls, text); b.type = "button"; b.addEventListener("click", event => { event.stopPropagation(); if (b.dataset.busy) return; b.dataset.busy = "1"; b.setAttribute("aria-busy", "true"); Promise.resolve().then(() => fn(event)).catch(fail).finally(() => { delete b.dataset.busy; b.removeAttribute("aria-busy"); }); }); return b; }
   function when(ts) { return ts ? new Date(ts * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : ""; }
   function day(ts) { return ts ? new Date(ts * 1000).toLocaleDateString([], {dateStyle: "medium"}) : ""; }
   function fail(e) { if (!e || !e.message) return; const box = $("app-error"); box.textContent = e.message; box.hidden = false; box.scrollIntoView({behavior: "smooth", block: "center"}); }
@@ -157,6 +158,7 @@
       });
       folders.append(el("h3", "", "More"));
       const tpl = el("a", "folder", "Templates"); tpl.href = "#/templates"; folders.append(tpl);
+      const rem = el("a", "folder", "Reminders"); rem.href = "#/reminders"; folders.append(rem);
       const rep = el("a", "folder", "Reports"); rep.href = "#/reports"; folders.append(rep);
       layout.append(folders);
     }
@@ -439,6 +441,7 @@
     });
     people.append(tl);
     main.append(people);
+    if (e.status === "sent" && window.tfscReminders) main.append(window.tfscReminders.envelopeCard(e));
     if (e.status !== "template" && window.tfscFollowups) main.append(window.tfscFollowups.panel({envelope_id: e.id, title: e.subject}));
 
     const history = el("section", "card");
@@ -471,7 +474,7 @@
       const tb = el("tbody");
       e.mails.forEach(m => {
         const tr = el("tr");
-        const label = {queued: m.attempts ? `Retrying (attempt ${m.attempts + 1})` : "Queued", sending: "Sending", sent: "Sent", failed: "Failed", bounced: "Undeliverable"}[m.state] || m.state;
+        const label = {queued: m.attempts ? `Retrying (attempt ${m.attempts + 1})` : "Queued", sending: "Sending", sent: "Sent", failed: "Failed", bounced: "Undeliverable", uncertain: "Not confirmed (see Reminders › Needs a look)"}[m.state] || m.state;
         const status = el("td"); status.append(chip(m.state === "sent" ? "completed" : m.state === "failed" || m.state === "bounced" ? "declined" : "sent", label));
         if (m.last_error && m.state !== "sent") status.append(el("small", "", m.last_error));
         const to = el("td", "", m.to_addrs.concat(m.cc_addrs).join(", ")); if (m.bcc_addrs.length) to.append(el("small", "", `Copy to ${m.bcc_addrs.join(", ")}`));
@@ -513,7 +516,7 @@
     const details = el("section", "card"); const detailsHead = el("div", "card-head"); detailsHead.append(el("h2", "", "Details")); details.append(detailsHead);
     const facts = el("ul", "summary-list");
     [["Status", STATUS[e.status]], ["Envelope ID", e.ref], ["Created", when(e.created)], ["Sent", when(e.sent_at)], ["Completed", when(e.completed_at)],
-     ["Expires", e.status === "sent" ? (e.expires_at ? when(e.expires_at) : "Never") : ""], ["Reminders", e.settings.reminder_every ? `After ${e.settings.reminder_delay} day${e.settings.reminder_delay === 1 ? "" : "s"}, then every ${e.settings.reminder_every} day${e.settings.reminder_every === 1 ? "" : "s"}` : "Off"]].filter(x => x[0] !== "Reminders" || e.status === "sent")
+     ["Expires", e.status === "sent" ? (e.expires_at ? when(e.expires_at) : "Never") : ""]]
       .filter(([, v]) => v).forEach(([k, v]) => { const li = el("li"); li.append(el("span", "", k), el("strong", "", v)); facts.append(li); });
     details.append(facts);
     if (e.message) { details.append(el("h3", "", "Message")); const m = el("p", "muted small", e.message); m.style.whiteSpace = "pre-wrap"; details.append(m); }
@@ -934,10 +937,27 @@
     const sset = editor.e.settings;
     const [s, body] = section(n, "Settings", "Reminders, expiration and what recipients may do.");
     const grid = el("div", "settings-grid");
-    const reminders = select([["0", "Off"], ["1", "Every day"], ["2", "Every 2 days"], ["3", "Every 3 days"], ["7", "Every week"]], String(sset.reminder_every));
-    if (![...reminders.options].some(o => o.value === String(sset.reminder_every))) reminders.append(new Option(`Every ${sset.reminder_every} days`, String(sset.reminder_every))), reminders.value = String(sset.reminder_every);
-    reminders.addEventListener("change", () => { sset.reminder_every = Number(reminders.value); dirty(); });
-    const first = input(sset.reminder_delay, "number", {min: 1, max: 30}); first.addEventListener("change", () => { sset.reminder_delay = Number(first.value) || 1; dirty(); });
+    // Reminders follow a rule (Admin › Reminders). Before 5.4 an envelope set to "Off" had reminder_every 0 and no rule: it stays off.
+    const chosenRule = "reminder_rule" in sset ? (sset.reminder_rule || "") : (sset.reminder_every === 0 ? "off" : "");
+    const reminders = select([["", "Company default"]], chosenRule);
+    const ruleNote = el("small", "field-note", "");
+    reminders.addEventListener("change", () => { sset.reminder_rule = reminders.value; showRule(); dirty(); });
+    let ruleData = null;
+    const showRule = () => {
+      if (!ruleData) return;
+      const company = ruleData.companies.find(x => x.name === editor.e.entity);
+      const id = reminders.value || (company ? company.rule : "standard");
+      const r = ruleData.rules.find(x => x.id === id);
+      ruleNote.textContent = r ? `${reminders.value ? "" : r.name + ": "}${r.summary}` : "";
+    };
+    window.tfscReminders?.ruleOptions().then(d => {
+      ruleData = d;
+      const company = d.companies.find(x => x.name === editor.e.entity);
+      const def = d.rules.find(x => x.id === (company ? company.rule : "standard"));
+      reminders.replaceChildren(new Option(`Company default${def ? ` (${def.name})` : ""}`, ""));
+      d.rules.filter(r => r.active || r.id === chosenRule).forEach(r => reminders.append(new Option(r.name, r.id)));
+      reminders.value = chosenRule; showRule();
+    }).catch(() => {});
     const expiry = select([["0", "Never expires"], ["7", "7 days"], ["14", "14 days"], ["30", "30 days"], ["60", "60 days"], ["90", "90 days"], ["180", "180 days"], ["365", "1 year"]], String(sset.expire_days || 0));
     if (![...expiry.options].some(o => o.value === String(sset.expire_days || 0))) { expiry.append(new Option(`${sset.expire_days} days`, String(sset.expire_days))); expiry.value = String(sset.expire_days); }
     const warn = input(sset.warn_days, "number", {min: 0, max: 30});
@@ -945,8 +965,22 @@
     const warnField = field("Warn before it expires (days)", warn);
     warnField.hidden = !Number(sset.expire_days);
     expiry.addEventListener("change", () => { sset.expire_days = Number(expiry.value); warnField.hidden = !sset.expire_days; dirty(); });
-    grid.append(field("Send reminders", reminders), field("First reminder after (days)", first), field("Expiration", expiry, "Links never expire unless you choose an expiration."), warnField);
+    const ruleField = field("Reminders", reminders); ruleField.append(ruleNote);
+    grid.append(ruleField, field("Expiration", expiry, "Links never expire unless you choose an expiration."), warnField);
     body.append(grid);
+    // who is reminded: everyone who signs (and viewers when the rule reminds them), unless switched off here
+    const remindable = editor.recipients.filter(r => ["signer", "viewer"].includes(r.role) && !r.locked);
+    if (remindable.length) {
+      const who = el("div", "rem-who"); who.append(el("p", "rem-who-title", "Who is reminded"));
+      remindable.forEach(r => {
+        const row = el("label", "switch-row"); const c = input("", "checkbox", {checked: r.reminders_off !== true}); c.setAttribute("role", "switch");
+        c.addEventListener("change", () => { r.reminders_off = !c.checked; dirty(); });
+        const t = el("span"); t.append(document.createTextNode(r.name || r.email || r.role_name || "Recipient"), el("small", "", r.role === "viewer" ? "Views a copy: reminded only when the rule reminds viewers" : (r.email || "")));
+        row.append(c, t); who.append(row);
+      });
+      who.append(el("small", "field-note", "People on the do-not-remind list are never reminded. Invitations and signed copies are always sent."));
+      body.append(who);
+    }
     const flag = (key, text, note) => {
       const row = el("label", "switch-row"); const c = input("", "checkbox", {checked: sset[key] !== false}); c.addEventListener("change", () => { sset[key] = c.checked; dirty(); });
       const t = el("span"); t.append(document.createTextNode(text), el("small", "", note)); row.append(c, t); return row;
@@ -1303,7 +1337,8 @@
     const e = editor.e;
     return {
       recipients: editor.recipients.map(r => r.locked ? {id: r.key} : ({id: e.recipients.some(x => x.id === r.key) ? r.key : undefined, key: r.key, role: r.role, role_name: r.role_name,
-        routing_order: e.settings.ordered ? r.routing_order : 1, name: r.name, email: r.email, note: r.note || "", access_code: r.access_code, host_id: r.role === "in_person" ? (r.host_id || user.id) : undefined})),
+        routing_order: e.settings.ordered ? r.routing_order : 1, name: r.name, email: r.email, note: r.note || "", access_code: r.access_code, host_id: r.role === "in_person" ? (r.host_id || user.id) : undefined,
+        reminders_off: r.reminders_off === true})),
       fields: editor.fields.filter(f => !lockedKey(f.recipient)).map(f => ({key: f.key, recipient: f.recipient, document_id: f.document_id, page: f.page, kind: f.kind, x: f.x, y: f.y,
         w: f.w, h: f.h, required: f.required, label: f.label, options: f.options}))};
   }
