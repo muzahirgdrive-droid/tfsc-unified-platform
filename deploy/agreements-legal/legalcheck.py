@@ -207,7 +207,8 @@ def compare(conf_path, compose_json, running_dir) -> int:
             r.fail(f'no running container found for {svc}')
             continue
         running = _own_env(cont, img)
-        new = {k: ('' if v is None else str(v)) for k, v in (spec.get('environment') or {}).items()}
+        # a variable written without a value (null) is not set in the container (Compose leaves it out; tested with v5.6.0)
+        new = {k: str(v) for k, v in (spec.get('environment') or {}).items() if v is not None}
         lost = sorted(k for k in running if k not in new)
         changed = sorted(k for k in running if k in new and new[k] != running[k])
         added = sorted(k for k in new if k not in running)
@@ -266,8 +267,8 @@ def compare(conf_path, compose_json, running_dir) -> int:
         size = max(2, int(new.get('DB_POOL_SIZE') or 20))
         over = int(new.get('DB_POOL_OVERFLOW') or 5)
         pools[svc] = (procs, size, over)
-        r.ok(f'{svc}: DB_POOL_SIZE {running.get("DB_POOL_SIZE", "unset (20)")} -> {new.get("DB_POOL_SIZE", "unset (20)")}, '
-             f'DB_POOL_OVERFLOW {running.get("DB_POOL_OVERFLOW", "unset (5)")} -> {new.get("DB_POOL_OVERFLOW", "unset (5)")}')
+        r.ok(f'{svc}: DB_POOL_SIZE {running.get("DB_POOL_SIZE", "unset (app default 20)")} -> {new.get("DB_POOL_SIZE", "unset (app default 20)")}, '
+             f'DB_POOL_OVERFLOW {running.get("DB_POOL_OVERFLOW", "unset (app default 5)")} -> {new.get("DB_POOL_OVERFLOW", "unset (app default 5)")}')
     for item in (c.get('APP_EXPECT') or '').split():
         where, _, kv = item.partition(':')
         k, _, v = kv.partition('=')
