@@ -133,10 +133,13 @@ def compare(conf_path, compose_json, running_dir) -> int:
         for key, x in (spec.get('networks') or {}).items():
             name = (nets_top.get(key) or {}).get('name', key)
             want_n[name] = sorted(set((x or {}).get('aliases') or []) - auto)
-        if set(have_n) != set(want_n):
-            r.fail(f'{svc}: networks differ: running {sorted(have_n)}, new {sorted(want_n)}')
+        lost_n, new_n = set(have_n) - set(want_n), set(want_n) - set(have_n)
+        if lost_n:
+            r.fail(f'{svc}: would leave network(s) {sorted(lost_n)} (running {sorted(have_n)}, new {sorted(want_n)})')
         else:
-            r.ok(f'{svc}: same networks ({", ".join(sorted(have_n))})')
+            r.ok(f'{svc}: keeps its networks ({", ".join(sorted(have_n))})')
+        if new_n:
+            r.warn(f'{svc}: joins network(s) {sorted(new_n)} (new in this release)')
         for n in set(have_n) & set(want_n):
             missing = set(have_n[n]) - set(want_n[n])
             if missing:
