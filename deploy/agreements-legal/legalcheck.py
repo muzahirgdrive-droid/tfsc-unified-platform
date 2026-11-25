@@ -66,10 +66,13 @@ def conf(path) -> dict:
 
 
 def env_list(items) -> dict:
+    """KEY=VALUE entries of docker inspect. A bare KEY (no "=") is a variable Compose was told to leave unset: it is not
+    set in the container's processes (tested with Compose v5.6.0), so it is not a variable here either."""
     out = {}
     for item in items or []:
-        k, _, v = item.partition('=')
-        out[k] = v
+        k, sep, v = item.partition('=')
+        if sep:
+            out[k] = v
     return out
 
 
