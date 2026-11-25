@@ -1,8 +1,25 @@
 # Change log: TFSC Agreements 5.4, production package for legal.24-7consultancy.cloud
 
-Package `TFSC-Agreements-Legal-5.4.0-<date>-<commit>.zip`. It contains the full 5.4 release plus the production
+Package `TFSC-Agreements-Legal-5.4.0-legal.2-<date>-<commit>.zip` (build 5.4.0-legal.2; replaces 5.4.0 legal build 1, `0cf8ef5`). It contains the full 5.4 release plus the production
 adaptation. It replaces the earlier 5.4 ZIP (`TFSC-Agreements-Deploy-2026-11-25-97e2d02.zip`), which carried only the
 upstream deployment files and must not be used on this server.
+
+## 0. Package 5.4.0-legal.2: corrections after the owner's review against the live server
+
+The application is unchanged (5.4.0). Every correction is in the production adaptation:
+
+| # | Issue found in review | Correction | Files |
+|---|---|---|---|
+| 1 | `health_port()` required a published host port; production's web container has none, so the preflight failed | Removed `health_port()`, `TFSC_HEALTH_PORT` and the web `ports:` mapping. Health and version are asked inside the web container (`web_health`, `docker exec`), and Caddy's path is probed on `alphabridge_edge`. Used by `preflight`, `update`, `wait_healthy`, the automatic step back, `rollback` and `status`. The compose and the checker now require that the web publishes no port. | agreements.sh, compose.yaml, legalcheck.py, validate-release.sh, prod.conf (`WEB_PORTS=none`) |
+| 2 | `cmd_preflight()` used database `crm` in `pg_isready` and `psql` | Every database command uses `$DB_NAME` (`tfsc`) and `$DB_SUPERUSER` (`crm`). The preflight also runs `select 1` on `tfsc` and checks the revision is `0014_integration_feed`. The postgres health check in compose uses `tfsc`. The release check fails on any `-d crm` in the script. | agreements.sh, compose.yaml, legalcheck.py |
+| 3 | Compose defaults would have changed the pools (web 8+4, worker 3+2); production runs `DB_POOL_SIZE=5` | The new containers get **exactly** the running containers' environment. `capture` copies every variable (and web processes, names, limits, networks, aliases, mounts) into `state/compose.runtime.yaml` (mode 600, server only). Variables production does not set stay unset (`DB_POOL_OVERFLOW` is not set today: application default 5). `compare` then requires the result to equal the running containers. Compose defaults are now 5/5, which only apply without the override. `APP_EXPECT` checks web and worker `DB_POOL_SIZE=5`. The preflight shows the maximum connections (unchanged). | legalcheck.py, agreements.sh, compose.yaml, prod.conf |
+| 4 | OCS API not on `tfsc-link` | The Legal update creates `tfsc-link` if missing and puts Legal on it as `tfsc-agreements-legal`. The OCS side is a separate, documented change (exact compose lines, command, impact, undo). The preflight reports whether the OCS API is on `tfsc-link`, read-only. The Legal update never touches OCS. | OCS-TFSC-LINK.md, agreements.sh |
+| 5 | Environment variables (`TFSC_MAIL_PRIVATE_HOSTS` and others) | No variable is dropped or changed: all are copied from the running containers (names listed, values never shown). `TFSC_MAIL_PRIVATE_HOSTS` is not in the upstream compose: unless it is `true`, the mailer refuses mail servers on private network addresses (`mailer.py`, `refuse_internal_host`); `true` is meant for a test mail server. In the build-1 report it appeared only because the sandbox simulation set it for its local test mail server; production does not need it, and the update keeps it exactly as production has it (set or not). | legalcheck.py |
+| 6 | Validation used Compose v5.7.1 | Everything re-run with Compose **v5.6.0** (official binary, checksum verified). | — |
+| 7 | (found while testing with v5.6.0) Compose records a variable left unset as a bare name in `docker inspect`; read as empty, a later rollback would have set `DB_POOL_OVERFLOW=''` and the app could not start | A bare name is read as unset; the rollback in the tests got exactly the original environment | legalcheck.py |
+| 8 | (found while testing) the release check reported `0.0.0.0` lines to the repository linter | Marked as comparison values; the repository's `ruff check .` passes | legalcheck.py |
+
+Also new: `PACKAGE_BUILD=5.4.0-legal.2` (in the package name and VERSION).
 
 ## 1. Production adaptation (new; nothing like it was in any earlier package)
 
@@ -74,6 +91,7 @@ M apps/agreements/portal.js         user dialog: nothing to discard after a succ
 M apps/agreements/reminders.js      Cancel button joins the dialog check
 A agreements.sh (package top)       production script (copy of deploy/agreements-legal/agreements.sh)
 A deploy/agreements-legal/*         agreements.sh, compose.yaml, prod.conf, legalcheck.py, validate-release.sh, documents
+                                    (build 2: all of these changed, plus OCS-TFSC-LINK.md; see section 0)
 A tools/make_agreements_legal_bundle.sh   (repository only, not in the package)
 moved in the package: deploy/agreements/{compose.yaml, agreements.sh, Caddyfile, README.md, backup-offsite.env.example}
       -> upstream/{compose.upstream.yaml, agreements.upstream.sh, Caddyfile.upstream, START-HERE.upstream.md, ...}

@@ -32,6 +32,23 @@ their company's default rule (Standard) and keep their count of reminders alread
 under 5.3 was long ago can receive its next reminder in the first sending window after the update (as 5.3 would have),
 limited to one automatic email per person per company per day and two in all. Envelopes set to Off in 5.3 stay off.
 
+## Compatibility with production (revision 0014_integration_feed, database tfsc, user crm)
+
+- `0015_reminders` has `down_revision = '0014_integration_feed'`: it is the only migration between production's revision
+  and this release. `agreements.sh preflight` stops unless the revision is `0014_integration_feed` (or already
+  `0015_reminders` after an earlier attempt).
+- It runs as the database user in the production `DATABASE_URL` (the running containers' value, kept), in database `tfsc`.
+  It needs the rights to CREATE TABLE, ALTER TABLE ... ADD COLUMN, CREATE INDEX and INSERT in `tfsc`. The owner or a
+  superuser has them; 0014 needed the same rights.
+- It does not use, create or rename any other database (no `crm` database is needed by the migration or by the script).
+- **Sandbox (not your VPS):** simulated production with PostgreSQL 16, database `tfsc`, no `crm` database, application
+  user `crm`, revision `0014_integration_feed`, 5.3 running, real data (users, clients, contracts, documents, envelopes,
+  a signature). Applied 0014 → 0015 with Compose v5.6.0 while 5.3 served. Afterwards every business table, signature and
+  stored file was identical (row hashes on the columns that existed before). 5.3 ran on 0015 after a manual and after an
+  automatic rollback. A pre-update copy taken at 0014 restored completely into a throwaway database.
+- **On your VPS:** the preflight confirms the revision, the database and the user; the update prints
+  `database revision 0014_integration_feed -> 0015_reminders`.
+
 ## 0001–0014 (already applied in production; listed for completeness)
 
 | Migration | Upgrade does | Additive | Downgrade removes |

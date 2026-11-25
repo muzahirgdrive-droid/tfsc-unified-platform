@@ -14,17 +14,18 @@ change. The machine-readable form of the same facts is `prod.conf`; `validate-re
 | Web service | `legal-agreements` | `agreements` |
 | Worker | `agreements-worker` | same |
 | Database / backup / scanner services | `postgres`, `backup`, `clamav` | same names |
-| Database | `tfsc`; superuser `crm` (sockets) | same |
+| Database | `tfsc` (revision `0014_integration_feed` before 5.4); superuser `crm`; every check uses `$DB_NAME`/`$DB_SUPERUSER` | maintenance database `crm` |
 | Proxy | the server's own Caddy, managed separately, reaching `tfsc-agreements-legal:8000` on network `alphabridge_edge` | a bundled Caddy (`edge`) on ports 80/443 |
-| OCS feed network | `tfsc-link` (external; created if missing; private) | same, but the web service is reached as `agreements` |
+| OCS feed network | `tfsc-link` (external; created if missing; private); Legal's alias there `tfsc-agreements-legal`; OCS reads `http://tfsc-agreements-legal:8000/api/integration/v1` and its API must be on `tfsc-link` (a separate OCS change, OCS-TFSC-LINK.md) | same network, web reached as `agreements` |
 | Volumes | external, exact names `tfsc-agreements-legal_{postgres-data,backups,pg-socket,restore-scratch,clamav-db,agreements-data,contracts}` | created by Compose |
 | Application image | `tfsc-agreements:<date>-<commit>`; rollback `tfsc-agreements:rollback-<date>` | `tfsc-agreements:4` and `:rollback` |
 | PostgreSQL image | `tfsc-postgres:16` (never rebuilt by an update) | rebuilt on every update |
 | Backup image | `tfsc-postgres:20261110-c803dc9` | `tfsc-postgres:16` |
 | ClamAV image | `clamav/clamav:1.4.6` | same |
 | PostgreSQL settings | `max_connections=100`, `shared_buffers=256MB`, `effective_cache_size=4GB`, `archive_mode=on` (pgBackRest) | 200 / 3GB / 9GB |
-| Application settings | `WEB_WORKERS=2`, `WEB_THREADS=8`, `DB_POOL_SIZE=8`, `DB_POOL_OVERFLOW=4`, `TFSC_GENERATION_WORKERS=1`, `TFSC_COMPLETION_WORKERS=1` | sized for 16 GB |
-| Health port | the web service's existing `127.0.0.1:<port>` (read from the running container; never published wider) | `127.0.0.1:8765` |
+| Application settings | whatever the running containers have, kept exactly (copied from them at every update); today `DB_POOL_SIZE=5` on web and worker, `DB_POOL_OVERFLOW` not set (application default 5) | `DB_POOL_SIZE` 16 web / 3 worker, overflow 4 / 2 |
+| Published host port | **none**: Caddy reaches the web service on `alphabridge_edge`; health and version are checked inside the container (`docker exec`) and through `alphabridge_edge` | `127.0.0.1:8765` |
+| Docker Compose | v5.6.0 (the package was tested with exactly this version) | any v2+ |
 
 **On this server `tfsc-agreements:4` and `tfsc-agreements:rollback` may point at other images.** Production never uses
 them. The verified rollback image for the 5.3 → 5.4 update is `tfsc-agreements:rollback-20261125`
@@ -45,10 +46,11 @@ agreements.sh                      production script (copy of deploy/agreements-
 deploy/agreements-legal/
   prod.conf                        production facts, no secrets
   compose.yaml                     production compose (external volumes/networks, no proxy, no build)
-  compose.local.yaml               (server only, optional, never shipped) settings found only on the server
+  state/compose.runtime.yaml       (server only, written by agreements.sh, mode 600, never shipped) what the running containers have
+  compose.local.yaml               (server only, optional, never shipped) only if support asks for an extra setting
   legalcheck.py                    compares the new config with the running containers; checks a release
   validate-release.sh              the release check (run it on every new release, on any machine)
-  UPDATE-AND-ROLLBACK.md, MIGRATION-REVIEW.md, CHANGELOG-LEGAL.md, VALIDATION-REPORT.md
+  UPDATE-AND-ROLLBACK.md, MIGRATION-REVIEW.md, CHANGELOG-LEGAL.md, VALIDATION-REPORT.md, OCS-TFSC-LINK.md
 deploy/agreements/initdb/          upstream, unchanged (first start of an empty database only)
 upstream/                          upstream deployment files, renamed (compose.upstream.yaml, agreements.upstream.sh, ...)
 apps/, packages/, infra/           the release, unchanged
@@ -69,8 +71,9 @@ built with `tools/make_agreements_legal_bundle.sh` from the repository branch, w
 | `docker image prune -f` after an update | none | keep every image for rollback |
 | `restart`/`stop`/`start`/`install` act on the whole stack, open the firewall, start Caddy | not available (`restart-app` restarts web and worker only) | |
 | `ensure_env_keys`/`tune_env` append to `.env` | `.env` is only read; its path is detected from the running container's Compose labels | production settings stay as they are |
-| health: web answers + worker not unhealthy | web healthy **and** answering with the new version, reachable on `alphabridge_edge` as `tfsc-agreements-legal`, the feed still reachable on `tfsc-link`; worker heartbeats newer than its start | a stale heartbeat file or a lost Caddy alias would otherwise pass |
-| no comparison with what runs | `preflight`: every environment variable (values compared, not shown), mount, network, alias, port and container name of the running web and worker must stay the same | the production compose was never part of a release |
+| health on `127.0.0.1:8765` (published port) + worker not unhealthy | no host port: web healthy **and** reporting the new version inside its container (`docker exec`), reachable on `alphabridge_edge` as `tfsc-agreements-legal`, the feed still reachable on `tfsc-link`; worker heartbeats newer than its start; the automatic step back uses the same checks | production publishes no port; a stale heartbeat or a lost Caddy alias would otherwise pass |
+| settings from compose defaults and `.env` | the running web and worker are copied (`capture`): environment, web processes, container names, memory/process limits, restart policy, extra networks, aliases, mounts → `state/compose.runtime.yaml` (mode 600, server only); variables production does not set stay unset; then `compare` requires the result to equal the running containers | the production compose was never part of a release; pool sizes and other settings must not change |
+| checks on database `crm` | every check on `$DB_NAME` (`tfsc`) as `$DB_SUPERUSER` (`crm`) | production's database is `tfsc` |
 
 ## 4. Adapting the next release (checklist)
 
@@ -98,6 +101,16 @@ image until the next update has been running without problems.
 
 ## 5. Things only the server can confirm (checked by `preflight`, listed in VALIDATION-REPORT.md)
 
-The production compose and `.env` were never part of a release. This package was written from the facts above.
-`agreements.sh preflight` compares everything that matters with the running containers before anything changes, and
-stops on any difference that would alter environment variables, mounts, networks, aliases, ports or container names.
+The production compose and `.env` were never part of a release. This package was written from the facts above, and it
+copies the running containers' settings instead of assuming them. `agreements.sh preflight` then compares the result with
+the running containers and stops on any difference in environment variables, mounts, networks, aliases, published ports,
+container names, memory limits or web processes.
+
+## 6. Notes for the next release (learned on this one)
+
+- Compose records a variable the override leaves unset as a bare name (no `=`) in `docker inspect`; it is not set in
+  the processes. `legalcheck.py` reads a bare name as unset (reading it as empty would give `DB_POOL_OVERFLOW=''` and a
+  container that cannot start).
+- `pg_restore --list` stops reading after the table of contents; the copy is therefore verified by reading all of it
+  first, then the list.
+- A release that cannot start is recognised from its log after a minute; keep that check (less downtime).
