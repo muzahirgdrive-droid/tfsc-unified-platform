@@ -231,14 +231,14 @@ def release(conf_path, release_dir, compose_json=None, upstream_json=None) -> in
             if tag in code:
                 r.fail(f'agreements.sh refers to {tag}, which on this server is a different image')
         # every "up" names the two application services and never starts dependencies
-        for m in re.finditer(r'\bdc\b[^\n]*\bup\b[^\n]*', code):
+        for m in re.finditer(r'\b(?:dc|docker\s+compose)\b[^\n]*\sup\s[^\n]*', code):
             seg = m.group(0)
             if '--no-deps' not in seg or '$WEB' not in seg or '$WORKER' not in seg:
                 r.fail(f'agreements.sh: an "up" that is not limited to the web and worker services: {seg.strip()!r}')
-        for m in re.finditer(r'\bdc\b[^\n]*\b(restart|stop|start|rm|kill)\b[^\n]*', code):
+        for m in re.finditer(r'\b(?:dc|docker\s+compose)\s+(?:-\S+\s+\S+\s+)*(restart|stop|start|rm|kill|pause|create)\b[^\n]*', code):
             seg = m.group(0)
             if '$WEB' not in seg:
-                r.fail(f'agreements.sh: a whole-stack {m.group(1)}: {seg.strip()!r}')
+                r.fail(f'agreements.sh: a {m.group(1)} not limited to the production web and worker services: {seg.strip()!r}')
         for m in re.finditer(r'\bdc\b\s+(exec|run|logs|restart|stop|up)\b[^\n]*?\s(agreements)(\s|$)', code):
             r.fail(f'agreements.sh: refers to the upstream service name "agreements": {m.group(0).strip()!r}')
         if 'ROLLBACK_IMAGE' not in code:
