@@ -1,0 +1,172 @@
+# TFSC Agreements, production on legal.24-7consultancy.cloud (PRODUCTION ADAPTATION of deploy/agreements/compose.yaml).
+#
+# Used only through ../../agreements.sh (this folder's production script), which sets the two values below and only ever
+# starts, stops or replaces legal-agreements and agreements-worker. PostgreSQL, backup and ClamAV are described here so
+# the project stays complete and checkable; the script never creates, rebuilds, recreates or restarts them.
+#
+#   TFSC_AGREEMENTS_IMAGE  the application image to run (set by agreements.sh: the new build, or the rollback image)
+#   TFSC_HEALTH_PORT       the 127.0.0.1 port of the running web container (read from it by agreements.sh)
+#
+# Differences from upstream (every one is explained in PRODUCTION-ADAPTATION.md):
+#   * project tfsc-agreements-legal; web service legal-agreements (upstream: agreements)
+#   * no Caddy/edge service: the server's own Caddy reaches legal-agreements on alphabridge_edge as tfsc-agreements-legal
+#   * every volume and network is external and reused by its exact production name; nothing is created here
+#   * no build: sections: PostgreSQL, backup and ClamAV are never built; the application image is built by agreements.sh
+#   * production database, backup and application settings (not the upstream defaults for a 16 GB server)
+#   * pull_policy: never for local images
+# Settings and secrets come from the production .env (never part of this package). Local, server-only additions go in
+# compose.local.yaml next to this file (agreements.sh includes it when it exists; it is never part of a release).
+name: tfsc-agreements-legal
+
+x-logging: &logging
+  driver: local
+  options: { max-size: "20m", max-file: "10" }
+
+x-agreements: &agreements
+  image: ${TFSC_AGREEMENTS_IMAGE:?agreements.sh sets TFSC_AGREEMENTS_IMAGE; do not run docker compose directly}
+  pull_policy: never
+  restart: unless-stopped
+  environment: &agreements-env
+    TFSC_MODE: hosted
+    TFSC_ORIGIN: https://${TFSC_DOMAIN:?set TFSC_DOMAIN}
+    # Production may connect with its own database URL (DATABASE_URL in .env); otherwise the upstream one.
+    DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://tfsc:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/tfsc}
+    TFSC_DATA_DIR: /data
+    TFSC_OUTPUT_ROOT: /contracts
+    TFSC_RENDERER: libreoffice
+    TFSC_SECRET_KEY: ${TFSC_SECRET_KEY:?set TFSC_SECRET_KEY}
+    TFSC_CLAMAV: ${TFSC_CLAMAV:-clamav:3310}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_FROM: ${SMTP_FROM:-}
+    SMTP_AUTH: ${SMTP_AUTH:-false}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+    SMTP_SSL: ${SMTP_SSL:-false}
+    TFSC_LOG_FORMAT: json
+    TFSC_IDLE_MINUTES: ${TFSC_IDLE_MINUTES:-30}
+    TFSC_SIGNER_IDLE_MINUTES: ${TFSC_SIGNER_IDLE_MINUTES:-15}
+    TFSC_SESSION_HOURS: ${TFSC_SESSION_HOURS:-12}
+    TFSC_MAIL_DAILY_CAP: ${TFSC_MAIL_DAILY_CAP:-1800}
+    TFSC_SENTRY_DSN: ${TFSC_SENTRY_DSN:-}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  volumes: [agreements-data:/data, contracts:/contracts]
+  depends_on: { postgres: { condition: service_healthy } }
+  init: true
+  pids_limit: 2000
+  logging: *logging
+
+services:
+  # Untouched by agreements.sh. Production settings: 100 connections, 256 MB shared buffers, 4 GB cache estimate, WAL
+  # archiving on (pgBackRest).
+  postgres:
+    image: tfsc-postgres:16
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_DB: crm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: --data-checksums
+      PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_PASSPHRASE:?set BACKUP_PASSPHRASE}
+    env_file: [{ path: ./backup-offsite.env, required: false }]
+    volumes: [postgres-data:/var/lib/postgresql/data, ../agreements/initdb:/docker-entrypoint-initdb.d:ro, backups:/backups, pg-socket:/var/run/postgresql]
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_connections=100", "-c", "shared_buffers=256MB",
+              "-c", "effective_cache_size=4GB", "-c", "work_mem=${PG_WORK_MEM:-16MB}", "-c", "maintenance_work_mem=${PG_MAINTENANCE_MEM:-512MB}",
+              "-c", "random_page_cost=1.1", "-c", "effective_io_concurrency=200", "-c", "wal_compression=on", "-c", "max_wal_size=2GB", "-c", "checkpoint_completion_target=0.9",
+              "-c", "max_parallel_workers_per_gather=2", "-c", "log_min_duration_statement=2000", "-c", "log_lock_waits=on",
+              "-c", "archive_mode=on", "-c", "archive_command=pgbackrest --stanza=tfsc archive-push %p", "-c", "archive_timeout=60"]
+    shm_size: 1gb
+    stop_grace_period: 60s
+    logging: *logging
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d crm"], interval: 5s, timeout: 5s, retries: 20 }
+
+  # Untouched by agreements.sh, which uses this running container (docker exec) for the encrypted pre-update copy.
+  backup:
+    image: tfsc-postgres:20261110-c803dc9
+    pull_policy: never
+    restart: unless-stopped
+    user: postgres
+    entrypoint: [tfsc-backup]
+    command: [loop]
+    environment:
+      PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_PASSPHRASE:?set BACKUP_PASSPHRASE}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_TZ: ${BACKUP_TZ:-America/Los_Angeles}
+      BACKUP_FULL_EVERY_DAYS: ${BACKUP_FULL_EVERY_DAYS:-7}
+      BACKUP_RESTORE_TEST: ${BACKUP_RESTORE_TEST:-1}
+    env_file: [{ path: ./backup-offsite.env, required: false }]
+    volumes: [postgres-data:/var/lib/postgresql/data:ro, backups:/backups, pg-socket:/var/run/postgresql, restore-scratch:/restore]
+    depends_on: { postgres: { condition: service_healthy } }
+    init: true
+    mem_limit: ${BACKUP_MEMORY:-2g}
+    logging: *logging
+
+  # Untouched by agreements.sh.
+  clamav:
+    image: clamav/clamav:1.4.6
+    pull_policy: never
+    restart: unless-stopped
+    volumes: [clamav-db:/var/lib/clamav]
+    mem_limit: ${CLAMAV_MEMORY:-3g}
+    logging: *logging
+
+  legal-agreements:
+    <<: *agreements
+    # health checks only, on this server; the public entry point is the server's own Caddy on alphabridge_edge
+    ports: ["127.0.0.1:${TFSC_HEALTH_PORT:?agreements.sh sets TFSC_HEALTH_PORT}:8000"]
+    networks:
+      default: {}
+      edge: { aliases: [tfsc-agreements-legal] }       # Caddy: reverse_proxy tfsc-agreements-legal:8000
+      link: { aliases: [tfsc-agreements-legal] }       # OCS: http://tfsc-agreements-legal:8000/api/integration/v1 (private)
+    environment:
+      <<: *agreements-env
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-8}
+      DB_POOL_OVERFLOW: ${DB_POOL_OVERFLOW:-4}
+    command: ["uvicorn", "portal:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${WEB_WORKERS:-2}", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*",
+              "--timeout-keep-alive", "30", "--timeout-graceful-shutdown", "25"]
+    mem_limit: ${WEB_MEMORY:-4g}
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request as u;u.urlopen(u.Request('http://127.0.0.1:8000/api/health',headers={'Host':os.environ['TFSC_ORIGIN'].split('//',1)[1]}),timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 4
+      start_period: 90s
+
+  agreements-worker:
+    <<: *agreements
+    networks: { default: {} }
+    environment:
+      <<: *agreements-env
+      DB_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-3}
+      DB_POOL_OVERFLOW: ${WORKER_DB_POOL_OVERFLOW:-2}
+      DB_STATEMENT_TIMEOUT_MS: "600000"
+      DB_LOCK_TIMEOUT_MS: "30000"
+      DB_IDLE_TX_TIMEOUT_MS: "900000"
+      TFSC_GENERATION_WORKERS: ${TFSC_GENERATION_WORKERS:-1}
+      TFSC_COMPLETION_WORKERS: ${TFSC_COMPLETION_WORKERS:-1}
+    command: ["python", "worker.py"]
+    mem_limit: ${WORKER_MEMORY:-4g}
+    stop_grace_period: 130s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time;sys.exit(0 if all(os.path.exists(p) and time.time()-os.path.getmtime(p)<300 for p in ('/data/.heartbeat-mail','/data/.heartbeat-sweep')) else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 4
+      start_period: 180s
+
+networks:
+  default: { external: true, name: tfsc-agreements-legal_default }
+  edge: { external: true, name: alphabridge_edge }
+  link: { external: true, name: tfsc-link }
+
+volumes:
+  postgres-data: { external: true, name: tfsc-agreements-legal_postgres-data }
+  backups: { external: true, name: tfsc-agreements-legal_backups }
+  pg-socket: { external: true, name: tfsc-agreements-legal_pg-socket }
+  restore-scratch: { external: true, name: tfsc-agreements-legal_restore-scratch }
+  clamav-db: { external: true, name: tfsc-agreements-legal_clamav-db }
+  agreements-data: { external: true, name: tfsc-agreements-legal_agreements-data }
+  contracts: { external: true, name: tfsc-agreements-legal_contracts }

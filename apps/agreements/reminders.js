@@ -193,7 +193,7 @@
     const err = el("p", "rem-error"); err.hidden = true; err.setAttribute("role", "alert");
     body.append(field("Name", name), field("Email", email), field("Applies to", scope), field("Until (leave empty for always)", until), field("Reason", reason, "Required. Shown to the team and kept in the Activity log."), err);
     const row = el("div", "rem-dialog-actions");
-    row.append(button("Cancel", "button button-quiet", () => d.close()), button("Stop reminders", "button button-primary", async () => {
+    const cancel = button("Cancel", "button button-quiet", () => d.close()); cancel.dataset.dialogClose = ""; row.append(cancel, button("Stop reminders", "button button-primary", async () => {
       err.hidden = true;
       try {
         await api("/api/reminders/optouts", {name: name.value, email: email.value, entity: scope.value || null, reason: reason.value, until: until.value ? new Date(until.value + "T23:59:00").getTime() / 1000 : null});

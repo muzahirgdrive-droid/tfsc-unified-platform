@@ -1,4 +1,38 @@
 "use strict";
+// Every dialog (release 5.4): what was typed is never lost by accident. The fields' state is remembered when a dialog
+// opens; closing it with ×, Close/Cancel or Escape after something changed asks first (Cancel keeps editing, nothing lost).
+// A dialog whose work was saved calls tfscDialogs.remember(dialog) so closing it afterwards asks nothing.
+window.tfscDialogs = (() => {
+  const MESSAGE = "You have unsaved changes. Are you sure you want to discard them?";
+  const saved = new WeakMap();
+  const fields = d => [...d.querySelectorAll("input, select, textarea")].filter(f => !["button", "submit", "reset", "image"].includes(f.type));
+  const state = d => JSON.stringify(fields(d).map(f => [f.id || f.name || "", f.type === "checkbox" || f.type === "radio" ? f.checked : f.type === "file" ? (f.files ? f.files.length : 0) : f.value]));
+  const remember = d => { saved.set(d, state(d)); };
+  const dirty = d => !!d && d.open && saved.has(d) && saved.get(d) !== state(d);
+  const editable = d => fields(d).some(f => !f.disabled && !f.readOnly && f.type !== "hidden" && f.offsetParent !== null);
+  const mayClose = d => { if (!dirty(d)) return true; if (window.confirm(MESSAGE)) { saved.delete(d); return true; } return false; };
+  const close = d => { if (mayClose(d)) d.close(); };
+  // remembered when the dialog opens (after the code that opened it has filled it in)
+  new MutationObserver(list => list.forEach(m => { if (m.target.tagName === "DIALOG" && m.target.open && m.oldValue === null) remember(m.target); }))
+    .observe(document.documentElement, {subtree: true, attributes: true, attributeFilter: ["open"], attributeOldValue: true});
+  // × and Close/Cancel buttons: asked before their own handler runs; "Keep editing" stops it
+  document.addEventListener("click", event => {
+    const button = event.target.closest && event.target.closest(".close-dialog, [data-dialog-close]");
+    const d = button && button.closest("dialog");
+    if (d && d.open && !mayClose(d)) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }, true);
+  // Escape: handled here so the browser never closes a dialog with changes on its own (a second Escape included)
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    const open = [...document.querySelectorAll("dialog[open]")];
+    const d = (event.target.closest && event.target.closest("dialog[open]")) || open[open.length - 1];
+    if (!dirty(d)) return;
+    event.preventDefault(); event.stopPropagation();
+    if (mayClose(d)) d.close();
+  }, true);
+  document.addEventListener("cancel", event => { if (event.target.tagName === "DIALOG" && dirty(event.target)) { event.preventDefault(); if (mayClose(event.target)) event.target.close(); } }, true);
+  return {remember, dirty, editable, close};
+})();
 
 (() => {
   const $ = id => document.getElementById(id);
@@ -953,7 +987,15 @@
   });
   $("help-button").addEventListener("click", () => $("help-dialog").showModal());
   document.querySelectorAll(".close-dialog").forEach(button => button.addEventListener("click", () => button.closest("dialog").close()));
-  document.querySelectorAll("dialog").forEach(dialog => dialog.addEventListener("click", event => { if (event.target === dialog) { const box = dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close(); } }));
+  // Outside the box: only a dialog without anything to fill in (help, preview) closes, and only when the press started
+  // outside too. A form (Create user, passwords, ...) never closes from a click outside: that lost what was typed, for
+  // example after selecting text in a field and letting go of the mouse beside the dialog.
+  document.querySelectorAll("dialog").forEach(dialog => {
+    let pressedOutside = false;
+    const outside = event => { if (event.target !== dialog) return false; const box = dialog.getBoundingClientRect(); return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom; };
+    dialog.addEventListener("mousedown", event => { pressedOutside = outside(event); });
+    dialog.addEventListener("click", event => { if (pressedOutside && outside(event) && !window.tfscDialogs.editable(dialog)) dialog.close(); pressedOutside = false; });
+  });
   window.addEventListener("beforeunload", event => { if (window.tfscLeaving) return; if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ""; } });
 
   // The portal's screens live in scripts that load after this one (portal.js, esign.js, ... admin.js). DOMContentLoaded
