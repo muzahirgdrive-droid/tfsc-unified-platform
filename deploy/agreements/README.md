@@ -604,6 +604,29 @@ What this server can be expected to carry (from the November 2026 load tests and
 
 ## What was tested, and what was not
 
+### Release 5.4 (November 25, 2026)
+
+- **Automatic tests:** 352 tests pass on SQLite and on PostgreSQL 16: the 312 from 5.3 and 40 new ones for the
+  repeated-email fix and the reminders. One earlier test was changed on purpose: the 5.3 reminder test now uses a rule
+  with the same schedule it used before (reminders no longer come from per-envelope day counts).
+- **The repeated-email fault was reproduced first:** a mail server that stores the email but confirms it after the
+  app stops waiting. Before the fix the signer received a new copy on every pass; with it, exactly one copy, marked
+  "Not confirmed".
+- **Update rehearsal from 5.3 to 5.4 in Docker, from scratch, with this ZIP and fictional data:** the 5.3 ZIP was
+  installed with its own installer; a client signed, an envelope left out for signature (sent 9 days earlier, with 2
+  reminders already), an envelope with reminders set to Off, OCS connected with a token. Then the update as described
+  above: 19 seconds, database 0014 to 0015. Every row and stored file that existed before was unchanged except the
+  background jobs' timestamps; the OCS feed published nothing new and the token from before kept working; the
+  conformance checker said 39 passed, 0 failed before the update and 47 passed, 0 failed after. The envelope out for
+  signature showed "Standard, reminder 3 of 4" with its next date; the Off envelope stayed off. The worker sent the
+  next reminder by itself ("Reminder 3 of 6" under a test rule); opening its stop link changed nothing, pressing the
+  button stopped reminders and the sender was emailed; no further reminder followed. The signing link emailed before
+  the update was signed after it and the envelope completed. Rollback to 5.3 on the updated database worked (sign-in,
+  envelopes listed), and updating again worked.
+- **Screens** checked in Chromium at desktop and phone width, with no console errors.
+- **Not tested here:** real Google Workspace mailboxes (a test mail server played their part), the public HTTPS
+  certificate, and a long run over real working days (the schedule was tested with a simulated clock).
+
 ### Release 5.1 (November 10, 2026)
 
 - **Automatic tests:** 287 tests (255 from before, 32 new for the audit fixes) pass on SQLite and, for the first time for
