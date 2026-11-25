@@ -61,10 +61,10 @@ else
 fi
 PROD_JSON='' UP_JSON=''
 if docker compose version >/dev/null 2>&1; then
-  if env -i PATH="$PATH" HOME="${HOME:-/root}" TFSC_AGREEMENTS_IMAGE=tfsc-agreements:validation TFSC_HEALTH_PORT=18765 \
+  if env -i PATH="$PATH" HOME="${HOME:-/root}" TFSC_AGREEMENTS_IMAGE=tfsc-agreements:validation \
       docker compose -p tfsc-agreements-legal --project-directory "$LEGAL" -f "$LEGAL/compose.yaml" --env-file "$TMP/validation.env" config --format json > "$TMP/prod.json" 2>"$TMP/err"; then
     pass "production compose renders (docker compose config)"; PROD_JSON=$TMP/prod.json
-    env -i PATH="$PATH" HOME="${HOME:-/root}" TFSC_AGREEMENTS_IMAGE=tfsc-agreements:validation TFSC_HEALTH_PORT=18765 \
+    env -i PATH="$PATH" HOME="${HOME:-/root}" TFSC_AGREEMENTS_IMAGE=tfsc-agreements:validation \
       docker compose -p tfsc-agreements-legal --project-directory "$LEGAL" -f "$LEGAL/compose.yaml" --env-file "$TMP/validation.env" config -q && pass "docker compose config -q" || fail "docker compose config -q"
     env -i PATH="$PATH" HOME="${HOME:-/root}" docker compose -p x --project-directory "$LEGAL" -f "$LEGAL/compose.yaml" --env-file "$TMP/validation.env" config -q >/dev/null 2>&1 \
       && fail "the production compose renders without TFSC_AGREEMENTS_IMAGE (it must refuse to)" || pass "the production compose refuses to run without agreements.sh (TFSC_AGREEMENTS_IMAGE required)"

@@ -5,7 +5,9 @@
 # the project stays complete and checkable; the script never creates, rebuilds, recreates or restarts them.
 #
 #   TFSC_AGREEMENTS_IMAGE  the application image to run (set by agreements.sh: the new build, or the rollback image)
-#   TFSC_HEALTH_PORT       the 127.0.0.1 port of the running web container (read from it by agreements.sh)
+#   state/compose.runtime.yaml (server only, mode 600, written by agreements.sh from the RUNNING web and worker containers)
+#                          gives the new containers exactly the environment, web processes, names, limits, networks,
+#                          aliases and mounts production has; the values below are only what applies without it.
 #
 # Differences from upstream (every one is explained in PRODUCTION-ADAPTATION.md):
 #   * project tfsc-agreements-legal; web service legal-agreements (upstream: agreements)
@@ -14,8 +16,8 @@
 #   * no build: sections: PostgreSQL, backup and ClamAV are never built; the application image is built by agreements.sh
 #   * production database, backup and application settings (not the upstream defaults for a 16 GB server)
 #   * pull_policy: never for local images
-# Settings and secrets come from the production .env (never part of this package). Local, server-only additions go in
-# compose.local.yaml next to this file (agreements.sh includes it when it exists; it is never part of a release).
+#   * no published host port: Caddy reaches the web service on alphabridge_edge; health is checked inside the container
+# Settings and secrets come from the production .env and the running containers (never part of this package).
 name: tfsc-agreements-legal
 
 x-logging: &logging
@@ -80,7 +82,7 @@ services:
     shm_size: 1gb
     stop_grace_period: 60s
     logging: *logging
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d crm"], interval: 5s, timeout: 5s, retries: 20 }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U crm -d tfsc"], interval: 5s, timeout: 5s, retries: 20 }
 
   # Untouched by agreements.sh, which uses this running container (docker exec) for the encrypted pre-update copy.
   backup:
@@ -114,16 +116,16 @@ services:
 
   legal-agreements:
     <<: *agreements
-    # health checks only, on this server; the public entry point is the server's own Caddy on alphabridge_edge
-    ports: ["127.0.0.1:${TFSC_HEALTH_PORT:?agreements.sh sets TFSC_HEALTH_PORT}:8000"]
+    # no published port: the server's own Caddy reaches it on alphabridge_edge; agreements.sh checks health inside it
     networks:
       default: {}
       edge: { aliases: [tfsc-agreements-legal] }       # Caddy: reverse_proxy tfsc-agreements-legal:8000
       link: { aliases: [tfsc-agreements-legal] }       # OCS: http://tfsc-agreements-legal:8000/api/integration/v1 (private)
     environment:
       <<: *agreements-env
-      DB_POOL_SIZE: ${DB_POOL_SIZE:-8}
-      DB_POOL_OVERFLOW: ${DB_POOL_OVERFLOW:-4}
+      # production: 5 per process (the application's own overflow default is 5)
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_POOL_OVERFLOW: ${DB_POOL_OVERFLOW:-5}
     command: ["uvicorn", "portal:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "${WEB_WORKERS:-2}", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips=*",
               "--timeout-keep-alive", "30", "--timeout-graceful-shutdown", "25"]
     mem_limit: ${WEB_MEMORY:-4g}
@@ -140,8 +142,8 @@ services:
     networks: { default: {} }
     environment:
       <<: *agreements-env
-      DB_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-3}
-      DB_POOL_OVERFLOW: ${WORKER_DB_POOL_OVERFLOW:-2}
+      DB_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-5}
+      DB_POOL_OVERFLOW: ${WORKER_DB_POOL_OVERFLOW:-5}
       DB_STATEMENT_TIMEOUT_MS: "600000"
       DB_LOCK_TIMEOUT_MS: "30000"
       DB_IDLE_TX_TIMEOUT_MS: "900000"

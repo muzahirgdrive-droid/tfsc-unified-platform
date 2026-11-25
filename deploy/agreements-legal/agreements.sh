@@ -57,16 +57,6 @@ detect_env_file() {   # the production .env: prod.conf, then the running web con
 env_has() { grep -q "^$1=." "$ENV_FILE"; }
 env_val() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | sed "s/^'\(.*\)'\$/\1/; s/^\"\(.*\)\"\$/\1/"; }   # non-secret keys only
 
-health_port() {   # the 127.0.0.1 port the running web container publishes; kept as it is
-  local c p; c=$(cid "$WEB")
-  if [ -n "$c" ]; then
-    p=$(docker inspect -f '{{range $k, $v := .HostConfig.PortBindings}}{{if eq $k "8000/tcp"}}{{range $v}}{{.HostPort}}{{end}}{{end}}{{end}}' "$c" 2>/dev/null || true)
-    [ -n "$p" ] && { echo "$p"; return; }
-  fi
-  [ -f "$STATE_DIR/health-port" ] && { cat "$STATE_DIR/health-port"; return; }
-  die "Could not read the web container's 127.0.0.1 port. Is $WEB running?"
-}
-
 active_image() {   # the image the web service runs now (name as the container records it)
   local c; c=$(cid "$WEB")
   if [ -n "$c" ]; then docker inspect -f '{{.Config.Image}}' "$c"; return; fi
@@ -74,12 +64,34 @@ active_image() {   # the image the web service runs now (name as the container r
   echo "$CURRENT_IMAGE"
 }
 
+RUNTIME=$STATE_DIR/compose.runtime.yaml   # what the running containers have (written by capture_runtime; mode 600)
 dc() {   # docker compose for this project only, with a clean environment (the shell cannot change production settings)
   local files=(-f "$LEGAL_DIR/compose.yaml")
   [ -f "$LEGAL_DIR/compose.local.yaml" ] && files+=(-f "$LEGAL_DIR/compose.local.yaml")
+  [ "${NO_RUNTIME:-0}" != 1 ] && [ -f "${RUNTIME_FILE:-$RUNTIME}" ] && files+=(-f "${RUNTIME_FILE:-$RUNTIME}")
   env -i PATH="$PATH" HOME="${HOME:-/root}" ${DOCKER_HOST:+DOCKER_HOST="$DOCKER_HOST"} ${DOCKER_CONFIG:+DOCKER_CONFIG="$DOCKER_CONFIG"} \
-    TFSC_AGREEMENTS_IMAGE="${APP_IMAGE:-$(active_image)}" TFSC_HEALTH_PORT="${HEALTH_PORT:-$(health_port)}" \
+    TFSC_AGREEMENTS_IMAGE="${APP_IMAGE:-$(active_image)}" \
     docker compose -p "$PROJECT" --project-directory "$LEGAL_DIR" "${files[@]}" --env-file "$ENV_FILE" "$@"
+}
+
+save_running() {   # docker inspect of the running web and worker (and their images) into $WORK/running
+  local s c; mkdir -p "$WORK/running"; rm -f "$WORK/running/"*
+  for s in "$WEB" "$WORKER"; do
+    c=$(running_cid "$s"); [ -n "$c" ] || return 1
+    docker inspect "$c" > "$WORK/running/$s.json"
+    docker image inspect "$(docker inspect -f '{{.Image}}' "$c")" > "$WORK/running/$s.image.json"
+  done
+}
+
+capture_runtime() {   # capture_runtime OUT: an override giving new containers exactly what the running ones have
+  local out=$1
+  save_running || { echo "   $WEB or $WORKER is not running: nothing to copy the settings from"; return 1; }
+  cp "$LEGAL_DIR/prod.conf" "$LEGAL_DIR/legalcheck.py" "$WORK/"
+  NO_RUNTIME=1 APP_IMAGE=${APP_IMAGE:-$(new_tag)} dc config --format json > "$WORK/base.json" 2> "$WORK/compose.err" \
+    || { sed 's/^/    /' "$WORK/compose.err"; return 1; }
+  pyrun legalcheck.py capture prod.conf base.json running runtime.yaml || return 1
+  rm -f "$WORK/base.json"
+  if [ "$out" != "$WORK/runtime.yaml" ]; then mkdir -p "$(dirname "$out")"; install -m 600 "$WORK/runtime.yaml" "$out"; fi
 }
 
 pyrun() {   # python3 on the server, or the running application image (it has Python) with no network
@@ -96,8 +108,10 @@ new_tag() {   # tfsc-agreements:<build date>-<commit> from the release's VERSION
 }
 new_version() { sed -n "s/^VERSION='\([0-9.]*\)'.*/\1/p" "$ROOT/apps/agreements/portal.py" | head -n 1; }
 
-web_health() {   # prints the version the web answers with on its 127.0.0.1 port
-  curl -fsS -m 8 -H "Host: $DOMAIN" "http://127.0.0.1:$(health_port)/api/health" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p'
+web_health() {   # prints the version the web service reports, asked inside its own container (no host port needed)
+  local c; c=$(running_cid "$WEB"); [ -n "$c" ] || return 1
+  docker exec "$c" python -c "import os,json,urllib.request as u
+print(json.load(u.urlopen(u.Request('http://127.0.0.1:8000/api/health',headers={'Host':os.environ['TFSC_ORIGIN'].split('//',1)[1]}),timeout=8)).get('version',''))" 2>/dev/null
 }
 
 probe() {   # probe NETWORK PATH: what the server's Caddy (alphabridge_edge) or OCS (tfsc-link) gets from the web service
@@ -163,17 +177,20 @@ cmd_preflight() {
   detect_env_file; pf_ok "production settings: $ENV_FILE (read only)"
   local k; for k in TFSC_DOMAIN POSTGRES_PASSWORD BACKUP_PASSPHRASE TFSC_SECRET_KEY; do env_has "$k" && pf_ok "$k is set" || pf_fail "$k is not set in $ENV_FILE"; done
   [ "$(env_val TFSC_DOMAIN)" = "$DOMAIN" ] && pf_ok "TFSC_DOMAIN is $DOMAIN" || pf_fail "TFSC_DOMAIN in $ENV_FILE is not $DOMAIN"
-  for k in TFSC_AGREEMENTS_IMAGE TFSC_HEALTH_PORT; do if env_has "$k"; then pf_warn "$k is set in $ENV_FILE; agreements.sh sets it itself (the .env value is ignored)"; fi; done
+  if env_has TFSC_AGREEMENTS_IMAGE; then pf_warn "TFSC_AGREEMENTS_IMAGE is set in $ENV_FILE; agreements.sh sets it itself (the .env value is ignored)"; fi
   # PostgreSQL
   local dbc; dbc=$(running_cid "$DB")
   if [ -n "$dbc" ]; then
-    docker exec "$dbc" pg_isready -q -U "$DB_SUPERUSER" -d crm && pf_ok "PostgreSQL accepts connections" || pf_fail "PostgreSQL does not accept connections"
+    docker exec "$dbc" pg_isready -q -U "$DB_SUPERUSER" -d "$DB_NAME" && pf_ok "PostgreSQL accepts connections ($DB_SUPERUSER, database $DB_NAME)" || pf_fail "PostgreSQL does not accept connections"
+    docker exec -u postgres "$dbc" psql -X -U "$DB_SUPERUSER" -d "$DB_NAME" -Atc 'select 1' >/dev/null 2>&1 && pf_ok "database $DB_NAME answers as $DB_SUPERUSER" || pf_fail "database $DB_NAME does not answer as $DB_SUPERUSER"
     local item got
     for item in $PG_EXPECT; do
-      got=$(docker exec -u postgres "$dbc" psql -U "$DB_SUPERUSER" -d crm -Atc "SHOW ${item%%=*}" 2>/dev/null || true)
+      got=$(docker exec -u postgres "$dbc" psql -X -U "$DB_SUPERUSER" -d "$DB_NAME" -Atc "SHOW ${item%%=*}" 2>/dev/null || true)
       [ "$got" = "${item#*=}" ] && pf_ok "PostgreSQL ${item%%=*} = $got" || pf_warn "PostgreSQL ${item%%=*} = ${got:-?} (expected ${item#*=})"
     done
-    info "database revision: $(db_revision "$dbc")"
+    local rev; rev=$(db_revision "$dbc")
+    case "$rev" in 0014_integration_feed|0015_reminders) pf_ok "database revision $rev (this release applies 0015_reminders only)";;
+      *) pf_fail "database revision ${rev:-unknown}: this release expects 0014_integration_feed (or 0015_reminders after an earlier attempt)";; esac
   fi
   # the backup container can make and check the encrypted copy
   local bc; bc=$(running_cid "$BACKUP")
@@ -199,23 +216,32 @@ cmd_preflight() {
     docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}} {{end}}{{end}}' "$c" | tr ' ' '\n' | sed '/^$/d' | while read -r b; do
       pf_warn "$s uses the folder $b: never move or delete it (the container needs it to start again)"; done
   done
-  # the new configuration against the running containers (values compared, never printed)
-  HEALTH_PORT=$(health_port); export HEALTH_PORT
-  pf_ok "web health port 127.0.0.1:$HEALTH_PORT (kept)"
-  APP_IMAGE=$(new_tag) dc config --format json > "$WORK/compose.json" 2> "$WORK/compose.err" \
-    || { sed 's/^/    /' "$WORK/compose.err"; pf_fail "the new compose configuration does not render"; }
-  mkdir -p "$WORK/running"
-  for s in "$WEB" "$WORKER"; do
-    c=$(running_cid "$s"); [ -n "$c" ] || continue
-    docker inspect "$c" > "$WORK/running/$s.json"
-    docker image inspect "$(docker inspect -f '{{.Image}}' "$c")" > "$WORK/running/$s.image.json"
-  done
-  if [ -s "$WORK/compose.json" ]; then
+  # the new configuration: the release plus what the running containers have (values compared, never printed)
+  web_health >/dev/null && pf_ok "web answers inside its container: version $(web_health) (no host port needed)" || pf_fail "web does not answer inside its container"
+  say "Settings of the running $WEB and $WORKER, kept for the new containers"
+  if APP_IMAGE=$(new_tag) capture_runtime "$WORK/runtime.yaml"; then
+    APP_IMAGE=$(new_tag) RUNTIME_FILE=$WORK/runtime.yaml dc config --format json > "$WORK/final.json" 2> "$WORK/compose.err" \
+      || { sed 's/^/    /' "$WORK/compose.err"; pf_fail "the new compose configuration does not render"; }
     say "New configuration compared with the running $WEB and $WORKER"
-    cp "$LEGAL_DIR/prod.conf" "$LEGAL_DIR/legalcheck.py" "$WORK/"
-    pyrun legalcheck.py compare prod.conf compose.json running || PRE_FAIL=1
-    rm -f "$WORK/compose.json"
+    pyrun legalcheck.py compare prod.conf final.json running || PRE_FAIL=1
+    rm -f "$WORK/final.json"
+  else
+    pf_fail "the settings of the running containers could not be read"
   fi
+  # OCS (another stack): only read here, never changed by this script
+  say "OCS (separate stack; read only)"
+  local o found=0 url
+  for o in $(docker ps -q); do
+    url=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$o" | sed -n 's/^OCS_AGREEMENTS_URL=//p' | head -n 1)
+    [ -n "$url" ] || continue
+    found=1; url=${url#*://}; url=${url%%/*}
+    if docker inspect -f '{{json .NetworkSettings.Networks}}' "$o" | grep -q "\"$LINK_NETWORK\""; then
+      pf_ok "OCS container $(docker inspect -f '{{.Name}}' "$o" | tr -d /) reads $url and is on $LINK_NETWORK"
+    else
+      pf_warn "OCS container $(docker inspect -f '{{.Name}}' "$o" | tr -d /) reads $url but is NOT on $LINK_NETWORK: it cannot reach Legal until the separate OCS change (OCS-TFSC-LINK.md)"
+    fi
+  done
+  [ "$found" = 1 ] || info "no running container with OCS_AGREEMENTS_URL found"
   # what Caddy and OCS reach now
   say "Reachability now (the update must keep it)"
   EDGE_BEFORE=$(probe "$EDGE_NETWORK" /api/health); info "Caddy network $EDGE_NETWORK -> http://$EDGE_ALIAS:8000/api/health: $EDGE_BEFORE"
@@ -228,7 +254,7 @@ cmd_preflight() {
   return "$PRE_FAIL"
 }
 
-db_revision() { docker exec -u postgres "$1" psql -U "$DB_SUPERUSER" -d "$DB_NAME" -Atc 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]'; }
+db_revision() { docker exec -u postgres "$1" psql -X -U "$DB_SUPERUSER" -d "$DB_NAME" -Atc 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]'; }
 
 # ------------------------------------------------------------------ encrypted, verified copy of the database
 cmd_predump() {   # in the running backup container; encrypted while written, verified by reading it back; never pruned
@@ -338,6 +364,8 @@ cmd_update() {
     die "The running image is not $ROLLBACK_IMAGE, so a rollback would not return to what runs now. Nothing was changed. (prod.conf: set ROLLBACK_IMAGE to the running image's tag.)"
   local before rev0 rev1 dbc; dbc=$(running_cid "$DB"); before=$(infra_fingerprint); rev0=$(db_revision "$dbc")
   confirm "Update $DOMAIN to $(new_version)? (backup, build, migrate, switch web and worker)" || die "Nothing was changed."
+  # the running containers' settings, for the new containers (server only, mode 600)
+  APP_IMAGE=$NEW_IMAGE capture_runtime "$RUNTIME" || die "The settings of the running containers could not be read. Nothing was changed."
   # tfsc-link: created only when missing (OCS reads the feed over it); no other network is created or changed
   docker network inspect "$LINK_NETWORK" >/dev/null 2>&1 || { docker network create "$LINK_NETWORK" >/dev/null && info "created network $LINK_NETWORK"; }
   # 3-4 encrypted copy, verified
@@ -374,6 +402,11 @@ cmd_rollback() {
   [ "$rid" = "$ROLLBACK_IMAGE_ID" ] || die "$ROLLBACK_IMAGE is $rid, not the verified $ROLLBACK_IMAGE_ID. Nothing was changed."
   NEW_IMAGE=$(active_image)
   confirm "Switch $WEB and $WORKER from $NEW_IMAGE back to $ROLLBACK_IMAGE? The database is NOT downgraded; files are kept." || die "Nothing was changed."
+  work
+  if ! APP_IMAGE=$ROLLBACK_IMAGE capture_runtime "$RUNTIME"; then
+    [ -f "$RUNTIME" ] || die "Neither the running containers nor $RUNTIME give the production settings. Nothing was changed."
+    warn "Using the settings saved at the last update ($RUNTIME)."
+  fi
   LINK_BEFORE=unreachable; docker network inspect "$LINK_NETWORK" >/dev/null 2>&1 && LINK_BEFORE=$(probe "$LINK_NETWORK" /api/integration/v1/meta)
   local before; before=$(infra_fingerprint)
   switch_to "$ROLLBACK_IMAGE"
@@ -388,7 +421,8 @@ cmd_status() {
   say "Containers of $PROJECT"
   docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format 'table {{.Label "com.docker.compose.service"}}\t{{.Image}}\t{{.Status}}'
   say "Application"
-  info "web answers: version $(web_health || echo '-') on 127.0.0.1:$(health_port)"
+  info "web answers inside its container: version $(web_health || echo '-')"
+  info "Caddy network $EDGE_NETWORK -> $EDGE_ALIAS:8000: $(probe "$EDGE_NETWORK" /api/health)"
   info "public: $(curl -fsS -m 15 -o /dev/null -w '%{http_code}' "https://$DOMAIN/api/health" 2>/dev/null || echo 'not reachable from this server')"
   local dbc; dbc=$(running_cid "$DB"); [ -n "$dbc" ] && info "database revision: $(db_revision "$dbc")"
   say "Encrypted pre-update copies (never removed by this script)"
