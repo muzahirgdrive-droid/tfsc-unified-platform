@@ -241,11 +241,16 @@ cmd_predump() {   # in the running backup container; encrypted while written, ve
     set -eu; set -o pipefail; umask 077; f="/backups/$NAME"
     pg_dump -h "$SOCK" -U "$DBU" -d "$DBN" -Fc | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "env:$PASS_ENV" -out "$f.part"
     mv "$f.part" "$f"' || { docker exec "$bc" sh -c "rm -f '/backups/$name.part'" || true; die "The copy could not be made. Nothing was changed; the current version keeps running."; }
-  say "Verifying the copy: decrypted in memory and read by pg_restore --list (no readable copy is written anywhere)"
-  list=$(docker exec -e NAME="$name" -e PASS_ENV="$BACKUP_PASS_ENV" "$bc" sh -c '
+  say "Verifying the copy: decrypted in memory, every block read by pg_restore, then its table list (no readable copy is written)"
+  # 1. the whole copy decrypts (openssl checks the padding at the end) and pg_restore reads every data block to /dev/null
+  docker exec -e NAME="$name" -e PASS_ENV="$BACKUP_PASS_ENV" "$bc" sh -c '
     set -eu; set -o pipefail
-    openssl enc -d -aes-256-cbc -pbkdf2 -pass "env:$PASS_ENV" -in "/backups/$NAME" | pg_restore --list') \
-    || die "The copy /backups/$name could not be decrypted and read. Nothing was changed; do not update until this works."
+    openssl enc -d -aes-256-cbc -pbkdf2 -pass "env:$PASS_ENV" -in "/backups/$NAME" | pg_restore -f /dev/null' \
+    || die "The copy /backups/$name could not be decrypted and read completely. Nothing was changed; do not update until this works."
+  # 2. its table of contents (pg_restore stops reading after it, so only pg_restore's own result counts here)
+  list=$(docker exec -e NAME="$name" -e PASS_ENV="$BACKUP_PASS_ENV" "$bc" sh -c '
+    openssl enc -d -aes-256-cbc -pbkdf2 -pass "env:$PASS_ENV" -in "/backups/$NAME" 2>/dev/null | pg_restore --list') \
+    || die "The table list of /backups/$name could not be read. Nothing was changed; do not update until this works."
   tables=$(printf '%s\n' "$list" | grep -c ' TABLE DATA ' || true)
   for t in alembic_version users clients esign_envelopes esign_recipients esign_events documents; do
     printf '%s\n' "$list" | grep -q " TABLE DATA public $t " || die "The copy has no data for table $t. Nothing was changed; check the copy before updating."
