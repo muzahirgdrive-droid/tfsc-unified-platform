@@ -44,10 +44,11 @@ Also new: `PACKAGE_BUILD=5.4.0-legal.2` (in the package name and VERSION).
   - volumes: all seven external, with the exact production names;
   - images: backup `tfsc-postgres:20261110-c803dc9`, PostgreSQL `tfsc-postgres:16`, never built; `pull_policy: never`;
   - PostgreSQL 100 connections / 256MB / 4GB / WAL archiving;
-  - web 2 workers, pool 8 + 4; worker 1 + 1 processes;
-  - no proxy; health port `127.0.0.1` only (the running one is kept);
-  - `DATABASE_URL` from the production `.env` if set there;
-  - `compose.local.yaml` for server-only settings.
+  - application settings: in build 2, whatever the running containers have, copied by agreements.sh
+    (`state/compose.runtime.yaml`); defaults pool 5 / 5 apply only without it (build 1 had 8 + 4 and 3 + 2: corrected);
+  - no proxy; no published host port (build 2; build 1 required a 127.0.0.1 port: corrected);
+  - `DATABASE_URL`: the running containers' value (build 2);
+  - `compose.local.yaml` only if support asks for an extra setting (build 2: not needed for the update).
 - **`prod.conf`** (new): the production facts, no secrets.
 - **`validate-release.sh` + `legalcheck.py`** (new): the reusable release check (PRODUCTION-ADAPTATION.md §4).
 - **`tools/make_agreements_legal_bundle.sh`** (new, repository only): builds this package and refuses to unless the

@@ -1,134 +1,89 @@
-# Validation report: TFSC Agreements 5.4 production package for legal.24-7consultancy.cloud
+# Validation report: package 5.4.0-legal.2 (TFSC Agreements 5.4.0) for legal.24-7consultancy.cloud
 
-Everything below was **run** in a sandbox (Linux, Docker 29.9.3, Docker Compose 5.7.1, Chromium), not on the VPS.
-Nothing was deployed, and the production server was not contacted. Where a check could not be run, it says so.
-**This package is not "production-ready" until `validate-release.sh` and `agreements.sh preflight` pass on the VPS
-itself** (section 3).
+**Nothing here was run on your VPS.** Every result below comes from a sandbox: Linux, Docker Engine 29.9.3, Docker
+Compose **v5.6.0** (the official release binary, SHA-256 checked against the release's checksum list), Chromium. The sandbox
+contains a simulated production built from the facts you gave. A sandbox result is evidence, not production validation.
+Section 3 lists what only your VPS can confirm.
 
-## 1. Checks and results
+## 1. The simulated production (sandbox)
 
-| Check | How | Result |
+Built from your facts of the second review:
+- **Containers:** project `tfsc-agreements-legal`; `legal-agreements` and `agreements-worker` on
+  `tfsc-agreements:20261117-32267ca` (the 5.3 build), also tagged `tfsc-agreements:rollback-20261125`. Web has **no
+  published host port**.
+- **Networks:** web is on `alphabridge_edge` with alias `tfsc-agreements-legal`, behind a **separate** Caddy container
+  that proxies to that alias.
+- **Database:** PostgreSQL 16 (`tfsc-postgres:16`) with database `tfsc` and **no `crm` database**; superuser and
+  application user `crm`; `max_connections=100`, `shared_buffers=256MB`, `effective_cache_size=4GB`, `archive_mode=on`;
+  revision `0014_integration_feed`.
+- **Other services:** backup on `tfsc-postgres:20261110-c803dc9`, ClamAV `clamav/clamav:1.4.6`.
+- **Volumes:** the 7 volumes with the production names.
+- **Settings:** `DB_POOL_SIZE=5` on web and worker, `DB_POOL_OVERFLOW` not set. Some upstream variables are absent, and
+  one extra variable is present (`TFSC_MAIL_PRIVATE_HOSTS`, needed for the sandbox's test mail server).
+- **OCS:** a simulated OCS API with `OCS_AGREEMENTS_URL=http://tfsc-agreements-legal:8000/api/integration/v1`, **not** on
+  `tfsc-link`; and no `tfsc-link` network at the start.
+- **Data:** fictional users, clients, contracts, generated documents, a past agreement with its file, two envelopes
+  (one completed with a signature, one out for signature), an OCS token.
+
+Only `PROD_DIR` and the two image IDs in `prod.conf` were set to the sandbox's values (the sandbox's 5.3 build has a
+different ID than yours).
+
+Differences from your server that the sandbox cannot remove:
+- the backup container's own loop was idle, because its scheduled backups need the `crm` maintenance database, which
+  the sandbox deliberately lacked;
+- the build went through the sandbox's HTTPS proxy;
+- the Caddy was plain HTTP.
+
+## 2. Results (sandbox)
+
+| # | Requirement | What was run | Result |
+|---|---|---|---|
+| 1 | Shell syntax, ShellCheck | `bash -n`/`sh -n` on every script; ShellCheck 0.11.0 (severity warning) on `agreements.sh` and `validate-release.sh`; the repository's `ruff check .` | pass, 0 findings |
+| 2 | Compose files with v5.6.0 | `docker compose config -q` and `config --format json` of the production compose (placeholder `.env`) and of the upstream compose; the production compose refuses to run without `agreements.sh` | pass |
+| 3 | Health check without a published port | preflight, update, both rollbacks and status asked the version **inside** the web container (`docker exec`), and probed Caddy's path on `alphabridge_edge`; web had no host port before or after | pass |
+| 4 | Database preflight on `tfsc` as `crm` | `pg_isready -d tfsc`, `select 1` and `SHOW` on `tfsc` as `crm`, revision `0014_integration_feed`; no `crm` database existed | pass |
+| 5 | Pool settings kept | new containers: environment identical to the old ones (23 web, 28 worker variables; values compared, not shown); `DB_POOL_SIZE` 5 → 5 on both; `DB_POOL_OVERFLOW` still unset (checked inside the process); web processes 2 → 2; maximum connections 2×(5+5) + 5×(5+5) = 70, unchanged | pass |
+| 6 | Web and worker upgrade | `agreements.sh update` (16.5 s with the build cached): encrypted copy verified (45 tables with data), build, migration 0014 → 0015, switch, web 5.4.0 healthy, Caddy path, worker heartbeats | pass |
+| 7 | Automatic rollback, no downgrade | broken release, **from revision 0014**: migration applied, start-up error recognised after about 1 minute, back to `tfsc-agreements:rollback-20261125` with the same settings, 5.3 running on 0015 ("newer than this release; starting without migrating"); no downgrade. Repeated once from 0015 | pass |
+| 8 | PostgreSQL, backup, ClamAV unchanged | same container IDs, start times and restart counts before and after every update, rollback and the OCS change; Docker events: only web, worker, the one-off migration container and short-lived probe containers created or removed | pass |
+| 9 | Caddy through `alphabridge_edge` | probe inside `alphabridge_edge`: 200; the separate Caddy served 5.4.0, then 5.3.0 after rollback | pass |
+| 10 | OCS through `tfsc-link` once attached | before: the OCS API could not resolve `tfsc-agreements-legal`. After the change in OCS-TFSC-LINK.md (OCS compose: `default` + `tfsc-link`; `up -d --no-deps ocs-api`): 401 without a token, 200 with it; still 401 after the Legal rollback; the Legal containers were not touched by the OCS change | pass |
+| 11 | Migration 0015 safe, additive, from 0014 | reviewed (MIGRATION-REVIEW.md); applied 0014 → 0015 on `tfsc` while 5.3 served; the pre-update copy (0014) restored completely into a throwaway database (then dropped) | pass |
+| 12 | Data intact | right after the update: users, clients, contracts, documents, past agreements, client files, envelopes, recipients, signatures, fields, events, audit log, and every file in `/contracts` and `/data` identical (row hashes, using the columns that existed before for tables that gained columns); 0 rows changed outside runtime bookkeeping. The OCS checker: 39 passed, 0 failed. A signing link emailed before the update was signed after it | pass |
+| – | Prune, down, volume removal, PostgreSQL rebuild | none in the script (static check); in every run: no volume or image removed, no PostgreSQL build, the rollback tag unchanged | pass |
+| – | Secrets | values never printed (names only); `compose.runtime.yaml` mode 600 and excluded from packages; release check on the final package: no `.env`, keys, dumps or secret values | pass |
+| – | Dialog fix (from legal.1, unchanged) | Chromium, 16 checks | 16/16 |
+
+Problems found by these tests and fixed before this package (all in the production scripts, none in the application):
+1. Compose records a variable left unset as a bare name. Reading it as empty would have given a rolled-back container
+   `DB_POOL_OVERFLOW=''`, and the application cannot start with that.
+2. The comparison counted "left unset" as "added".
+3. The repository linter flagged the checker.
+
+## 3. Only your VPS can confirm (in this order)
+
+1. `sudo deploy/agreements-legal/validate-release.sh`: `RELEASE CHECK PASSED`.
+2. `sudo ./agreements.sh preflight`: `PREFLIGHT PASSED`. In particular:
+   - it shows `docker compose 5.6.0`;
+   - `rollback image tfsc-agreements:rollback-20261125 exists and is exactly the running image` (`sha256:09eedd0d…`);
+   - database `tfsc` answers as `crm`, at revision `0014_integration_feed`;
+   - the backup container has `pg_dump`, `pg_restore`, `openssl`, `sha256sum`, the passphrase, the socket, and room;
+   - web and worker environments identical; no published host port; `DB_POOL_SIZE = 5` on both;
+   - Caddy's network → 200.
+3. Whether the production `.env` is found automatically. The preflight prints its path. If not, set `ENV_FILE` in
+   `prod.conf`; the file is only read.
+4. The build on the VPS needs Debian and PyPI over HTTPS (or `BUILD_CA`) and at least 5 GB free. The preflight checks
+   the space.
+5. After the update: the public site https://legal.24-7consultancy.cloud answers as 5.4.0 (`./agreements.sh status`).
+6. The separate OCS change (OCS-TFSC-LINK.md), then OCS reads the feed.
+
+## 4. Remaining manual actions
+
+| Action | Who / where | When |
 |---|---|---|
-| Bash/sh syntax of every script | `bash -n` / `sh -n` on every `*.sh` and `tfsc-backup` (validate-release.sh step 1) | pass, all |
-| ShellCheck | ShellCheck 0.11.0, severity warning, on `agreements.sh` and `validate-release.sh` | pass, 0 findings |
-| Compose configuration | `docker compose config -q` and `config --format json` of the production compose with a placeholder `.env` | pass |
-| Compose refuses direct use | `docker compose config` without `TFSC_AGREEMENTS_IMAGE` | refuses (as intended: only agreements.sh runs it) |
-| YAML syntax | via `docker compose config` (PyYAML not installed in the sandbox: the separate YAML parse was NOT run) | pass (compose parse) |
-| Service names | compose has exactly `legal-agreements`, `agreements-worker`, `postgres`, `backup`, `clamav`; the script uses `$WEB`/`$WORKER` from prod.conf; no `dc … agreements` | pass |
-| Image names and rollback tag | postgres `tfsc-postgres:16`, backup `tfsc-postgres:20261110-c803dc9`, ClamAV `clamav/clamav:1.4.6`; app image set by agreements.sh; `tfsc-agreements:4`/`:rollback` not referred to; rollback `tfsc-agreements:rollback-20261125` verified by ID | pass |
-| Volume names | all 7 external with the exact production names; web and worker mount `agreements-data:/data`, `contracts:/contracts` | pass |
-| Networks | `alphabridge_edge`, `tfsc-link`, `tfsc-agreements-legal_default` external; web alias `tfsc-agreements-legal` on edge and link | pass |
-| Proxy / ports | no proxy service; only `127.0.0.1:<health port>` published | pass |
-| Production settings | PostgreSQL 100 / 256MB / 4GB / archive on; web 2 workers, pool 8+4; worker 1+1 | pass (compose and, in the simulation, `SHOW` on the server) |
-| Upstream variables | every environment variable upstream gives `agreements`/`agreements-worker` exists in the production compose | pass |
-| Migrations | 15 scanned; none has a drop/alter/rename/DELETE/TRUNCATE in `upgrade()`; reviewed in MIGRATION-REVIEW.md | pass |
-| Update safety review | static scan + Docker event log of real runs (section 2): only web, worker, the one-off migration container and short probe containers created/removed | pass |
-| Rollback safety review | real runs: manual and automatic; no migration, no downgrade, infrastructure untouched | pass |
-| No PostgreSQL recreation | same container ID, start time and restart count before/after every run | pass |
-| No backup/ClamAV restart | same | pass |
-| No `docker volume prune` | not in the script (static scan); no volume create/destroy event in any run | pass |
-| No `docker image prune` | not in the script; no image delete event; image list before ⊆ after in every run | pass |
-| No secrets in the package | validate-release.sh scan (`.env`, keys, dumps, databases, signatures, setup keys, secret assignments with values) + a search for the simulation's throwaway values | pass (run on the final ZIP) |
-| Application tests | earlier full suites: 352 passed on SQLite and on PostgreSQL 16; after the dialog fix, the suites that read the changed front-end files: 83 + 81 passed | pass |
-| Dialog fix (browser) | Chromium, 16 checks (section 2.4) | 16/16 pass; the same test fails at step 1 on the old code |
-
-## 2. Simulated production (Docker, fictional data)
-
-A stand-in for the production server was built from the facts given:
-- project `tfsc-agreements-legal`, web `legal-agreements` on `127.0.0.1:8766` and on `alphabridge_edge` as
-  `tfsc-agreements-legal`, behind a **separate** Caddy container;
-- the 5.3 image tagged `tfsc-agreements:20261117-32267ca` and `tfsc-agreements:rollback-20261125`, with
-  `tfsc-agreements:4` deliberately pointing at another image;
-- backup on `tfsc-postgres:20261110-c803dc9`, ClamAV 1.4.6, the 7 volumes with the production names;
-- the production PostgreSQL and application settings, and `DATABASE_URL` with user `crm`;
-- no `tfsc-link`;
-- one setting the package does not know (`TFSC_MAIL_PRIVATE_HOSTS`).
-
-Data: a signed client (BAA + Services Agreement), an envelope out for signature, an OCS token. Only the image IDs and
-the installation path in `prod.conf` were set to the simulation's values.
-
-1. **Preflight** with the package as shipped: **FAILED as it should**, on the unknown variable, for web and worker,
-   naming it without its value. Everything else matched (34 web and 39 worker variables, mounts, networks, port,
-   settings). With `compose.local.yaml` per the guide: PASSED.
-2. **Update 5.3 → 5.4**: copy (verified: 45 tables with data), build, migration `0014_integration_feed → 0015_reminders`,
-   switch, web 5.4.0 healthy, reachable through the separate Caddy, worker reporting; `tfsc-link` created. Afterwards:
-   - every business row and stored file identical. The only differences were runtime bookkeeping: heartbeats, the feed
-     publisher's timestamps, the token's last use, rate-limit counters, and the migration's revision and setting;
-   - PostgreSQL, backup and ClamAV: same containers, not restarted. Volumes unchanged; no image removed;
-   - OCS checker 39 passed, 0 failed; the feed was readable over `tfsc-link` as `tfsc-agreements-legal`;
-   - a signing link emailed before the update was signed after it.
-3. **Manual rollback**: back on 5.3 in 9 s, healthy and reachable; database stays at 0015 (5.3 logs "newer than this
-   release; starting without migrating"); infrastructure, volumes and images untouched.
-4. **Broken release** (web raises at start): migration run, switch, failure recognised, **automatic step back** to
-   `tfsc-agreements:rollback-20261125`, healthy; log of the failed start kept. First run: detection took the full 5
-   minutes, so early detection was added; second run: the whole attempt took 1 min 22 s. Infrastructure untouched.
-5. **Final package**: update again: passed, OCS checker 43 passed, 0 failed, 0 business rows changed.
-6. **Negative tests**:
-   - `ROLLBACK_IMAGE=tfsc-agreements:4`: preflight FAILED (wrong image ID), rollback refused, release check FAILED;
-   - the upstream script at the top of a release: release check FAILED with every whole-stack `up`/`stop`/`restart`,
-     the upstream service name, the PostgreSQL build, the image prune, backup deletion and firewall commands;
-   - a wrong backup passphrase: verification rejects the copy.
-7. **Restore of a pre-update copy** into a throwaway database: complete, revision 0014, counts match. Scratch database
-   dropped. All six copies made during testing are still there (none deleted).
-8. **No `python3` on the host**: preflight ran its comparison inside the application image instead; same result.
-
-Bugs found in my own production script by these runs, all fixed before the final package:
-- verification of the copy failed on a good copy (`pg_restore --list` stops reading early). It now reads the whole
-  copy, then the list;
-- a broken release took 5 minutes to detect. Now about 1 minute;
-- the checker treated joining `tfsc-link` as a failure. Now a warning; only leaving a network fails.
-
-### 2.4 Dialog checks (Chromium, Users & permissions › Create user)
-
-All 16 passed:
-1. a click outside does not close it;
-2. typed values are kept;
-3. pressing inside a field and releasing outside does not close it;
-4. × with changes asks the exact question;
-5. Cancel keeps the dialog and all values;
-6. Escape with changes asks, twice in a row, and never closes silently;
-7. confirming via Escape closes;
-8. confirming via × closes;
-9. × without changes closes without asking;
-10. Escape without changes closes without asking;
-11. permission changes (the Clear button) count as changes;
-12. an empty form is still blocked by validation;
-13. Save shows the temporary sign-in details;
-14. × after a successful save closes without asking;
-15. the help dialog (nothing to fill in) still closes from outside;
-16. no script errors.
-
-A double click on Save created **one** user.
-
-## 3. Unresolved: must be verified on the VPS (`agreements.sh preflight` checks most of it)
-
-1. **The real production `compose.yaml` and `.env` were not available.** This package was written from the stated
-   facts. The preflight compares the running containers with the new configuration and stops on any difference. Expect
-   it to name settings production has that this package does not (as in the simulation); add them to
-   `compose.local.yaml` as UPDATE-AND-ROLLBACK.md explains. Do not update until it passes.
-2. **Database user**: you stated `crm`; upstream connects as `tfsc`. The compose uses `DATABASE_URL` from the production
-   `.env` when it is set there, else the upstream URL. The preflight compares the value; a difference stops it.
-3. **Location of the production `.env`**: detected from the running web container's Compose labels, else
-   `/opt/tfsc-agreements-legal/.env` or `…/deploy/agreements/.env`; set `ENV_FILE` in prod.conf if the preflight cannot
-   find it. Older Compose versions do not record the env-file label (the fallbacks then apply).
-4. **Health port**: read from the running web container. If production publishes no 127.0.0.1 port at all, the
-   preflight stops; tell support (the compose then needs `ports` removed in `compose.local.yaml`).
-5. **Container names**: if production sets `container_name`, the preflight stops; add the same `container_name` in
-   `compose.local.yaml`.
-6. **OCS address**: this package gives the web service the alias `tfsc-agreements-legal` on `tfsc-link` (never
-   `agreements`, which another stack on the server might use). OCS must read
-   `http://tfsc-agreements-legal:8000/api/integration/v1`. Check OCS's setting. If the web service already had another
-   alias on `tfsc-link`, the preflight reports it as "would be lost" and stops.
-7. **Rollback image**: the preflight checks that `tfsc-agreements:rollback-20261125` is `sha256:09eedd0d…` and is
-   exactly what runs. If not, nothing proceeds.
-8. **PostgreSQL, backup and ClamAV definitions** in this compose may differ from production's in details the update never
-   uses (the `initdb` path, `backup-offsite.env`, memory limits). The update never touches these services. Never run
-   a whole-stack `docker compose up` with this file; the preflight lists their bind-mounted folders, which must not move.
-9. **Building on the VPS** needs Debian and PyPI access (or `BUILD_CA=/path/to/ca.crt` behind an inspecting proxy) and
-   about 5 GB free; the preflight checks the space.
-10. **Brief interruption**: the switch recreates web and worker (seconds; signers are reconnected).
-11. **Overdue reminders**: in the first sending window after the update, 5.4 may send reminders 5.3 would also have
-    sent, limited to one automatic email per person per company per day (MIGRATION-REVIEW.md).
-12. **OCS dialog fix**: `source/apps/ocs/web/src/design/ui.tsx` is not in this package; the OCS front end was not changed.
-13. **Docker Compose version**: tested with Compose 5.7.1. The commands used (`up --no-deps --no-build`, `run --no-deps
-    -T`, `config --format json`) exist in Compose v2; confirm with `docker compose version` (shown by the preflight).
+| Unpack beside `/opt/tfsc-agreements-legal`; `validate-release.sh`; `agreements.sh preflight` | you, on the VPS | before the update |
+| `sudo ./agreements.sh update` (answer `y`) | you, on the VPS | when the preflight passes |
+| Check the site, Reminders card, Admin › Reminders, `./agreements.sh status` | you | after the update |
+| **OCS change**: OCS API on `tfsc-link` in the OCS compose file, then `docker compose up -d --no-deps <ocs-api-service>` in the OCS folder (recreates the OCS API container only; a few seconds) | you, in the OCS installation | after the Legal update |
+| Next release: tag the image that then runs as the new rollback image and record it in `prod.conf` (PRODUCTION-ADAPTATION.md §4) | you / support | before the next update |
+| Keep `tfsc-agreements:rollback-20261125` and the new image; do not prune | you | always |
