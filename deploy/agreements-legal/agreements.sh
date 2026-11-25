@@ -281,7 +281,12 @@ wait_healthy() {   # wait_healthy EXPECTED_VERSION: web answers with it, Caddy's
     wc=$(running_cid "$WEB"); st=$( [ -n "$wc" ] && health_of "$wc" || echo missing)
     ver=$(web_health || true)
     if [ "$st" = "running healthy" ] && { [ -z "$want" ] || [ "$ver" = "$want" ]; }; then info "web healthy, version $ver"; break; fi
-    case "$st" in exited*|dead*|missing) info "web is $st"; return 1;; esac
+    case "$st" in exited*|dead*|missing|"running unhealthy") info "web is ${st#running }"; return 1;; esac
+    # a version that cannot start is recognised after a minute from its log, not after the full wait (less downtime)
+    if [ $(( $(date +%s) - start )) -ge 60 ] && [ -n "$wc" ] && docker logs --since "$(docker inspect -f '{{.State.StartedAt}}' "$wc")" "$wc" 2>&1 | tail -n 60 \
+        | grep -qE 'Traceback|ModuleNotFoundError|ImportError|SyntaxError|Error loading ASGI app'; then
+      info "the web service reports an error while starting"; return 1
+    fi
     [ $(( $(date +%s) - start )) -ge "$WEB_HEALTH_SECONDS" ] && { info "web not healthy in time ($st, version ${ver:-none})"; return 1; }
     sleep 5
   done
